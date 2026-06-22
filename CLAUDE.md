@@ -34,7 +34,7 @@ Cloudflare Pages. Push to the connected GitHub repo — Pages auto-deploys on pu
 2. **Independent clinics** — Overpass API (OpenStreetMap), viewport-limited, fetched on `moveend` with 900ms debounce
 3. **Income data** — Census ACS 2022 5-year, variable `B19013_001E`, all TX ZIPs, fetched with `force-cache`
 4. **Pet density** — Census ACS 2022 5-year housing variables, modeled dog ownership rate per ZIP
-5. **Population growth** — Census ACS: 2024 vintage vs 2019 vintage, variable `B01003_001E`, non-overlapping pair, parallel fetch
+5. **Population growth** — Census ACS: 2024 vintage vs 2021 vintage (same 2020-ZCTA boundaries), variable `B01003_001E`, parallel fetch
 
 ### Key global state
 ```js
@@ -103,12 +103,13 @@ let lastIndependents = []; // Cache of last good Overpass result (Overpass fallb
 - **`buildOppBaseInputs` uses `rawBBox()` not `L.geoJSON(f).getBounds()`**: intentional perf fix. The Leaflet call was creating thousands of throwaway objects for non-DFW ZIPs.
 - **`oppGeoSnap` holds a reference to the GeoJSON object**: setting `incomeGeoData = null` (in toggle-off) doesn't destroy the object, just drops the variable reference. The snap survives because it holds the same reference.
 - **`pointInGeoJSON` handles Polygon + MultiPolygon + holes**: the free-draw `pointInPolygon` only handles simple rings. Use `pointInGeoJSON` for ZIP polygon containment tests.
-- **Growth ZIP parsed from `r[r.length-1]`, NOT `r[1]`**: the ACS5 ZCTA geography column shape differs by vintage. 2024 returns `[pop, zip]` (ZCTA flat); 2019 returns `[pop, state, zip]` (ZCTA nested under state). Hardcoding `r[1]` made every 2019 row resolve to state FIPS `"48"`, so `popOld` was never stored and the entire growth layer showed "No data" statewide. Always read the zip from the last column. The requested variable is always col 0.
+- **Growth ZIP parsed from `r[r.length-1]`, NOT `r[1]`**: the ACS5 ZCTA geography column shape differs by vintage. ≥2021 returns `[pop, zip]` (ZCTA flat); ≤2019 returns `[pop, state, zip]` (ZCTA nested under state). Hardcoding `r[1]` made every nested-vintage row resolve to state FIPS `"48"`, so `popOld` was never stored and the entire growth layer showed "No data" statewide. Always read the zip from the last column. The requested variable is always col 0.
+- **Growth OLD vintage must be ≥2021 (2020-ZCTA boundaries)**: `GROWTH_YEAR_OLD = 2021`, not 2019. ZCTA boundaries were redrawn after the 2020 Census — vintages ≤2020 use 2010 ZCTAs, ≥2021 use 2020 ZCTAs. Comparing across that line is invalid wherever a ZCTA was split/merged/created. Real example: 2019's single 75034 (108k pop) was split into 75033/75034/75036 by 2024, so a 2019↔2024 join showed Frisco at a fake −50%. 2021 is the earliest 2020-boundary vintage = longest valid window. Do NOT move OLD back to ≤2020 to "get a longer time span" — it silently corrupts every fast-growing exurb (the app's primary targets).
 
 ### Known limitations (intentional, not bugs)
 - Independent clinics are viewport-limited (Overpass). PE clinics are complete statewide. `ensurePEClinicsForSelectedZips()` supplements PE counts on ZIP select.
 - Opportunity scoring loads growth data as the third sequential async load. The three loads are sequential, not parallel, because mutual exclusion teardown is interleaved.
-- Population growth uses ACS 2024 vs 2019 (non-overlapping pair). ZIPs with <500 baseline population are excluded (noisy denominators). Values clamped to [-50%, +150%].
+- Population growth uses ACS 2024 vs 2021 (same 2020-ZCTA boundaries, ~3yr window). ZIPs with <500 baseline population are excluded (noisy denominators). Values clamped to [-50%, +150%]. Window is 3yr rather than 5yr to stay on consistent ZCTA boundaries (see gotchas).
 - Income data is ACS 2022 5-year. Pet density is modeled from ACS 2022 housing variables (not direct survey data).
 - DFW scoring region is hardcoded. Adding a new region means changing `DFW_BOUNDS`, `DFW_MIN_LAT/LON/MAX_LAT/LON`.
 
@@ -127,7 +128,7 @@ Hardcoded in the fetch URLs: `key=3429f2401376a586a8f6ffc02bb5678ee32fbf44`. Thi
 - ✅ PE/independent color pins (navy/red), dev mode add/edit/delete
 - ✅ Draw area: rectangle + free-draw polygon, filters pins + scopes KPIs
 - ✅ ZIP selection: click to select, shift+click multi-select, black border overlay
-- ✅ Three choropleth layers: income, pet density, population growth (2019→2024)
+- ✅ Three choropleth layers: income, pet density, population growth (2021→2024)
 - ✅ KPI bar: clinics in view, PE penetration, median income, dog households, top opportunity ZIP
 - ✅ Opportunity scoring tab: 4-factor weighted score (income, demand, low competition, growth), live weight sliders, PE competition multiplier, 4 presets, ranked list with factor bars
 - ✅ oppSelect: loads data behind overlay, reveals finished map with ZIP outlined
@@ -136,7 +137,7 @@ Hardcoded in the fetch URLs: `key=3429f2401376a586a8f6ffc02bb5678ee32fbf44`. Thi
 - ✅ Overpass fallback on rate-limit
 - ✅ Shared geometry cache (tx-zips.json parsed once)
 - ✅ Redundant Census fetch eliminated
-- ✅ Growth data: ACS 2024 vs 2019, parallel fetch, clamped, scored
+- ✅ Growth data: ACS 2024 vs 2021 (same-boundary), parallel fetch, clamped, scored
 
 ## What's next (planned but not built)
 - Population growth as scoring input is live but could be refined with forward projections (Esri/Claritas) in a future paid tier
