@@ -1,0 +1,2923 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>VetMetric — Veterinary Market Intelligence</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --navy:#1e3a8a;--navy-dark:#1e3068;--navy-light:#eff6ff;
+  --red:#b91c1c;--red-light:#fef2f2;--red-border:#fecaca;
+  --green:#15803d;--green-light:#f0fdf4;--green-border:#bbf7d0;
+  --amber:#d97706;--amber-light:#fffbeb;
+  --purple:#6d28d9;--purple-light:#f5f3ff;
+  --surface:#ffffff;--bg:#f8fafc;--bg2:#f1f5f9;
+  --border:#e2e8f0;--border2:#cbd5e1;
+  --text:#0f172a;--text2:#334155;--muted:#64748b;--subtle:#94a3b8;
+  --radius:8px;--radius-lg:12px;
+  --shadow-sm:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);
+  --shadow:0 4px 12px rgba(0,0,0,.08);
+  --shadow-lg:0 8px 24px rgba(0,0,0,.1);
+}
+body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg);height:100vh;display:flex;flex-direction:column;overflow:hidden;color:var(--text);font-size:14px;}
+
+/* Header */
+header{background:var(--surface);border-bottom:1px solid var(--border);padding:0 24px;height:54px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;box-shadow:var(--shadow-sm);}
+.logo{width:34px;height:34px;background:linear-gradient(135deg,var(--navy) 0%,#3b5bd6 100%);border-radius:9px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(30,58,138,.28);}
+.logo svg{width:20px;height:20px;}
+.brand{font-size:16px;font-weight:800;margin-left:11px;letter-spacing:-.03em;}
+.brand span{color:var(--navy);}
+.hdr-left{display:flex;align-items:center;}
+.hdr-status{font-size:11px;color:var(--subtle);letter-spacing:.01em;}
+.toolbar{display:flex;align-items:center;gap:8px;}
+
+/* Toolbar buttons */
+.tool-btn{padding:0 12px;height:34px;background:var(--bg);color:var(--text2);border:1px solid var(--border2);border-radius:var(--radius);font-size:12.5px;font-weight:500;font-family:inherit;cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:5px;letter-spacing:.01em;}
+.tool-btn:hover{background:var(--bg2);border-color:var(--border2);}
+.tool-btn.draw-active{background:var(--navy);color:white;border-color:var(--navy);}
+.tool-btn.dev-active{background:var(--amber);color:#1a1a1a;border-color:var(--amber);font-weight:600;}
+#property-mode-btn.active{background:#0d9488;color:white;border-color:#0d9488;font-weight:600;}
+#property-mode-btn{display:none;align-items:center;gap:5px;}
+.tool-btn.layers-active{background:var(--purple);color:white;border-color:var(--purple);}
+.tool-btn svg{width:13px;height:13px;flex-shrink:0;}
+
+/* ── Top nav (section navigation) ── */
+header{height:58px;}
+.nav-links{display:flex;align-items:center;height:58px;margin-left:18px;}
+.nav-link{height:100%;display:flex;align-items:center;padding:0 14px;font-size:13.5px;font-weight:500;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;transition:color .15s,border-color .15s;background:none;border-top:none;border-left:none;border-right:none;font-family:inherit;}
+.nav-link:hover{color:var(--text);}
+.nav-link.active{color:var(--navy);border-bottom-color:var(--navy);font-weight:600;}
+.nav-link .soon{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--subtle);background:var(--bg2);border-radius:10px;padding:1px 6px;margin-left:6px;}
+.market-pick{display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border2);border-radius:20px;padding:6px 12px 6px 14px;font-size:12.5px;font-weight:600;color:var(--text2);cursor:pointer;white-space:nowrap;}
+.market-pick svg{width:13px;height:13px;stroke:var(--subtle);}
+.avatar{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--navy),#3b5bd6);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;}
+.search-bar{align-items:center;flex-wrap:wrap;}
+body.dev-mode header{background:var(--amber-light);}
+
+/* ── KPI bar ── */
+.kpibar{display:grid;grid-template-columns:repeat(5,1fr);gap:1px;background:var(--border);border-bottom:1px solid var(--border);flex-shrink:0;}
+.kpi{background:var(--surface);padding:11px 18px;position:relative;min-width:0;}
+.kpi .k-label{font-size:10.5px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;}
+.kpi .k-val{font-size:21px;font-weight:700;margin-top:5px;line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums;}
+.kpi .k-val.pending{font-size:13px;font-weight:600;color:var(--subtle);letter-spacing:0;}
+.kpi .k-foot{font-size:11px;color:var(--subtle);margin-top:6px;display:flex;align-items:center;gap:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.kpi .k-split{display:inline-flex;align-items:center;gap:4px;}
+.kpi .k-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.kpi .k-accent{position:absolute;left:0;top:0;bottom:0;width:3px;}
+body.dev-mode .kpibar{background:#fde68a;}
+body.dev-mode .kpi{background:var(--amber-light);}
+@media (max-width:1000px){
+  .kpibar{grid-template-columns:repeat(3,1fr);}
+  .kpi:nth-child(4),.kpi:nth-child(5){display:none;}
+  .nav-links{display:none;}
+}
+
+.zip-sel-hint{font-size:11px;color:var(--subtle);padding:5px 16px 0;font-style:italic;}
+.zip-sel-header{display:grid;grid-template-columns:52px 1fr 1fr 24px;gap:6px;padding:6px 16px 4px;font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border);}
+.zip-sel-list{overflow-y:auto;max-height:180px;}
+.zip-sel-row{display:grid;grid-template-columns:52px 1fr 1fr 24px;gap:6px;align-items:center;padding:7px 16px;border-bottom:1px solid var(--border);font-size:12.5px;}
+.zip-sel-code{font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums;letter-spacing:-.01em;}
+.zip-sel-stat{color:var(--text2);font-size:12px;}
+.zip-sel-remove{background:none;border:none;color:var(--subtle);cursor:pointer;font-size:11px;padding:0;line-height:1;border-radius:3px;}
+.zip-sel-remove:hover{color:var(--red);background:var(--red-light);}
+
+/* Search bar */
+.search-bar{background:var(--surface);border-bottom:1px solid var(--border);padding:8px 24px;display:flex;gap:8px;flex-shrink:0;position:relative;z-index:500;}
+.ac-wrap{flex:1;position:relative;}
+.si-wrap{display:flex;align-items:center;background:var(--bg);border:1px solid var(--border2);border-radius:var(--radius);padding:0 12px;gap:8px;transition:all .15s;}
+.si-wrap:focus-within{border-color:var(--navy);background:var(--surface);box-shadow:0 0 0 3px rgba(30,58,138,.08);}
+.si-wrap svg{width:14px;height:14px;stroke:var(--subtle);flex-shrink:0;}
+.si-wrap input{flex:1;border:none;background:transparent;padding:8px 0;font-size:13.5px;font-family:inherit;color:var(--text);outline:none;}
+.si-wrap input::placeholder{color:var(--subtle);}
+.sugg{position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);z-index:1000;overflow:hidden;display:none;}
+.sugg.open{display:block;}
+.sugg-item{padding:9px 14px;font-size:13px;cursor:pointer;border-bottom:1px solid var(--border);color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:8px;}
+.sugg-item:last-child{border-bottom:none;}
+.sugg-item svg{width:13px;height:13px;stroke:var(--subtle);flex-shrink:0;}
+.sugg-item:hover,.sugg-item.focused{background:var(--navy-light);color:var(--navy);}
+.go-btn{padding:0 16px;height:36px;background:var(--navy);color:white;border:none;border-radius:var(--radius);font-size:13px;font-weight:500;font-family:inherit;cursor:pointer;transition:background .15s;flex-shrink:0;letter-spacing:.01em;}
+.go-btn:hover{background:var(--navy-dark);}
+
+/* Layout */
+.main{display:flex;flex:1;overflow:hidden;position:relative;}
+#map{flex:1;}
+#zoom-msg{display:none;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(15,23,42,.88);color:white;padding:14px 22px;border-radius:var(--radius-lg);font-size:13.5px;text-align:center;pointer-events:none;z-index:400;line-height:1.7;backdrop-filter:blur(4px);}
+#map-pill{display:none;position:absolute;bottom:28px;left:50%;transform:translateX(-50%);background:rgba(15,23,42,.85);color:white;padding:6px 16px;border-radius:20px;font-size:12px;font-weight:500;z-index:400;pointer-events:none;letter-spacing:.02em;}
+
+/* Dev badge */
+.dev-badge{position:absolute;top:10px;left:50%;transform:translateX(-50%);background:var(--amber);color:#1a1a1a;font-size:10.5px;font-weight:700;padding:3px 12px;border-radius:20px;letter-spacing:.1em;text-transform:uppercase;z-index:1000;pointer-events:none;box-shadow:0 2px 8px rgba(217,119,6,.35);display:none;}
+.dev-badge.show{display:block;}
+body.dev-mode #map{outline:2px solid var(--amber);outline-offset:-2px;}
+
+/* Kill the browser focus ring Chrome draws around a clicked SVG path's
+   bounding box — this was the persistent blue rectangle around selected ZIPs */
+.leaflet-interactive:focus{outline:none;}
+path.leaflet-interactive:focus,svg.leaflet-zoom-animated:focus{outline:none;}
+body.dev-mode header{background:var(--amber-light);border-bottom-color:#fde68a;}
+body.dev-mode .search-bar{background:var(--amber-light);border-bottom-color:#fde68a;}
+.dev-hint{position:absolute;bottom:36px;left:50%;transform:translateX(-50%);background:rgba(217,119,6,.92);color:#1a1a1a;font-size:12px;font-weight:500;padding:6px 14px;border-radius:20px;z-index:400;pointer-events:none;white-space:nowrap;display:none;letter-spacing:.01em;}
+.dev-hint.show{display:block;}
+
+/* ── Opportunity panel (full overlay over the map area) ── */
+.opp-panel{position:absolute;inset:0;z-index:1200;background:var(--bg);display:none;flex-direction:column;}
+.opp-panel.show{display:flex;}
+.opp-top{padding:18px 24px 14px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;}
+.opp-title{font-size:18px;font-weight:800;letter-spacing:-.02em;}
+.opp-sub{font-size:12.5px;color:var(--muted);margin-top:3px;}
+.opp-body{flex:1;display:grid;grid-template-columns:300px 1fr;gap:0;overflow:hidden;min-height:0;}
+.opp-controls{background:var(--surface);border-right:1px solid var(--border);padding:18px 20px;overflow-y:auto;}
+.opp-controls h4{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:14px;}
+.weight-row{margin-bottom:18px;}
+.weight-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;}
+.weight-name{font-size:13px;font-weight:600;color:var(--text);}
+.weight-val{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:12px;font-weight:700;color:var(--navy);}
+.weight-desc{font-size:11px;color:var(--subtle);margin-bottom:8px;line-height:1.4;}
+.opp-slider{-webkit-appearance:none;appearance:none;width:100%;height:5px;border-radius:5px;background:var(--border2);outline:none;}
+.opp-slider::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:var(--navy);cursor:pointer;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.25);}
+.opp-slider::-moz-range-thumb{width:18px;height:18px;border-radius:50%;background:var(--navy);cursor:pointer;border:2px solid #fff;}
+.opp-preset-row{display:flex;gap:6px;margin-bottom:20px;flex-wrap:wrap;}
+.opp-preset{font-size:11px;font-weight:600;padding:5px 10px;border-radius:6px;border:1px solid var(--border2);background:var(--bg);color:var(--text2);cursor:pointer;}
+.opp-preset:hover{border-color:var(--navy);color:var(--navy);}
+.opp-divider{height:1px;background:var(--border);margin:6px 0 18px;}
+.opp-list-wrap{overflow-y:auto;padding:14px 18px 24px;}
+.opp-list-head{display:grid;grid-template-columns:30px 1fr 64px;gap:12px;padding:0 14px 10px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);position:sticky;top:0;background:var(--bg);}
+.opp-row{display:grid;grid-template-columns:30px 1fr 64px;gap:12px;align-items:center;padding:12px 14px;background:var(--surface);border:1px solid var(--border);border-radius:10px;margin-bottom:8px;cursor:pointer;transition:box-shadow .12s,transform .12s;}
+.opp-row:hover{box-shadow:var(--shadow);transform:translateY(-1px);}
+.opp-rank{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:14px;font-weight:700;color:var(--subtle);text-align:center;}
+.opp-rank.top{color:var(--navy);}
+.opp-main{min-width:0;}
+.opp-zip{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:14px;font-weight:700;letter-spacing:-.01em;}
+.opp-city{font-size:11.5px;color:var(--muted);margin-top:1px;}
+.opp-factors{display:flex;gap:3px;margin-top:8px;}
+.opp-fbar{flex:1;height:5px;border-radius:3px;background:var(--bg2);overflow:hidden;position:relative;}
+.opp-fbar i{position:absolute;left:0;top:0;bottom:0;border-radius:3px;}
+.opp-flabel{font-size:9px;color:var(--subtle);margin-top:3px;display:flex;justify-content:space-between;}
+.opp-score{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:18px;font-weight:700;color:#fff;border-radius:9px;height:46px;display:flex;align-items:center;justify-content:center;}
+.opp-empty{padding:50px 24px;text-align:center;color:var(--muted);font-size:13.5px;line-height:1.7;}
+.opp-loading{padding:50px 24px;text-align:center;color:var(--muted);font-size:13.5px;}
+@media (max-width:900px){ .opp-body{grid-template-columns:1fr;} .opp-controls{border-right:none;border-bottom:1px solid var(--border);max-height:40%;} }
+
+.opp-row.loading{opacity:.6;pointer-events:none;}
+.opp-row.loading .opp-score{position:relative;}
+.opp-overlay{position:absolute;inset:0;z-index:1300;background:rgba(241,245,249,.82);backdrop-filter:blur(2px);display:none;flex-direction:column;align-items:center;justify-content:center;gap:14px;}
+.opp-overlay.show{display:flex;}
+.opp-spinner{width:34px;height:34px;border:3px solid var(--border2);border-top-color:var(--navy);border-radius:50%;animation:oppspin .7s linear infinite;}
+@keyframes oppspin{to{transform:rotate(360deg)}}
+.opp-overlay .opp-load-zip{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:15px;font-weight:700;color:var(--navy);}
+.opp-overlay .opp-load-sub{font-size:12.5px;color:var(--muted);}
+
+/* Sidebar */
+.sidebar{width:300px;background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;}
+.sb-head{padding:12px 16px;border-bottom:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:space-between;}
+.zip-info-panel{padding:12px 16px;border-bottom:1px solid var(--border);flex-shrink:0;background:var(--navy-light);display:none;}
+.zip-info-panel.show{display:block;}
+.zip-info-zip{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--navy);margin-bottom:4px;}
+.zip-info-income{font-size:20px;font-weight:800;color:var(--navy);}
+.zip-info-label{font-size:11px;color:var(--muted);margin-top:2px;}
+.dog-info-panel{padding:12px 16px;border-bottom:1px solid var(--border);flex-shrink:0;background:#eef2ff;display:none;}
+.dog-info-panel.show{display:block;}
+.dog-info-zip{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#4338ca;margin-bottom:4px;}
+.dog-info-est{font-size:20px;font-weight:800;color:#4338ca;}
+.dog-info-rate{font-size:11.5px;color:#4338ca;margin-top:1px;font-weight:600;}
+.dog-info-label{font-size:11px;color:var(--muted);margin-top:3px;}
+.sb-title{font-size:12.5px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);}
+.badge{background:var(--navy);color:white;font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:20px;text-align:center;letter-spacing:.02em;}
+
+/* Legend */
+.legend{padding:8px 16px;border-bottom:1px solid var(--border);flex-shrink:0;display:flex;flex-wrap:wrap;gap:12px;}
+.leg-item{display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--muted);letter-spacing:.01em;}
+.leg-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+
+/* Clinic list */
+#list{flex:1;overflow-y:auto;}
+.card{padding:11px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .1s;display:flex;gap:10px;align-items:flex-start;}
+.card:hover{background:var(--bg);}
+.card.act-ind{background:var(--navy-light);}
+.card.act-pe{background:var(--red-light);}
+.card-body{flex:1;min-width:0;}
+.card-name{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text);}
+.card-meta{display:flex;align-items:center;gap:8px;margin-top:3px;flex-wrap:wrap;}
+.card-dist{font-size:11px;color:var(--subtle);}
+.tag-pe{font-size:10.5px;font-weight:600;padding:1px 7px;border-radius:4px;background:var(--red-light);color:var(--red);letter-spacing:.01em;}
+.tag-ind{font-size:10.5px;font-weight:600;padding:1px 7px;border-radius:4px;background:var(--green-light);color:var(--green);letter-spacing:.01em;}
+.tag-unk{font-size:10.5px;font-weight:600;padding:1px 7px;border-radius:4px;background:var(--amber-light);color:var(--amber);}
+.empty{padding:2.5rem 1rem;text-align:center;color:var(--subtle);font-size:13px;line-height:1.9;}
+.status-bar{padding:6px 16px;font-size:11.5px;color:var(--subtle);background:var(--bg);border-top:1px solid var(--border);flex-shrink:0;min-height:26px;display:flex;align-items:center;letter-spacing:.01em;}
+.status-bar.err{color:var(--red);}
+
+/* Draw picker */
+.draw-picker{position:absolute;top:96px;left:24px;background:white;border:1px solid var(--border2);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);z-index:600;overflow:hidden;display:none;min-width:220px;}
+.draw-picker.open{display:block;}
+.draw-option{padding:10px 16px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:10px;color:var(--text2);border-bottom:1px solid var(--border);}
+.draw-option:last-child{border-bottom:none;}
+.draw-option:hover{background:var(--navy-light);color:var(--navy);}
+.draw-option svg{flex-shrink:0;}
+
+/* Layers panel */
+.layers-panel{position:absolute;top:96px;right:0;width:270px;background:white;border-left:1px solid var(--border);border-bottom:1px solid var(--border);border-radius:0 0 0 var(--radius-lg);box-shadow:var(--shadow-lg);z-index:600;display:none;flex-direction:column;}
+.layers-panel.open{display:flex;}
+.layers-panel-header{padding:11px 16px;border-bottom:1px solid var(--border);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);}
+.layer-item{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:5px;}
+.layer-item:last-child{border-bottom:none;}
+.layer-row{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;}
+.layer-name{font-size:13px;font-weight:600;color:var(--text);}
+.layer-desc{font-size:11.5px;color:var(--muted);line-height:1.5;}
+.layer-status{font-size:11px;color:var(--subtle);}
+.toggle{position:relative;width:36px;height:20px;flex-shrink:0;margin-top:1px;}
+.toggle input{opacity:0;width:0;height:0;}
+.toggle-slider{position:absolute;cursor:pointer;inset:0;background:#d1d5db;border-radius:20px;transition:.2s;}
+.toggle-slider:before{content:'';position:absolute;width:16px;height:16px;left:2px;top:2px;background:white;border-radius:50%;transition:.2s;box-shadow:0 1px 3px rgba(0,0,0,.2);}
+.toggle input:checked+.toggle-slider{background:var(--purple);}
+.toggle input:checked+.toggle-slider:before{transform:translateX(16px);}
+.toggle input:disabled+.toggle-slider{opacity:.4;cursor:not-allowed;}
+
+/* Income legend */
+.income-legend{
+  position:absolute;bottom:36px;right:308px;
+  background:rgba(255,255,255,0.97);
+  border-radius:var(--radius-lg);
+  padding:14px 16px;
+  box-shadow:0 4px 20px rgba(0,0,0,.12);
+  border:1px solid var(--border);
+  z-index:500;display:none;min-width:190px;
+  backdrop-filter:blur(4px);
+}
+.income-legend.show{display:block;}
+.legend-title{
+  font-size:10px;font-weight:700;color:var(--muted);
+  margin-bottom:10px;text-transform:uppercase;
+  letter-spacing:.1em;border-bottom:1px solid var(--border);
+  padding-bottom:8px;
+}
+.legend-scale{display:flex;flex-direction:column;gap:6px;}
+.legend-scale-item{display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--text2);font-weight:500;}
+.legend-scale-color{width:16px;height:16px;border-radius:4px;flex-shrink:0;box-shadow:0 1px 2px rgba(0,0,0,.1);}
+
+/* Dog ownership legend — stacks above income legend if both shown */
+.dog-legend{
+  position:absolute;bottom:230px;right:308px;
+  background:rgba(255,255,255,0.97);
+  border-radius:var(--radius-lg);
+  padding:14px 16px;
+  box-shadow:0 4px 20px rgba(0,0,0,.12);
+  border:1px solid var(--border);
+  z-index:500;display:none;min-width:200px;
+  backdrop-filter:blur(4px);
+}
+.dog-legend.show{display:block;}
+
+/* Income tooltip */
+.leaflet-tooltip.income-tip {
+  background:rgba(15,23,42,.92);
+  color:white;
+  border:none;
+  border-radius:8px;
+  padding:8px 12px;
+  font-family:'Inter',system-ui,sans-serif;
+  font-size:12.5px;
+  box-shadow:0 4px 16px rgba(0,0,0,.2);
+  backdrop-filter:blur(4px);
+}
+.leaflet-tooltip.income-tip strong {
+  display:block;
+  font-size:11px;
+  text-transform:uppercase;
+  letter-spacing:.06em;
+  color:rgba(255,255,255,.6);
+  margin-bottom:2px;
+}
+.income-tip-amount {
+  font-size:15px;
+  font-weight:700;
+  color:white;
+}
+.leaflet-tooltip.income-tip::before {
+  display:none;
+}
+
+/* Area filter */
+.area-header{padding:12px 16px;border-bottom:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:space-between;}
+.area-title{font-size:12.5px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);}
+.clear-area-btn{font-size:12px;font-weight:500;padding:4px 10px;background:var(--red-light);color:var(--red);border:1px solid var(--red-border);border-radius:var(--radius);cursor:pointer;font-family:inherit;transition:background .15s;}
+.clear-area-btn:hover{background:#fee2e2;}
+.filter-tabs{display:flex;padding:10px 16px;gap:6px;border-bottom:1px solid var(--border);flex-shrink:0;}
+.ftab{font-size:12px;font-weight:500;padding:5px 12px;border-radius:20px;border:1px solid var(--border2);background:var(--bg);color:var(--muted);cursor:pointer;transition:all .15s;letter-spacing:.01em;}
+.ftab:hover{border-color:var(--navy);color:var(--navy);}
+.ftab.on{background:var(--navy);color:white;border-color:var(--navy);}
+.ftab.pe-on{background:var(--red);color:white;border-color:var(--red);}
+.company-filters{padding:10px 16px;border-bottom:1px solid var(--border);flex-shrink:0;}
+.company-filters-title{font-size:10.5px;font-weight:700;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.07em;}
+.company-check{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);cursor:pointer;}
+.company-check:last-child{border-bottom:none;}
+.company-check input{accent-color:var(--red);cursor:pointer;}
+.company-check label{font-size:12.5px;cursor:pointer;flex:1;color:var(--text2);}
+.company-count{font-size:11px;color:var(--subtle);}
+.area-stats{padding:7px 16px;font-size:11.5px;color:var(--muted);background:var(--bg);border-bottom:1px solid var(--border);flex-shrink:0;letter-spacing:.01em;}
+
+/* Popup */
+
+.leaflet-popup-content-wrapper{border-radius:var(--radius-lg);font-family:'Inter',system-ui,sans-serif;box-shadow:var(--shadow-lg);border:1px solid var(--border);padding:0;}
+.leaflet-popup-content{margin:0;padding:0;min-width:220px;}
+.popup{padding:14px 16px;}
+.popup-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px;}
+.popup-name{font-weight:700;font-size:13.5px;line-height:1.3;flex:1;color:var(--text);}
+.gear-btn{background:none;border:none;cursor:pointer;padding:2px 6px;border-radius:var(--radius);color:var(--subtle);font-size:13px;line-height:1;flex-shrink:0;margin-left:8px;transition:all .15s;font-family:inherit;}
+.gear-btn:hover{background:var(--bg2);color:var(--text);}
+.popup-website{margin-bottom:10px;}
+.popup-website a{font-size:12px;color:var(--navy);text-decoration:none;display:flex;align-items:center;gap:5px;}
+.popup-website a:hover{text-decoration:underline;}
+.popup-no-web{font-size:12px;color:var(--subtle);margin-bottom:10px;}
+.popup-pe{display:flex;align-items:flex-start;gap:8px;border-radius:var(--radius);padding:9px 11px;}
+.popup-pe.owned{background:var(--red-light);border:1px solid var(--red-border);}
+.popup-pe.indep{background:var(--green-light);border:1px solid var(--green-border);}
+.popup-pe.unk{background:var(--amber-light);border:1px solid #fde68a;}
+.popup-pe-body{font-size:12px;line-height:1.5;}
+.popup-pe.owned .popup-pe-body{color:#991b1b;}
+.popup-pe.indep .popup-pe-body{color:var(--green);}
+.popup-pe.unk .popup-pe-body{color:var(--amber);}
+.popup-pe-owner{font-weight:700;display:block;font-size:12.5px;}
+.popup-disclaimer{font-size:10.5px;color:var(--subtle);margin-top:8px;line-height:1.5;letter-spacing:.01em;}
+.leaflet-popup-tip-container{margin-top:-1px;}
+
+/* Settings panel in popup */
+.settings-panel{margin-top:10px;border-top:1px solid var(--border);padding-top:10px;display:none;flex-direction:column;gap:8px;}
+.settings-panel.open{display:flex;}
+.settings-label{font-size:10.5px;font-weight:700;color:var(--muted);margin-bottom:3px;text-transform:uppercase;letter-spacing:.06em;}
+.settings-input{width:100%;font-size:13px;padding:7px 10px;border:1px solid var(--border2);border-radius:var(--radius);font-family:inherit;outline:none;color:var(--text);transition:border-color .15s;}
+.settings-input:focus{border-color:var(--navy);box-shadow:0 0 0 3px rgba(30,58,138,.08);}
+.settings-row{display:flex;gap:6px;}
+.settings-btn{flex:1;font-size:12px;font-weight:500;padding:7px 10px;border-radius:var(--radius);border:none;cursor:pointer;font-family:inherit;transition:all .15s;letter-spacing:.01em;}
+.settings-btn.save{background:var(--navy);color:white;}
+.settings-btn.save:hover{background:var(--navy-dark);}
+.settings-btn.cancel{background:var(--bg);color:var(--muted);border:1px solid var(--border);}
+.settings-btn.cancel:hover{background:var(--bg2);}
+.settings-btn.delete{background:var(--red-light);color:var(--red);border:1px solid var(--red-border);}
+.settings-btn.delete:hover{background:#fee2e2;}
+
+/* Add clinic modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:2000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(2px);}
+.modal{background:white;border-radius:var(--radius-lg);padding:24px;width:340px;box-shadow:0 20px 60px rgba(0,0,0,.2);border:1px solid var(--border);}
+.modal-title{font-size:15px;font-weight:700;margin-bottom:16px;color:var(--text);}
+.modal-field{margin-bottom:12px;}
+.modal-label{font-size:10.5px;font-weight:700;color:var(--muted);margin-bottom:4px;display:block;text-transform:uppercase;letter-spacing:.06em;}
+.modal-input{width:100%;font-size:13.5px;padding:8px 10px;border:1px solid var(--border2);border-radius:var(--radius);font-family:inherit;outline:none;color:var(--text);transition:all .15s;}
+.modal-input:focus{border-color:var(--navy);box-shadow:0 0 0 3px rgba(30,58,138,.08);}
+.modal-coord{font-size:11px;color:var(--subtle);margin-top:4px;letter-spacing:.01em;}
+.modal-row{display:flex;gap:8px;margin-top:16px;}
+.modal-btn{flex:1;padding:9px;font-size:13px;font-weight:500;border-radius:var(--radius);border:none;cursor:pointer;font-family:inherit;transition:all .15s;letter-spacing:.01em;}
+.modal-btn.primary{background:var(--navy);color:white;}
+.modal-btn.primary:hover{background:var(--navy-dark);}
+.modal-btn.secondary{background:var(--bg);color:var(--muted);border:1px solid var(--border);}
+.modal-btn.secondary:hover{background:var(--bg2);}
+
+/* Property listings */
+.property-popup-type{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 9px;border-radius:20px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;}
+.property-popup-type.lease{background:#ccfbf1;color:#0f766e;}
+.property-popup-type.sale{background:#fef3c7;color:#92400e;}
+.property-popup-type.lot{background:#e0e7ff;color:#4338ca;}
+.property-popup-stats{display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:var(--text2);margin-bottom:10px;}
+.property-popup-stats b{color:var(--text);font-weight:700;}
+.property-popup-link{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;color:#0f766e;font-weight:600;text-decoration:none;margin-bottom:6px;}
+.property-popup-link:hover{text-decoration:underline;}
+.property-popup-notes{font-size:11.5px;color:var(--muted);line-height:1.5;margin-top:6px;padding-top:8px;border-top:1px solid var(--border);}
+</style>
+</head>
+<body>
+<header>
+  <div class="hdr-left">
+    <div class="logo"><svg viewBox="0 0 24 24" fill="none">
+      <rect x="3" y="14" width="3.4" height="7" rx="1.2" fill="#fff" opacity="0.55"/>
+      <rect x="8.3" y="10" width="3.4" height="11" rx="1.2" fill="#fff" opacity="0.75"/>
+      <rect x="13.6" y="6" width="3.4" height="15" rx="1.2" fill="#fff"/>
+      <path d="M2.5 9.5h3l1.6-4 2.2 7 1.8-3.5 1.4 2h7.5" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" opacity="0.95"/>
+    </svg></div>
+    <div class="brand">Vet<span>Metric</span></div>
+    <nav class="nav-links">
+      <button class="nav-link active" data-section="map" onclick="switchSection('map')">Map</button>
+      <button class="nav-link" data-section="opportunity" onclick="switchSection('opportunity')">Opportunity</button>
+      <button class="nav-link" data-section="properties" onclick="switchSection('properties')">Properties</button>
+      <button class="nav-link" data-section="reports" onclick="switchSection('reports')">Reports<span class="soon">soon</span></button>
+    </nav>
+  </div>
+  <div style="display:flex;align-items:center;gap:12px;">
+    <div id="hdr-status" class="hdr-status">Loading PE data...</div>
+    <div class="market-pick" onclick="marketPickerNote()" title="Market presets coming soon">Texas <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></div>
+    <div class="avatar" title="Jonathan Duhon">JD</div>
+  </div>
+</header>
+<div class="search-bar">
+  <div class="ac-wrap">
+    <div class="si-wrap">
+      <svg fill="none" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+      <input id="loc" type="text" placeholder="Search a Texas city or ZIP..." autocomplete="off"/>
+    </div>
+    <div class="sugg" id="sugg"></div>
+  </div>
+  <button class="go-btn" onclick="jumpTo()">Go</button>
+  <button id="draw-btn" class="tool-btn" onclick="drawingMode ? cancelDraw() : showDrawPicker()" title="Draw area to filter clinics">
+    <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+    Draw Area
+  </button>
+  <button id="layers-btn" class="tool-btn" onclick="toggleLayersPanel()" title="Data layers">
+    <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+    Layers
+  </button>
+  <button id="dev-btn" class="tool-btn" onclick="toggleDevMode()" title="Developer mode">
+    <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+    Dev Mode
+  </button>
+  <button id="property-mode-btn" class="tool-btn" onclick="togglePropertyAddMode()" title="Add property listings" style="display:none">
+    <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/><path d="M9 9v.01"/><path d="M9 12v.01"/><path d="M9 15v.01"/><path d="M9 18v.01"/></svg>
+    Add Property
+  </button>
+</div>
+<div class="kpibar" id="kpibar">
+  <div class="kpi"><div class="k-accent" style="background:var(--navy)"></div>
+    <div class="k-label">Clinics in view</div>
+    <div class="k-val" id="kpi-clinics">—</div>
+    <div class="k-foot" id="kpi-clinics-foot">Pan or search to load</div>
+  </div>
+  <div class="kpi"><div class="k-accent" style="background:var(--red)"></div>
+    <div class="k-label">PE penetration</div>
+    <div class="k-val" id="kpi-pe">—</div>
+    <div class="k-foot" id="kpi-pe-foot">of clinics in view</div>
+  </div>
+  <div class="kpi"><div class="k-accent" style="background:var(--green)"></div>
+    <div class="k-label">Median income</div>
+    <div class="k-val pending" id="kpi-income">Off</div>
+    <div class="k-foot" id="kpi-income-foot">Turn on the income layer</div>
+  </div>
+  <div class="kpi"><div class="k-accent" style="background:#4338ca"></div>
+    <div class="k-label">Dog-owning households</div>
+    <div class="k-val pending" id="kpi-dogs">Off</div>
+    <div class="k-foot" id="kpi-dogs-foot">Turn on the pet density layer</div>
+  </div>
+  <div class="kpi" style="cursor:pointer" onclick="switchSection('opportunity')"><div class="k-accent" style="background:var(--purple)"></div>
+    <div class="k-label">Top opportunity ZIP</div>
+    <div class="k-val pending" id="kpi-opp">View →</div>
+    <div class="k-foot" id="kpi-opp-foot">Open the ranked list</div>
+  </div>
+</div>
+<div class="draw-picker" id="draw-picker">
+  <div class="draw-option" onclick="startDraw('rect')">
+    <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+    Rectangle — click & drag
+  </div>
+  <div class="draw-option" onclick="startDraw('free')">
+    <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M3 17L9 11L13 15L21 7"/></svg>
+    Free draw — click to place points
+  </div>
+</div>
+<div class="main">
+  <div class="dev-badge" id="dev-badge">DEV MODE</div>
+  <div class="layers-panel" id="layers-panel">
+    <div class="layers-panel-header">Data Layers</div>
+    <div style="padding:0 16px 10px;font-size:11px;color:var(--subtle);line-height:1.5;border-bottom:1px solid var(--border);margin-bottom:2px;">The map shows one color scheme at a time — turning one on switches the other off, so the colors stay readable.</div>
+    <div class="layer-item">
+      <div class="layer-row">
+        <div>
+          <div class="layer-name">Median Household Income</div>
+          <div class="layer-desc">2022 ACS Census data by ZIP code — color-coded from low to high income</div>
+        </div>
+        <label class="toggle" style="margin-left:12px">
+          <input type="checkbox" id="toggle-income" onchange="toggleIncomeLayer(this.checked)"/>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <div class="layer-status" id="income-status">Off</div>
+    </div>
+    <div class="layer-item">
+      <div class="layer-row">
+        <div>
+          <div class="layer-name">Pet Ownership Density</div>
+          <div class="layer-desc">Modeled from TX statewide dog ownership rate, adjusted per ZIP using Census housing data</div>
+        </div>
+        <label class="toggle" style="margin-left:12px">
+          <input type="checkbox" id="toggle-pets" onchange="toggleDogLayer(this.checked)"/>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <div class="layer-status" id="dog-status">Off</div>
+    </div>
+    <div class="layer-item">
+      <div class="layer-row">
+        <div>
+          <div class="layer-name">Population Growth</div>
+          <div class="layer-desc">Population change by ZIP (2019→2024 ACS, latest available) — where demand is heading</div>
+        </div>
+        <label class="toggle" style="margin-left:12px">
+          <input type="checkbox" id="toggle-growth" onchange="toggleGrowthLayer(this.checked)"/>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <div class="layer-status" id="growth-status">Off</div>
+    </div>
+    <div class="layer-item">
+      <div class="layer-row">
+        <div>
+          <div class="layer-name">Available Properties</div>
+          <div class="layer-desc">Curated lease/sale/lot listings added via Dev Mode</div>
+        </div>
+        <label class="toggle" style="margin-left:12px">
+          <input type="checkbox" id="toggle-properties" onchange="togglePropertyLayer(this.checked)"/>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <div class="layer-status" id="property-status">Off</div>
+    </div>
+    <div class="layer-item" style="opacity:.5">
+      <div class="layer-row">
+        <div>
+          <div class="layer-name">Population Growth</div>
+          <div class="layer-desc">Coming soon</div>
+        </div>
+        <label class="toggle"><input type="checkbox" disabled/><span class="toggle-slider"></span></label>
+      </div>
+    </div>
+    <div class="layer-item" style="opacity:.5">
+      <div class="layer-row">
+        <div>
+          <div class="layer-name">Clinic Density</div>
+          <div class="layer-desc">Coming soon</div>
+        </div>
+        <label class="toggle"><input type="checkbox" disabled/><span class="toggle-slider"></span></label>
+      </div>
+    </div>
+  </div>
+  <div class="income-legend" id="income-legend">
+    <div class="legend-title">Median Household Income</div>
+    <div class="legend-scale">
+      <div class="legend-scale-item"><div class="legend-scale-color" style="background:#1a9641"></div> $100k+</div>
+      <div class="legend-scale-item"><div class="legend-scale-color" style="background:#a6d96a"></div> $75k – $100k</div>
+      <div class="legend-scale-item"><div class="legend-scale-color" style="background:#ffffbf"></div> $50k – $75k</div>
+      <div class="legend-scale-item"><div class="legend-scale-color" style="background:#fdae61"></div> $35k – $50k</div>
+      <div class="legend-scale-item"><div class="legend-scale-color" style="background:#d7191c"></div> Under $35k</div>
+      <div class="legend-scale-item"><div class="legend-scale-color" style="background:#e2e8f0"></div> No data</div>
+    </div>
+  </div>
+  <div class="dog-legend" id="dog-legend">
+    <div class="legend-title">Estimated Dog Ownership Rate</div>
+    <div class="legend-scale">
+      <div class="legend-scale-item"><div class="legend-scale-color" style="background:#1e1b4b"></div> 55%+</div>
+      <div class="legend-scale-item"><div class="legend-scale-color" style="background:#4338ca"></div> 50% – 55%</div>
+      <div class="legend-scale-item"><div class="legend-scale-color" style="background:#818cf8"></div> 45% – 50%</div>
+      <div class="legend-scale-item"><div class="legend-scale-color" style="background:#c7d2fe"></div> 40% – 45%</div>
+      <div class="legend-scale-item"><div class="legend-scale-color" style="background:#e0e7ff"></div> Under 40%</div>
+      <div class="legend-scale-item"><div class="legend-scale-color" style="background:#e2e8f0"></div> No data</div>
+    </div>
+  </div>
+  <div class="dog-legend" id="growth-legend">
+    <div class="legend-title">Population Growth (2019–2024)</div>
+    <div class="legend-scale">
+      <div class="legend-scale-item"><div class="legend-scale-color" style="background:#14532d"></div> 20%+</div>
+      <div class="legend-scale-item"><div class="legend-scale-color" style="background:#16a34a"></div> 10% – 20%</div>
+      <div class="legend-scale-item"><div class="legend-scale-color" style="background:#86efac"></div> 3% – 10%</div>
+      <div class="legend-scale-item"><div class="legend-scale-color" style="background:#fde68a"></div> 0% – 3%</div>
+      <div class="legend-scale-item"><div class="legend-scale-color" style="background:#f87171"></div> Shrinking</div>
+      <div class="legend-scale-item"><div class="legend-scale-color" style="background:#e2e8f0"></div> No data</div>
+    </div>
+  </div>
+  <div class="dev-hint" id="dev-hint">Click anywhere on the map to add a clinic</div>
+  <div id="map"></div>
+
+  <!-- ── Opportunity scoring panel ── -->
+  <div class="opp-panel" id="opp-panel">
+    <div class="opp-overlay" id="opp-overlay">
+      <div class="opp-spinner"></div>
+      <div class="opp-load-zip" id="opp-load-zip">ZIP</div>
+      <div class="opp-load-sub">Preparing the map view…</div>
+    </div>
+    <div class="opp-top">
+      <div class="opp-title">Opportunity Scores — North Texas (DFW)</div>
+      <div class="opp-sub" id="opp-sub">Ranking ZIPs by income, pet demand, and competition. Drag the weights to match your thesis.</div>
+    </div>
+    <div class="opp-body">
+      <div class="opp-controls">
+        <h4>Weighting</h4>
+        <div class="opp-preset-row">
+          <button class="opp-preset" onclick="oppPreset('balanced')">Balanced</button>
+          <button class="opp-preset" onclick="oppPreset('underserved')">Underserved</button>
+          <button class="opp-preset" onclick="oppPreset('cashflow')">Cash-flow</button>
+          <button class="opp-preset" onclick="oppPreset('growth')">High-growth</button>
+        </div>
+        <div class="weight-row">
+          <div class="weight-head"><span class="weight-name">Income</span><span class="weight-val" id="w-income-val">25%</span></div>
+          <div class="weight-desc">Higher median household income scores higher</div>
+          <input type="range" class="opp-slider" id="w-income" min="0" max="100" value="25" oninput="onWeightChange()"/>
+        </div>
+        <div class="weight-row">
+          <div class="weight-head"><span class="weight-name">Pet demand</span><span class="weight-val" id="w-demand-val">25%</span></div>
+          <div class="weight-desc">More dog-owning households scores higher</div>
+          <input type="range" class="opp-slider" id="w-demand" min="0" max="100" value="25" oninput="onWeightChange()"/>
+        </div>
+        <div class="weight-row">
+          <div class="weight-head"><span class="weight-name">Low competition</span><span class="weight-val" id="w-comp-val">25%</span></div>
+          <div class="weight-desc">Fewer existing clinics scores higher (underserved markets)</div>
+          <input type="range" class="opp-slider" id="w-comp" min="0" max="100" value="25" oninput="onWeightChange()"/>
+        </div>
+        <div class="weight-row">
+          <div class="weight-head"><span class="weight-name">Population growth</span><span class="weight-val" id="w-growth-val">25%</span></div>
+          <div class="weight-desc">Faster-growing ZIPs score higher (where demand is heading)</div>
+          <input type="range" class="opp-slider" id="w-growth" min="0" max="100" value="25" oninput="onWeightChange()"/>
+        </div>
+        <div class="opp-divider"></div>
+        <div class="weight-row">
+          <div class="weight-head"><span class="weight-name">PE competition weight</span><span class="weight-val" id="w-pe-val">2.0×</span></div>
+          <div class="weight-desc">How much more a corporate/PE clinic counts as competition vs. an independent</div>
+          <input type="range" class="opp-slider" id="w-pe" min="10" max="40" value="20" oninput="onWeightChange()"/>
+        </div>
+      </div>
+      <div class="opp-list-wrap" id="opp-list-wrap">
+        <div class="opp-loading">Loading regional data…</div>
+      </div>
+    </div>
+  </div>
+  <div id="zoom-msg">Zoom in to see clinics<br><span style="font-size:12px;opacity:.75">Search a city above</span></div>
+  <div id="map-pill"></div>
+  <div class="sidebar">
+    <div class="sb-head">
+      <span class="sb-title">Clinics in view</span>
+      <span class="badge" id="badge">0</span>
+    </div>
+    <div class="legend">
+      <div class="leg-item"><div class="leg-dot" style="background:var(--navy)"></div>Independent</div>
+      <div class="leg-item"><div class="leg-dot" style="background:var(--red)"></div>PE owned</div>
+      <div class="leg-item"><div class="leg-dot" style="background:var(--amber)"></div>PE loading...</div>
+    </div>
+    <div class="zip-info-panel" id="zip-info-panel">
+      <div class="zip-info-zip" id="zip-info-zip">ZIP —</div>
+      <div class="zip-info-income" id="zip-info-income">—</div>
+      <div class="zip-info-label">Median Household Income · Click map to clear</div>
+    </div>
+    <div class="dog-info-panel" id="dog-info-panel">
+      <div class="dog-info-zip" id="dog-info-zip">ZIP —</div>
+      <div class="dog-info-est" id="dog-info-est">—</div>
+      <div class="dog-info-rate" id="dog-info-rate"></div>
+      <div class="dog-info-label">Estimated Dog-Owning Households · Click map to clear</div>
+    </div>
+    <div id="list"><div class="empty">Search a city or pan the map<br>to find clinics</div></div>
+    <div class="status-bar" id="status"></div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<!-- PE data loads async — map works immediately without it -->
+<script src="pe-data.js" defer></script>
+<script>
+const NAVY='#1e3a8a', RED='#dc2626', AMBER='#f59e0b';
+const MIN_ZOOM=10;
+
+// PE data — populated by pe-data.js once it loads
+var PE_NAMES = {};
+var PE_COORDS = [];
+var peLoaded = false;
+
+// Called by pe-data.js once it's done
+function onPEReady() {
+  peLoaded = true;
+  document.getElementById('hdr-status').textContent = 'PE data: ' + Object.keys(PE_NAMES).length.toLocaleString() + ' TX clinics';
+  setTimeout(() => document.getElementById('hdr-status').textContent = '', 4000);
+  // If clinics were already fetched before PE data arrived, those PE pins were
+  // skipped (Source 1 is gated on peLoaded). A full refetch adds them now.
+  // Otherwise just recolor whatever's there.
+  if(typeof map !== 'undefined' && map.getZoom() >= MIN_ZOOM){
+    fetchClinics();
+  } else {
+    refreshPins();
+  }
+}
+
+/*  Local storage  */
+function getStore(k){ try{ return JSON.parse(localStorage.getItem(k)||'{}'); }catch(e){ return {}; } }
+function setStore(k,v){ localStorage.setItem(k,JSON.stringify(v)); }
+function getOverrides(){ return getStore('vf_overrides'); }
+function getDeleted(){ return getStore('vf_deleted'); }
+
+/*  PE lookup  */
+function norm(s){ return s.trim().toLowerCase().replace(/[^a-z0-9]/g,''); }
+
+function checkPE(name, lat, lon, key, overrides) {
+  overrides = overrides || getOverrides();
+  if (key && overrides[key]) {
+    const ov = overrides[key];
+    return ov.pe ? {owner:ov.pe, brand:'Manual override', manual:true} : null;
+  }
+  if (!peLoaded) return null;
+  if (name) {
+    const m = PE_NAMES[norm(name)];
+    if (m) return {owner:m[0], brand:m[1]};
+  }
+  if (lat && lon) {
+    const dLat=0.003, dLon=0.004;
+    for (const [plat,plon,owner,brand] of PE_COORDS) {
+      if (Math.abs(plat-lat)<dLat && Math.abs(plon-lon)<dLon)
+        return {owner, brand};
+    }
+  }
+  return null;
+}
+
+/*  Map  */
+const map = L.map('map',{minZoom:4, boxZoom:false}).setView([31.0,-99.0],7);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap',maxZoom:19}).addTo(map);
+
+const clusterGroup = L.layerGroup();
+map.addLayer(clusterGroup);
+const propertyLayer = L.layerGroup(); // not added to map until toggled on
+
+function pinSVG(color){
+  const id=color.replace('#','');
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="38" viewBox="0 0 28 38"><filter id="f${id}"><feDropShadow dx="0" dy="1.5" stdDeviation="1.5" flood-color="rgba(0,0,0,0.22)"/></filter><path d="M14 1.5C7.1 1.5 1.5 7.1 1.5 14C1.5 24.5 14 36.5 14 36.5C14 36.5 26.5 24.5 26.5 14C26.5 7.1 20.9 1.5 14 1.5Z" fill="${color}" stroke="white" stroke-width="1.5" filter="url(#f${id})"/><circle cx="14" cy="14" r="5.5" fill="white" opacity="0.92"/></svg>`;
+}
+function miniPin(color){
+  return `<svg width="14" height="19" viewBox="0 0 28 38"><path d="M14 1.5C7.1 1.5 1.5 7.1 1.5 14C1.5 24.5 14 36.5 14 36.5C14 36.5 26.5 24.5 26.5 14C26.5 7.1 20.9 1.5 14 1.5Z" fill="${color}" stroke="white" stroke-width="1.5"/><circle cx="14" cy="14" r="5.5" fill="white" opacity="0.92"/></svg>`;
+}
+function makeIcon(color){ return L.divIcon({html:pinSVG(color),iconSize:[28,38],iconAnchor:[14,38],popupAnchor:[0,-40],className:''}); }
+function pinColor(c){ return c.pe ? RED : (c.peChecked ? NAVY : AMBER); }
+function clinicKey(c){ return `${Math.round(c.lat*1000)}_${Math.round(c.lon*1000)}`; }
+
+let markers=[],clinics=[],activeIdx=null,fetchTimer=null;
+
+/*  Draw area state  */
+let drawingMode=false, drawStart=null, drawRect=null, drawnArea=null;
+let areaClinicKeys=new Set(); // keys of clinics in drawn area
+let activeFilter='all'; // 'all','indep','pe'
+let activeCompanies=new Set(); // PE companies to show (empty = all)
+let drawLayer=null; // the rectangle on the map
+const hav=(a,b,c,d)=>{const R=6371000,dL=(c-a)*Math.PI/180,dN=(d-b)*Math.PI/180,x=Math.sin(dL/2)**2+Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(dN/2)**2;return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));};
+const mi=m=>(m/1609.344).toFixed(1);
+const setStatus=(t,e=false)=>{const s=document.getElementById('status');s.textContent=t;s.className='status-bar'+(e?' err':'');};
+const showPill=(t)=>{const el=document.getElementById('map-pill');el.textContent=t;el.style.display=t?'block':'none';};
+function clearMarkers(){clusterGroup.clearLayers();markers=[];}
+
+/*  Popup  */
+function buildPopup(c) {
+  const key = clinicKey(c);
+  const webHTML = c.website
+    ? `<div class="popup-website"><a href="${c.website}" target="_blank" rel="noopener">
+        <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
+        ${c.website.replace(/^https?:\/\/(www\.)?/,'').split('/')[0]}
+       </a></div>`
+    : `<div class="popup-no-web">No website listed</div>`;
+
+  let peHTML;
+  if (!c.peChecked) {
+    peHTML = `<div class="popup-pe unk"><div class="popup-pe-body"><span class="popup-pe-owner">Verifying ownership status...</span></div></div>`;
+  } else if (c.pe) {
+    peHTML = `<div class="popup-pe owned"><div class="popup-pe-body"><span class="popup-pe-owner">PE / Corporate Owned</span>${c.pe.owner}${c.pe.brand&&c.pe.brand!==c.pe.owner?`<br><span style="opacity:.8">${c.pe.brand}</span>`:''}</div></div>`;
+  } else {
+    peHTML = `<div class="popup-pe indep"><div class="popup-pe-body"><span class="popup-pe-owner">Independent Practice</span></div></div>`;
+  }
+
+  const peOwnerVal = c.pe && !c.pe.independent ? (c.pe.owner||'') : '';
+  const safeName = c.name.replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+
+  return `<div class="popup">
+    <div class="popup-header">
+      <div class="popup-name">${c.name}</div>
+      ${devMode ? `<button class="gear-btn" onclick="toggleSettings('${key}')" title="Edit"></button>` : ''}
+    </div>
+    ${webHTML}${peHTML}
+    <div class="popup-disclaimer">Source: privateequityvet.org — Texas</div>
+    ${devMode ? `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);display:flex;gap:6px;">
+      <button class="settings-btn save" style="flex:1;font-size:11.5px;padding:5px 8px" onclick="toggleSettings('${key}')">Edit</button>
+      ${c.customId ? `<button class="settings-btn delete" style="flex:1;font-size:11.5px;padding:5px 8px" onclick="deleteCustomClinic(${c.customId})">Delete</button>` : `<button class="settings-btn delete" style="flex:1;font-size:11.5px;padding:5px 8px" onclick="deleteClinic('${key}')">Remove</button>`}
+    </div>` : ''}
+    <div class="settings-panel" id="sp-${key}">
+      <div><div class="settings-label">Clinic name</div>
+        <input class="settings-input" id="si-name-${key}" value="${safeName}"/></div>
+      <div><div class="settings-label">PE owner (blank = independent)</div>
+        <input class="settings-input" id="si-pe-${key}" value="${peOwnerVal}" placeholder="e.g. KKR, Mars..."/></div>
+      <div class="settings-row">
+        <button class="settings-btn save" onclick="saveSettings('${key}')">Save</button>
+        <button class="settings-btn cancel" onclick="toggleSettings('${key}')">Cancel</button>
+        <button class="settings-btn delete" onclick="deleteClinic('${key}')">Delete</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+/*  Settings actions  */
+function toggleSettings(key){ const el=document.getElementById('sp-'+key); if(el) el.classList.toggle('open'); }
+function saveSettings(key){
+  const nm=document.getElementById('si-name-'+key)?.value.trim();
+  const pe=document.getElementById('si-pe-'+key)?.value.trim()||null;
+  const o=getOverrides(); o[key]={name:nm,pe}; setStore('vf_overrides',o);
+  applyOverride(key,nm,pe);
+}
+function deleteClinic(key){
+  const d=getDeleted(); d[key]=true; setStore('vf_deleted',d);
+  const idx=clinics.findIndex(c=>clinicKey(c)===key);
+  if(idx>=0){ clusterGroup.removeLayer(markers[idx]); markers.splice(idx,1); clinics.splice(idx,1); renderList(); }
+}
+function applyOverride(key,nm,pe){
+  const idx=clinics.findIndex(c=>clinicKey(c)===key);
+  if(idx<0)return;
+  const c=clinics[idx];
+  if(nm) c.name=nm;
+  c.pe=pe?{owner:pe,brand:'Manual override',manual:true}:null;
+  c.peChecked=true;
+  if(markers[idx]){ markers[idx].setIcon(makeIcon(pinColor(c))); markers[idx].setPopupContent(buildPopup(c)); markers[idx].openPopup(); }
+  renderList();
+}
+
+/*  List  */
+function cardTag(c){
+  if(!c.peChecked) return `<span class="tag-unk">Checking...</span>`;
+  return c.pe?`<span class="tag-pe">PE Owned</span>`:`<span class="tag-ind">Independent</span>`;
+}
+function renderList(){
+  // Only show clinics actually within the current viewport
+  const b = map.getBounds();
+  const visible = clinics.filter(c => b.contains([c.lat, c.lon]));
+  document.getElementById('badge').textContent = visible.length;
+  const l=document.getElementById('list');
+  if(!visible.length){l.innerHTML='<div class="empty">No clinics in current view.<br>Pan or zoom to find clinics.</div>';return;}
+  l.innerHTML=visible.map(c=>{
+    const i = clinics.indexOf(c);
+    return `<div class="card" id="c${i}" onclick="focusClinic(${i})">
+      <div style="flex-shrink:0;margin-top:2px">${miniPin(pinColor(c))}</div>
+      <div class="card-body">
+        <div class="card-name">${c.name}</div>
+        <div class="card-meta">${cardTag(c)}<span class="card-dist">${mi(c.dist)} mi</span></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+function focusClinic(i){
+  if(activeIdx!==null){const p=document.getElementById('c'+activeIdx);if(p)p.className='card';}
+  activeIdx=i;
+  const el=document.getElementById('c'+i);
+  if(el){el.className='card '+(clinics[i].pe?'act-pe':'act-ind');el.scrollIntoView({behavior:'smooth',block:'nearest'});}
+  map.setView([clinics[i].lat,clinics[i].lon],Math.max(map.getZoom(),15));
+  markers[i].openPopup();
+}
+
+function refreshPins(){
+  const overrides=getOverrides();
+  clinics.forEach((c,i)=>{
+    const key=clinicKey(c);
+    if(overrides[key]){
+      const ov=overrides[key];
+      if(ov.name) c.name=ov.name;
+      c.pe=ov.pe?{owner:ov.pe,brand:'Manual override',manual:true}:null;
+    } else {
+      c.pe=checkPE(c.name,c.lat,c.lon,key,overrides);
+    }
+    c.peChecked=true;
+    if(markers[i]){ markers[i].setIcon(makeIcon(pinColor(c))); markers[i].setPopupContent(buildPopup(c)); }
+  });
+  renderList();
+}
+
+/*  Draw area  */
+let drawMode='rect'; // 'rect' or 'free'
+let freePoints=[]; // latlngs for free draw polygon
+let freePreview=null; // preview polyline
+
+function showDrawPicker(){
+  const picker=document.getElementById('draw-picker');
+  picker.classList.toggle('open');
+  document.addEventListener('click', function closePicker(e){
+    if(!e.target.closest('#draw-picker')&&!e.target.closest('#draw-btn')){
+      picker.classList.remove('open');
+      document.removeEventListener('click',closePicker);
+    }
+  });
+}
+
+function startDraw(mode){
+  document.getElementById('draw-picker').classList.remove('open');
+  drawMode=mode;
+  drawingMode=true;
+  freePoints=[];
+  const btn=document.getElementById('draw-btn');
+  btn.classList.add('active');
+  btn.innerHTML='<svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> Cancel';
+  map.dragging.disable();
+  map.getContainer().style.cursor='crosshair';
+  document.getElementById('dev-hint').textContent = mode==='rect'
+    ? 'Click and drag to draw a rectangle'
+    : 'Click to place points · Click first point to close';
+  document.getElementById('dev-hint').classList.add('show');
+}
+
+function cancelDraw(){
+  drawingMode=false;
+  drawStart=null;
+  freePoints=[];
+  // Only remove in-progress preview shapes, never the finalized drawLayer
+  if(drawRect && drawRect !== drawLayer){ map.removeLayer(drawRect); drawRect=null; }
+  if(freePreview){ map.removeLayer(freePreview); freePreview=null; }
+  if(typeof firstPointMarker!=='undefined'&&firstPointMarker){ map.removeLayer(firstPointMarker); firstPointMarker=null; }
+  map.dragging.enable();
+  map.getContainer().style.cursor='';
+  if(!devMode) document.getElementById('dev-hint').classList.remove('show');
+  const btn=document.getElementById('draw-btn');
+  btn.classList.remove('active');
+  btn.innerHTML='<svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg> Draw Area';
+}
+
+// Rectangle events
+map.getContainer().addEventListener('mousedown',e=>{
+  if(!drawingMode||drawMode!=='rect') return;
+  const r=map.getContainer().getBoundingClientRect();
+  drawStart=map.containerPointToLatLng(L.point(e.clientX-r.left,e.clientY-r.top));
+});
+map.getContainer().addEventListener('mousemove',e=>{
+  if(!drawingMode) return;
+  const r=map.getContainer().getBoundingClientRect();
+  const cur=map.containerPointToLatLng(L.point(e.clientX-r.left,e.clientY-r.top));
+  if(drawMode==='rect'&&drawStart){
+    if(drawRect) map.removeLayer(drawRect);
+    drawRect=L.rectangle([drawStart,cur],{color:'#1e3a8a',weight:2,fillColor:'#1e3a8a',fillOpacity:0.08,dashArray:'6,4'}).addTo(map);
+  } else if(drawMode==='free'&&freePoints.length>0){
+    if(freePreview) map.removeLayer(freePreview);
+    freePreview=L.polyline([...freePoints,cur],{color:'#1e3a8a',weight:2,dashArray:'6,4'}).addTo(map);
+  }
+});
+map.getContainer().addEventListener('mouseup',e=>{
+  if(!drawingMode||drawMode!=='rect'||!drawStart) return;
+  const r=map.getContainer().getBoundingClientRect();
+  const end=map.containerPointToLatLng(L.point(e.clientX-r.left,e.clientY-r.top));
+  drawnArea={type:'rect',bounds:L.latLngBounds(drawStart,end)};
+  if(drawRect) map.removeLayer(drawRect);
+  drawLayer=L.rectangle(drawnArea.bounds,{color:'#1e3a8a',weight:2,fillColor:'#1e3a8a',fillOpacity:0.06,dashArray:'6,4'}).addTo(map);
+  drawStart=null;
+  cancelDraw();
+  captureAreaClinics();
+});
+
+// Free draw — click to add points, click first point or double-click to finish
+let firstPointMarker = null;
+const CLOSE_THRESHOLD = 20; // pixels to snap/close
+
+map.on('click',e=>{
+  if(!drawingMode||drawMode!=='free'||devMode) return;
+
+  // Check if clicking near the first point to close the shape
+  if(freePoints.length >= 3 && firstPointMarker) {
+    const firstPx = map.latLngToContainerPoint(freePoints[0]);
+    const clickPx = map.latLngToContainerPoint(e.latlng);
+    const dist = firstPx.distanceTo(clickPx);
+    if(dist < CLOSE_THRESHOLD) {
+      // Close the polygon
+      if(freePreview){map.removeLayer(freePreview);freePreview=null;}
+      if(firstPointMarker){map.removeLayer(firstPointMarker);firstPointMarker=null;}
+      drawnArea={type:'poly',points:[...freePoints]};
+      drawLayer=L.polygon(freePoints,{color:'#1e3a8a',weight:2,fillColor:'#1e3a8a',fillOpacity:0.06,dashArray:'6,4'}).addTo(map);
+      freePoints=[];
+      cancelDraw();
+      captureAreaClinics();
+      return;
+    }
+  }
+
+  freePoints.push(e.latlng);
+
+  // Show a dot on the first point so user knows where to click to close
+  if(freePoints.length === 1) {
+    firstPointMarker = L.circleMarker(e.latlng, {
+      radius:6, fillColor:'#1e3a8a', fillOpacity:1,
+      color:'white', weight:2, interactive:false
+    }).addTo(map);
+  }
+
+  if(freePreview) map.removeLayer(freePreview);
+  // Draw closed preview polygon once we have 3+ points
+  if(freePoints.length >= 3) {
+    freePreview = L.polygon(freePoints,{color:'#1e3a8a',weight:2,fillColor:'#1e3a8a',fillOpacity:0.06,dashArray:'6,4'}).addTo(map);
+  } else {
+    freePreview = L.polyline(freePoints,{color:'#1e3a8a',weight:2,dashArray:'6,4'}).addTo(map);
+  }
+});
+
+// Double-click also closes as fallback
+map.on('dblclick',e=>{
+  if(!drawingMode||drawMode!=='free'||freePoints.length<3) return;
+  if(freePreview){map.removeLayer(freePreview);freePreview=null;}
+  if(firstPointMarker){map.removeLayer(firstPointMarker);firstPointMarker=null;}
+  drawnArea={type:'poly',points:[...freePoints]};
+  drawLayer=L.polygon(freePoints,{color:'#1e3a8a',weight:2,fillColor:'#1e3a8a',fillOpacity:0.06,dashArray:'6,4'}).addTo(map);
+  freePoints=[];
+  cancelDraw();
+  captureAreaClinics();
+});
+
+// Point in polygon for free draw
+function pointInPolygon(lat,lon,points){
+  let inside=false;
+  for(let i=0,j=points.length-1;i<points.length;j=i++){
+    const xi=points[i].lat,yi=points[i].lng,xj=points[j].lat,yj=points[j].lng;
+    if(((yi>lon)!=(yj>lon))&&(lat<(xj-xi)*(lon-yi)/(yj-yi)+xi)) inside=!inside;
+  }
+  return inside;
+}
+
+// Ray-cast test against a single GeoJSON ring ([lng,lat] pairs)
+function _pointInRing(lat, lon, ring){
+  let inside = false;
+  for(let i=0, j=ring.length-1; i<ring.length; j=i++){
+    const loni = ring[i][0], lati = ring[i][1];
+    const lonj = ring[j][0], latj = ring[j][1];
+    if(((lati > lat) !== (latj > lat)) &&
+       (lon < (lonj - loni) * (lat - lati) / (latj - lati) + loni)){
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+// Correct point-in-polygon for a GeoJSON feature: handles Polygon and
+// MultiPolygon, and respects holes (point in a hole = outside).
+function pointInGeoJSON(lat, lon, feat){
+  const geo = feat && feat.geometry;
+  if(!geo) return false;
+  // Normalize to an array of polygons, each polygon = [outerRing, hole1, hole2, ...]
+  const polys = geo.type === 'Polygon'
+    ? [geo.coordinates]
+    : geo.type === 'MultiPolygon'
+      ? geo.coordinates
+      : [];
+  for(const poly of polys){
+    if(!poly.length) continue;
+    const outer = poly[0];
+    if(!_pointInRing(lat, lon, outer)) continue; // not in this polygon's outer ring
+    // Inside outer ring — make sure it's not inside a hole
+    let inHole = false;
+    for(let h=1; h<poly.length; h++){
+      if(_pointInRing(lat, lon, poly[h])){ inHole = true; break; }
+    }
+    if(!inHole) return true;
+  }
+  return false;
+}
+
+function isInDrawnArea(lat,lon){
+  if(!drawnArea) return false;
+  if(drawnArea.type==='rect') return drawnArea.bounds.contains([lat,lon]);
+  if(drawnArea.type==='poly') return pointInPolygon(lat,lon,drawnArea.points);
+  return false;
+}
+
+function captureAreaClinics(){
+  // Clear any ZIP selection before entering draw mode
+  if(selectedZips.size){
+    selectedZips.forEach((entry, z) => _unhighlightZip(z));
+    selectedZips.clear();
+  }
+  areaClinicKeys=new Set();
+  clinics.forEach(c=>{
+    if(isInDrawnArea(c.lat,c.lon)) areaClinicKeys.add(clinicKey(c));
+  });
+  activeFilter='all';
+  activeCompanies=new Set();
+  renderAreaSidebar();
+  // Update KPI bar to reflect drawn area
+  updateClinicKpis();
+  updateLayerKpis();
+}
+
+function clearArea(){
+  drawnArea=null;
+  areaClinicKeys=new Set();
+  activeFilter='all';
+  activeCompanies=new Set();
+  if(drawLayer){map.removeLayer(drawLayer);drawLayer=null;}
+  if(freePreview){map.removeLayer(freePreview);freePreview=null;}
+  drawRect=null;
+  markers.forEach(m=>m.setOpacity(1));
+  renderNormalSidebar();
+  // Revert KPI bar to viewport mode
+  updateClinicKpis();
+  updateLayerKpis();
+}
+
+function renderAreaSidebar(){
+  const sidebar=document.querySelector('.sidebar');
+  // Get PE companies in area
+  const peCompanies={};
+  clinics.forEach(c=>{
+    if(areaClinicKeys.has(clinicKey(c))&&c.pe){
+      peCompanies[c.pe.owner]=(peCompanies[c.pe.owner]||0)+1;
+    }
+  });
+  const totalInArea=areaClinicKeys.size;
+  const peInArea=Object.values(peCompanies).reduce((a,b)=>a+b,0);
+  const indepInArea=totalInArea-peInArea;
+
+  sidebar.innerHTML=`
+    <div class="area-header">
+      <span class="area-title">Area Filter</span>
+      <button class="clear-area-btn" onclick="clearArea()">Clear Area</button>
+    </div>
+    <div class="area-stats">${totalInArea} clinics · ${peInArea} PE-owned · ${indepInArea} independent</div>
+    <div class="filter-tabs">
+      <button class="ftab on" id="ftab-all" onclick="setFilter('all')">All</button>
+      <button class="ftab" id="ftab-indep" onclick="setFilter('indep')">Independent</button>
+      <button class="ftab" id="ftab-pe" onclick="setFilter('pe')">PE Owned</button>
+    </div>
+    ${Object.keys(peCompanies).length ? `
+    <div class="company-filters">
+      <div class="company-filters-title">Filter by PE Company</div>
+      ${Object.entries(peCompanies).sort((a,b)=>b[1]-a[1]).map(([co,cnt])=>`
+        <div class="company-check">
+          <input type="checkbox" id="co-${co.replace(/[^a-z0-9]/gi,'')}" onchange="toggleCompany('${co.replace(/'/g,"\'")}',this.checked)" checked/>
+          <label for="co-${co.replace(/[^a-z0-9]/gi,'')}">${co}</label>
+          <span class="company-count">${cnt}</span>
+        </div>`).join('')}
+    </div>` : ''}
+    <div id="list" style="flex:1;overflow-y:auto;"></div>
+    <div class="status-bar" id="status"></div>`;
+
+  // Initialize all companies as active
+  activeCompanies=new Set(Object.keys(peCompanies));
+  applyAreaFilter();
+}
+
+function renderNormalSidebar(){
+  const sidebar=document.querySelector('.sidebar');
+  sidebar.innerHTML=`
+    <div class="sb-head">
+      <span class="sb-title">Clinics in view</span>
+      <span class="badge" id="badge">0</span>
+    </div>
+    <div class="legend">
+      <div class="leg-item"><div class="leg-dot" style="background:var(--navy)"></div>Independent</div>
+      <div class="leg-item"><div class="leg-dot" style="background:var(--red)"></div>PE owned</div>
+      <div class="leg-item"><div class="leg-dot" style="background:var(--amber)"></div>PE loading...</div>
+    </div>
+    <div class="zip-info-panel" id="zip-info-panel">
+      <div class="zip-info-zip" id="zip-info-zip">ZIP —</div>
+      <div class="zip-info-income" id="zip-info-income">—</div>
+      <div class="zip-info-label">Median Household Income · Click map to clear</div>
+    </div>
+    <div class="dog-info-panel" id="dog-info-panel">
+      <div class="dog-info-zip" id="dog-info-zip">ZIP —</div>
+      <div class="dog-info-est" id="dog-info-est">—</div>
+      <div class="dog-info-rate" id="dog-info-rate"></div>
+      <div class="dog-info-label">Estimated Dog-Owning Households · Click map to clear</div>
+    </div>
+    <div id="list"><div class="empty">Search a city or pan the map<br>to find clinics</div></div>
+    <div class="status-bar" id="status"></div>`;
+  renderList();
+}
+
+function setFilter(type){
+  activeFilter=type;
+  document.querySelectorAll('.ftab').forEach(t=>t.className='ftab');
+  const tab=document.getElementById('ftab-'+type);
+  if(tab) tab.className='ftab '+(type==='pe'?'pe-on':'on');
+  applyAreaFilter();
+}
+
+function toggleCompany(co,checked){
+  if(checked) activeCompanies.add(co);
+  else activeCompanies.delete(co);
+  applyAreaFilter();
+}
+
+function applyAreaFilter(){
+  let visibleCount=0;
+  const listItems=[];
+  clinics.forEach((c,i)=>{
+    const inArea=areaClinicKeys.has(clinicKey(c));
+    if(!inArea){
+      // Outside area — hide completely
+      if(markers[i]) markers[i].setOpacity(0);
+      return;
+    }
+    // Inside area — apply filter
+    let show=true;
+    if(activeFilter==='indep') show=!c.pe;
+    else if(activeFilter==='pe') show=!!c.pe;
+    // Apply company filter
+    if(show&&c.pe&&activeCompanies.size>0) show=activeCompanies.has(c.pe.owner);
+    if(markers[i]) markers[i].setOpacity(show?1:0);
+    if(show){
+      visibleCount++;
+      listItems.push(`
+        <div class="card" id="ac${i}" onclick="focusClinic(${i})">
+          <div style="flex-shrink:0;margin-top:2px">${miniPin(pinColor(c))}</div>
+          <div class="card-body">
+            <div class="card-name">${c.name}</div>
+            <div class="card-meta">${c.pe?`<span class="tag-pe">PE Owned</span><span class="card-dist" style="font-size:11px;color:#666">${c.pe.owner}</span>`:'<span class="tag-ind">Independent</span>'}</div>
+          </div>
+        </div>`);
+    }
+  });
+  const list=document.getElementById('list');
+  if(list) list.innerHTML=listItems.length?listItems.join(''):'<div class="empty">No clinics match this filter.</div>';
+  const status=document.getElementById('status');
+  if(status) status.textContent=`${visibleCount} clinic${visibleCount!==1?'s':''} shown in area`;
+}
+
+/*  Layers panel  */
+let incomeLayer = null;
+let incomeData = {}; // zip -> median income
+let incomeGeoLoaded = false;
+
+function toggleLayersPanel(){
+  const panel = document.getElementById('layers-panel');
+  const btn = document.getElementById('layers-btn');
+  panel.classList.toggle('open');
+  btn.classList.toggle('layers-active', panel.classList.contains('open'));
+  document.addEventListener('click', function closePanel(e){
+    if(!e.target.closest('#layers-panel')&&!e.target.closest('#layers-btn')){
+      panel.classList.remove('open');
+      btn.classList.remove('active');
+      document.removeEventListener('click', closePanel);
+    }
+  });
+}
+
+function incomeColor(income){
+  if(!income||income<0) return '#cccccc';
+  if(income>=100000) return '#1a9641';
+  if(income>=75000)  return '#a6d96a';
+  if(income>=50000)  return '#ffffbf';
+  if(income>=35000)  return '#fdae61';
+  return '#d7191c';
+}
+
+let incomeGeoData = null; // cached GeoJSON
+
+/* ── Unified ZIP selection state ──────────────────────────────────────────────
+   selectedZips: Map of zip string → { feat }
+   zipLayerMap:  Map of zip string → Leaflet layer (set in onEachFeature)
+   Selection is shown by restyling the original layer — no extra layers added.
+──────────────────────────────────────────────────────────────────────────────*/
+let selectedZips = new Map(); // zip → { feat }
+let zipLayerMap  = new Map(); // zip → leaflet layer (populated by onEachFeature)
+let zipBorderLayers = new Map(); // zip → standalone L.geoJSON border (works with no choropleth)
+
+const ZIP_STYLE_NORMAL   = zip => ({ weight:0.7, color:'rgba(0,0,0,0.35)', opacity:1 });
+const ZIP_STYLE_SELECTED = zip => ({ weight:2.5, color:'#2563eb', opacity:1 });
+
+function _highlightZip(zip){
+  // If the choropleth layer for this ZIP is rendering, restyle it in place
+  const l = zipLayerMap.get(zip);
+  if(l) l.setStyle(ZIP_STYLE_SELECTED(zip));
+  // ALSO draw a standalone border so the outline shows even when no fill layer
+  // is active. Rendered in a dedicated pane so the stroke stays crisp and fixed
+  // during zoom (doesn't shrink/grow with the zoom animation).
+  const entry = selectedZips.get(zip);
+  const feat = entry && entry.feat;
+  if(feat && !zipBorderLayers.has(zip)){
+    const border = L.geoJSON(feat, {
+      style: { fillOpacity:0, color:'#000000', weight:2.5, opacity:1 },
+      interactive:false
+    }).addTo(map);
+    border.bringToFront();
+    zipBorderLayers.set(zip, border);
+  }
+}
+function _unhighlightZip(zip){
+  const l = zipLayerMap.get(zip);
+  if(l) l.setStyle(ZIP_STYLE_NORMAL(zip));
+  const border = zipBorderLayers.get(zip);
+  if(border){ try{ map.removeLayer(border); }catch(e){} zipBorderLayers.delete(zip); }
+}
+
+// After any zoom, re-assert the border stroke so it never appears scaled.
+map.on('zoomend', () => {
+  zipBorderLayers.forEach(b => {
+    try{ b.setStyle({ weight:2.5, color:'#000000', opacity:1 }); }catch(e){}
+  });
+});
+
+// Ensure every PE clinic that falls inside a selected ZIP polygon is loaded,
+// even if it's outside the current viewport. PE_COORDS is the complete
+// statewide dataset held in memory, so this is instant (no network call).
+// Independents (Overpass) remain viewport-limited by design.
+function ensurePEClinicsForSelectedZips(){
+  if(!peLoaded || typeof PE_COORDS === 'undefined') return false;
+  const deleted = getDeleted(), overrides = getOverrides();
+  const {lat,lng} = map.getCenter();
+  let added = false;
+  selectedZips.forEach((entry, zip) => {
+    const feat = entry.feat;
+    for(const coord of PE_COORDS){
+      const [plat,plon,owner,brand,clinicName,clinicWebsite] = coord;
+      if(!pointInGeoJSON(plat, plon, feat)) continue;
+      const ck = `${Math.round(plat*1000)}_${Math.round(plon*1000)}`;
+      if(deleted[ck]) continue;
+      // Already loaded?
+      if(clinics.some(c => Math.abs(c.lat-plat)<0.0005 && Math.abs(c.lon-plon)<0.0005)) continue;
+      const ovr = overrides[ck];
+      const pe = ovr ? (ovr.pe?{owner:ovr.pe,brand:'Manual override',manual:true}:null) : {owner,brand};
+      const nm = ovr?.name || clinicName || 'Unknown Clinic';
+      const c = {name:nm,website:clinicWebsite||'',addr:'',pe,peChecked:true,lat:plat,lon:plon,dist:hav(lat,lng,plat,plon),fromSheet:true};
+      clinics.push(c);
+      // Add a marker for it so it shows on the map
+      const idx = clinics.length-1;
+      const m = L.marker([plat,plon],{icon:makeIcon(pinColor(c))})
+        .bindPopup(buildPopup(c),{maxWidth:260})
+        .on('click',()=>{
+          if(activeIdx!==null){const p=document.getElementById('c'+activeIdx);if(p)p.className='card';}
+          activeIdx=idx;const el=document.getElementById('c'+idx);
+          if(el){el.className='card '+(c.pe?'act-pe':'act-ind');el.scrollIntoView({behavior:'smooth',block:'nearest'});}
+        });
+      markers[idx] = m;
+      clusterGroup.addLayer(m);
+      added = true;
+    }
+  });
+  return added;
+}
+
+function selectZip(zip, feat, shiftHeld){
+  // Drop focus from the clicked SVG path so the browser doesn't draw a focus
+  // ring around its bounding box (the persistent blue rectangle bug)
+  if(document.activeElement && document.activeElement.blur) {
+    try { document.activeElement.blur(); } catch(e) {}
+  }
+  if(!shiftHeld){
+    // Clear all existing selections
+    selectedZips.forEach((entry, z) => _unhighlightZip(z));
+    selectedZips.clear();
+  } else if(selectedZips.has(zip)){
+    // Shift-click on already-selected ZIP → deselect it
+    _unhighlightZip(zip);
+    selectedZips.delete(zip);
+    applyZipSelection();
+    return;
+  }
+  selectedZips.set(zip, { feat });
+  _highlightZip(zip);
+  applyZipSelection();
+}
+
+function clearZipSelection(){
+  selectedZips.forEach((entry, z) => _unhighlightZip(z));
+  selectedZips.clear();
+  if(!drawnArea) markers.forEach(m => m.setOpacity(1));
+  updateClinicKpis();
+  updateLayerKpis();
+  renderNormalSidebar();
+}
+
+function applyZipSelection(){
+  if(!selectedZips.size){ clearZipSelection(); return; }
+
+  // Pull in any PE clinics inside the selected ZIP(s) that the viewport-limited
+  // fetch missed, so counts reflect the whole ZIP, not just what's on screen.
+  ensurePEClinicsForSelectedZips();
+
+  const zips = [...selectedZips.keys()];
+
+  // 1. Filter clinic markers — show only those genuinely inside a selected ZIP
+  const zipFeatMap = new Map([...selectedZips.entries()].map(([z,e])=>[z,e.feat]));
+  let shown = 0, pe = 0;
+  clinics.forEach((c, i) => {
+    let inside = false;
+    zipFeatMap.forEach((feat, z) => {
+      if(inside) return;
+      if(pointInGeoJSON(c.lat, c.lon, feat)) inside = true;
+    });
+    if(markers[i]) markers[i].setOpacity(inside ? 1 : 0);
+    if(inside){ shown++; if(c.pe) pe++; }
+  });
+
+  // 2. Update KPI bar for selection
+  const cEl = document.getElementById('kpi-clinics');
+  const cFoot = document.getElementById('kpi-clinics-foot');
+  const pEl = document.getElementById('kpi-pe');
+  const pFoot = document.getElementById('kpi-pe-foot');
+  if(cEl){
+    cEl.textContent = shown.toLocaleString();
+    cEl.classList.remove('pending');
+    const indep = shown - pe;
+    cFoot.innerHTML = shown
+      ? `<span class="k-split"><span class="k-dot" style="background:var(--navy)"></span>${indep} indep</span><span class="k-split"><span class="k-dot" style="background:var(--red)"></span>${pe} PE</span>`
+      : `No clinics in ${zips.length > 1 ? 'selected ZIPs' : 'ZIP '+zips[0]}`;
+  }
+  if(pEl){
+    if(shown){
+      pEl.textContent = Math.round(pe/shown*100)+'%';
+      pEl.classList.remove('pending');
+      pFoot.textContent = `of clinics in selected ZIP${zips.length > 1 ? 's' : ''}`;
+    } else {
+      pEl.textContent = '—'; pEl.classList.add('pending');
+    }
+  }
+
+  // 3. Income KPI — weighted average across selected ZIPs by polygon area
+  const incEl = document.getElementById('kpi-income'), incFoot = document.getElementById('kpi-income-foot');
+  if(incEl){
+    if(Object.keys(incomeData).length){
+      let wSum = 0, wTotal = 0, count = 0;
+      selectedZips.forEach((entry, zip) => {
+        const val = incomeData[zip];
+        if(val == null) return;
+        const ring = layerToRing({toGeoJSON:()=>entry.feat});
+        const area = ring ? _polyArea(ring) : 1;
+        wSum += val * area; wTotal += area; count++;
+      });
+      if(wTotal){
+        const v = wSum / wTotal;
+        incEl.textContent = v >= 1000 ? '$'+(v/1000).toFixed(1)+'k' : '$'+Math.round(v);
+        incEl.classList.remove('pending');
+        incFoot.textContent = count > 1 ? `area-weighted avg · ${count} ZIPs` : `ZIP ${zips[0]}`;
+      } else { incEl.textContent = '—'; incEl.classList.add('pending'); incFoot.textContent = 'No income data'; }
+    } else { incEl.textContent = 'Off'; incEl.classList.add('pending'); incFoot.textContent = 'Turn on the income layer'; }
+  }
+
+  // 4. Dog households KPI — sum across selected ZIPs (they don't overlap, so sum is correct)
+  const dEl = document.getElementById('kpi-dogs'), dFoot = document.getElementById('kpi-dogs-foot');
+  if(dEl){
+    if(Object.keys(dogData).length){
+      let total = 0, count = 0;
+      zips.forEach(z => { const d = dogData[z]; if(d){ total += d.est; count++; } });
+      if(count){
+        dEl.textContent = total >= 1000 ? (total/1000).toFixed(0)+'k' : total.toLocaleString();
+        dEl.classList.remove('pending');
+        dFoot.textContent = count > 1 ? `across ${count} ZIPs` : `ZIP ${zips[0]}`;
+      } else { dEl.textContent = '—'; dEl.classList.add('pending'); dFoot.textContent = 'No pet data'; }
+    } else { dEl.textContent = 'Off'; dEl.classList.add('pending'); dFoot.textContent = 'Turn on the pet density layer'; }
+  }
+
+  // 5. Update sidebar to show ZIP selection strip
+  renderZipSelectionSidebar(zips, shown, pe);
+}
+
+function renderZipSelectionSidebar(zips, shownClinics, peClinics){
+  // Only update if the normal sidebar is visible (not draw-area mode)
+  if(drawnArea) return;
+  const sb = document.querySelector('.sidebar');
+  if(!sb) return;
+  const indep = shownClinics - peClinics;
+  const incRows = zips.map(z => {
+    // Live layer data if present, else the opportunity snapshot (layers may be
+    // toggled off due to single-fill mutual exclusion, but data still exists).
+    const inc = incomeData[z] != null ? incomeData[z] : (typeof oppIncomeSnap!=='undefined' ? oppIncomeSnap[z] : null);
+    const dogEst = dogData[z] ? dogData[z].est : (typeof oppDogSnap!=='undefined' ? oppDogSnap[z] : null);
+    const incStr = inc ? '$'+(inc >= 1000 ? (inc/1000).toFixed(0)+'k' : inc) : '—';
+    const dogStr = dogEst ? '~'+(dogEst >= 1000 ? (dogEst/1000).toFixed(0)+'k' : dogEst)+' dog HH' : '—';
+    return `<div class="zip-sel-row">
+      <span class="zip-sel-code">${z}</span>
+      <span class="zip-sel-stat">${incStr}</span>
+      <span class="zip-sel-stat">${dogStr}</span>
+      <button class="zip-sel-remove" onclick="deselectZip('${z}')" title="Remove">✕</button>
+    </div>`;
+  }).join('');
+  sb.innerHTML = `
+    <div class="area-header">
+      <span class="area-title">ZIP Selection${zips.length > 1 ? ' ('+zips.length+')' : ''}</span>
+      <button class="clear-area-btn" onclick="clearZipSelection()">Clear</button>
+    </div>
+    <div class="area-stats">${shownClinics} clinic${shownClinics!==1?'s':''} · ${peClinics} PE · ${indep} indep</div>
+    <div class="zip-sel-hint">Shift-click a ZIP to add it</div>
+    <div class="zip-sel-header">
+      <span>ZIP</span><span>Income</span><span>Dog HH</span><span></span>
+    </div>
+    <div class="zip-sel-list">${incRows}</div>
+    <div id="list" style="flex:1;overflow-y:auto;"></div>
+    <div class="status-bar" id="status"></div>`;
+  renderList();
+}
+
+function deselectZip(zip){
+  if(!selectedZips.has(zip)) return;
+  _unhighlightZip(zip);
+  selectedZips.delete(zip);
+  if(!selectedZips.size) clearZipSelection();
+  else applyZipSelection();
+}
+
+async function fetchIncomeBatch(zips){
+  // Fetch income for a batch of zip codes from Census ACS
+  const zipStr = zips.join(',');
+  const res = await fetch('https://api.census.gov/data/2022/acs/acs5?get=B19013_001E&for=zip%20code%20tabulation%20area:*&key=3429f2401376a586a8f6ffc02bb5678ee32fbf44', {cache:'force-cache'});
+  if(!res.ok) throw new Error('Census API error '+res.status);
+  const rows = await res.json();
+  rows.slice(1).forEach(row => {
+    const zip = row[1], income = parseInt(row[0]);
+    if(zip && !isNaN(income) && income > 0) incomeData[zip] = income;
+  });
+}
+
+async function toggleIncomeLayer(on){
+  const status = document.getElementById('income-status');
+  const legend = document.getElementById('income-legend');
+  if(!on){
+    if(incomeLayer){ map.removeLayer(incomeLayer); incomeLayer=null; }
+    zipLayerMap.clear();
+    clearZipSelection();
+    legend.classList.remove('show');
+    status.textContent = 'Off';
+    const panel = document.getElementById('zip-info-panel');
+    if(panel) panel.classList.remove('show');
+    incomeGeoData = null;
+    incomeGeoLoaded = false;
+    Object.keys(incomeData).forEach(k => delete incomeData[k]);
+    updateLayerKpis();
+    return;
+  }
+  // Mutual exclusion: only one choropleth fill at a time (stacked fills mud-mix).
+  // Turn off pet density if it's painting, so the map shows a single clear scheme.
+  if(dogLayer){
+    document.getElementById('toggle-pets').checked = false;
+    await toggleDogLayer(false);
+  }
+  if(growthLayer){
+    document.getElementById('toggle-growth').checked = false;
+    await toggleGrowthLayer(false);
+  }
+  status.textContent = 'Loading boundaries...';
+  try{
+    // Step 1: load ZIP boundaries once (shared across layers)
+    if(!incomeGeoData){
+      incomeGeoData = await loadZipGeometry();
+    }
+
+    // Step 2: load all TX ZIP income in one cached call (the Census :* query
+    // returns the whole state, so a single fetch covers everything).
+    if(Object.keys(incomeData).length < 100){
+      status.textContent = 'Fetching income data...';
+      await fetchIncomeBatch([]); // pulls all TX, cached
+    }
+
+    // (Removed the second redundant full-state fetch — Step 2 already has it.)
+
+    // Step 4: build/refresh choropleth layer
+    if(incomeLayer) map.removeLayer(incomeLayer);
+    incomeLayer = L.geoJSON(incomeGeoData, {
+      style: feat => ({
+        fillColor: incomeColor(incomeData[feat.properties.zip]),
+        fillOpacity: 0.5,
+        color: 'rgba(0,0,0,0.35)',
+        weight: 0.7
+      }),
+      onEachFeature: (feat, layer) => {
+        const zip = feat.properties.zip;
+        zipLayerMap.set(zip, layer); // register so selectZip can restyle directly
+        const income = incomeData[zip];
+        const label = income ? '$'+income.toLocaleString() : 'No data';
+        // Hover tooltip
+        layer.bindTooltip(`<strong>ZIP ${zip}</strong><div class="income-tip-amount">${label}</div>`, {sticky:false, className:'income-tip', offset:[10,-4]});
+        // Click: select ZIP (shift = multi-select)
+        layer.on('click', function(e) {
+          e.originalEvent._vfZipClick = true;
+          L.DomEvent.stopPropagation(e);
+          layer.closeTooltip();
+          selectZip(zip, feat, e.originalEvent.shiftKey);
+        });
+      }
+    }).addTo(map);
+    incomeLayer.bringToBack();
+    legend.classList.add('show');
+    status.textContent = `${Object.keys(incomeData).length.toLocaleString()} ZIP codes loaded`;
+    updateLayerKpis();
+  }catch(err){
+    status.textContent = 'Error: '+err.message;
+    document.getElementById('toggle-income').checked = false;
+    console.error('Income layer:', err);
+  }
+}
+
+/*  Pet Ownership Density layer  */
+// Methodology: TX statewide dog ownership rate (AVMA/industry benchmark ~43-46%)
+// applied per ZIP, then nudged up/down based on how that ZIP's owner-occupancy
+// and single-family-home rates compare to the TX-wide average. This is the same
+// approach commercial tools (e.g. Esri Business Analyst) use — household count
+// times a benchmark rate — except we compute the statewide average ourselves
+// from real Census data instead of hardcoding it, and we adjust per ZIP instead
+// of applying one flat number everywhere.
+const TX_DOG_BASE_RATE = 0.45;
+let dogRaw = {};      // zip -> {households, ownerPct, sfPct}
+let dogData = {};     // zip -> {households, rate, est}
+let dogGeoData = null;
+let dogLayer = null;
+
+function dogColor(rate){
+  if(rate==null) return '#e2e8f0';
+  if(rate>=0.55) return '#1e1b4b';
+  if(rate>=0.50) return '#4338ca';
+  if(rate>=0.45) return '#818cf8';
+  if(rate>=0.40) return '#c7d2fe';
+  return '#e0e7ff';
+}
+
+async function toggleDogLayer(on){
+  const status = document.getElementById('dog-status');
+  const legend = document.getElementById('dog-legend');
+  if(!on){
+    if(dogLayer){ map.removeLayer(dogLayer); dogLayer=null; }
+    zipLayerMap.clear();
+    clearZipSelection();
+    legend.classList.remove('show');
+    status.textContent = 'Off';
+    const panel = document.getElementById('dog-info-panel');
+    if(panel) panel.classList.remove('show');
+    dogGeoData = null;
+    Object.keys(dogRaw).forEach(k => delete dogRaw[k]);
+    Object.keys(dogData).forEach(k => delete dogData[k]);
+    updateLayerKpis();
+    return;
+  }
+  // Mutual exclusion: only one choropleth fill at a time.
+  if(incomeLayer){
+    document.getElementById('toggle-income').checked = false;
+    await toggleIncomeLayer(false);
+  }
+  if(growthLayer){
+    document.getElementById('toggle-growth').checked = false;
+    await toggleGrowthLayer(false);
+  }
+  status.textContent = 'Loading boundaries...';
+  try{
+    // Step 1: load ZIP boundaries
+    if(!dogGeoData){
+      dogGeoData = await loadZipGeometry();
+    }
+    const txZips = new Set(dogGeoData.features.map(f => f.properties.zip));
+
+    // Step 2: fetch Census housing data (households, owner-occupancy, single-family %)
+    if(Object.keys(dogRaw).length === 0){
+      status.textContent = 'Fetching Census housing data...';
+      const url = 'https://api.census.gov/data/2022/acs/acs5?get=B11001_001E,B25003_001E,B25003_002E,B25024_001E,B25024_002E&for=zip%20code%20tabulation%20area:*&key=3429f2401376a586a8f6ffc02bb5678ee32fbf44';
+      const res = await fetch(url, {cache:'force-cache'});
+      if(!res.ok) throw new Error('Census API error '+res.status);
+      const rows = await res.json();
+      rows.slice(1).forEach(row => {
+        const [hh, totOcc, ownOcc, totUnits, sfUnits, zip] = row;
+        if(!txZips.has(zip)) return;
+        const households = parseInt(hh);
+        const totalOcc = parseInt(totOcc), ownerOcc = parseInt(ownOcc);
+        const totalUnits = parseInt(totUnits), sf = parseInt(sfUnits);
+        if(isNaN(households) || households <= 0) return;
+        dogRaw[zip] = {
+          households,
+          ownerPct: (totalOcc > 0 && !isNaN(ownerOcc)) ? ownerOcc/totalOcc : null,
+          sfPct: (totalUnits > 0 && !isNaN(sf)) ? sf/totalUnits : null
+        };
+      });
+    }
+
+    // Step 3: compute statewide household-weighted averages
+    status.textContent = 'Computing estimates...';
+    let ownerWeighted=0, ownerWeight=0, sfWeighted=0, sfWeight=0;
+    Object.values(dogRaw).forEach(z => {
+      if(z.ownerPct!=null){ ownerWeighted += z.ownerPct*z.households; ownerWeight += z.households; }
+      if(z.sfPct!=null){ sfWeighted += z.sfPct*z.households; sfWeight += z.households; }
+    });
+    const avgOwnerPct = ownerWeight>0 ? ownerWeighted/ownerWeight : 0.6;
+    const avgSfPct = sfWeight>0 ? sfWeighted/sfWeight : 0.6;
+
+    // Step 4: per-ZIP modeled rate = base rate nudged by local vs statewide housing profile
+    Object.keys(dogRaw).forEach(zip => {
+      const z = dogRaw[zip];
+      let modifier = 0, parts = 0;
+      if(z.ownerPct!=null && avgOwnerPct>0){ modifier += (z.ownerPct-avgOwnerPct)/avgOwnerPct; parts++; }
+      if(z.sfPct!=null && avgSfPct>0){ modifier += (z.sfPct-avgSfPct)/avgSfPct; parts++; }
+      modifier = parts>0 ? modifier/parts : 0;
+      modifier = Math.max(-0.3, Math.min(0.3, modifier));
+      let rate = TX_DOG_BASE_RATE * (1+modifier);
+      rate = Math.max(0.2, Math.min(0.7, rate));
+      dogData[zip] = { households: z.households, rate, est: Math.round(z.households*rate) };
+    });
+
+    // Step 5: build/refresh choropleth
+    if(dogLayer) map.removeLayer(dogLayer);
+    dogLayer = L.geoJSON(dogGeoData, {
+      style: feat => {
+        const d = dogData[feat.properties.zip];
+        return { fillColor: dogColor(d?d.rate:null), fillOpacity:0.5, color:'rgba(0,0,0,0.35)', weight:0.7 };
+      },
+      onEachFeature: (feat, layer) => {
+        const zip = feat.properties.zip;
+        zipLayerMap.set(zip, layer); // register so selectZip can restyle directly
+        const d = dogData[zip];
+        const label = d ? `~${d.est.toLocaleString()} households · ${Math.round(d.rate*100)}%` : 'No data';
+        layer.bindTooltip(`<strong>ZIP ${zip}</strong><div class="income-tip-amount">${label}</div>`, {sticky:false, className:'income-tip', offset:[10,-4]});
+        layer.on('click', function(e){
+          e.originalEvent._vfZipClick = true;
+          L.DomEvent.stopPropagation(e);
+          layer.closeTooltip();
+          selectZip(zip, feat, e.originalEvent.shiftKey);
+        });
+      }
+    }).addTo(map);
+    dogLayer.bringToBack();
+    legend.classList.add('show');
+    status.textContent = `${Object.keys(dogData).length.toLocaleString()} ZIP codes loaded`;
+    updateLayerKpis();
+  }catch(err){
+    status.textContent = 'Error: '+err.message;
+    document.getElementById('toggle-pets').checked = false;
+    console.error('Dog layer:', err);
+  }
+}
+
+/* ─── Population Growth layer ─────────────────────────────────────────────────
+   Population change per ZIP using the two latest NON-OVERLAPPING ACS 5-year
+   datasets: 2020–2024 (released Jan 2026) vs 2015–2019. Non-overlapping years
+   give a clean signal with no shared-year smearing. Variable B01003_001E (total
+   population). growthData[zip] = decimal pct change (0.12 = +12%).
+──────────────────────────────────────────────────────────────────────────────*/
+let growthRaw = {};   // zip -> {popNew, popOld}
+let growthData = {};  // zip -> pct (decimal)
+let growthGeoData = null;
+let growthLayer = null;
+const GROWTH_YEAR_NEW = 2024;     // latest ACS 5-year (2020–2024)
+const GROWTH_YEAR_OLD = 2019;     // non-overlapping prior (2015–2019)
+const GROWTH_MIN_POP = 500;       // ignore ZIPs below this baseline pop (noisy)
+
+function growthColor(pct){
+  if(pct==null) return '#e2e8f0';
+  if(pct>=0.20) return '#14532d';
+  if(pct>=0.10) return '#16a34a';
+  if(pct>=0.03) return '#86efac';
+  if(pct>=0)    return '#fde68a';
+  return '#f87171';
+}
+
+async function toggleGrowthLayer(on){
+  const status = document.getElementById('growth-status');
+  const legend = document.getElementById('growth-legend');
+  if(!on){
+    if(growthLayer){ map.removeLayer(growthLayer); growthLayer=null; }
+    zipLayerMap.clear();
+    clearZipSelection();
+    legend.classList.remove('show');
+    status.textContent = 'Off';
+    growthGeoData = null;
+    Object.keys(growthRaw).forEach(k => delete growthRaw[k]);
+    Object.keys(growthData).forEach(k => delete growthData[k]);
+    updateLayerKpis();
+    return;
+  }
+  // Mutual exclusion: only one choropleth fill at a time.
+  if(incomeLayer){ document.getElementById('toggle-income').checked = false; await toggleIncomeLayer(false); }
+  if(dogLayer){ document.getElementById('toggle-pets').checked = false; await toggleDogLayer(false); }
+
+  status.textContent = 'Loading boundaries...';
+  try{
+    if(!growthGeoData){
+      growthGeoData = await loadZipGeometry();
+    }
+    const txZips = new Set(growthGeoData.features.map(f => f.properties.zip));
+
+    if(Object.keys(growthRaw).length === 0){
+      status.textContent = 'Fetching population data...';
+      // Two non-overlapping ACS 5-year vintages, total population (B01003_001E)
+      const urls = [
+        `https://api.census.gov/data/${GROWTH_YEAR_NEW}/acs/acs5?get=B01003_001E&for=zip%20code%20tabulation%20area:*&key=3429f2401376a586a8f6ffc02bb5678ee32fbf44`,
+        `https://api.census.gov/data/${GROWTH_YEAR_OLD}/acs/acs5?get=B01003_001E&for=zip%20code%20tabulation%20area:*&key=3429f2401376a586a8f6ffc02bb5678ee32fbf44`
+      ];
+      const [resNew, resOld] = await Promise.all(urls.map(u => fetch(u, {cache:'force-cache'})));
+      if(!resNew.ok || !resOld.ok) throw new Error('Census API error');
+      const [rowsNew, rowsOld] = await Promise.all([resNew.json(), resOld.json()]);
+      // Column shape differs by vintage: 2024 returns [pop, zip] (ZCTA flat),
+      // 2019 returns [pop, state, zip] (ZCTA nested under state). The requested
+      // variable is always col 0 and the ZCTA is always the LAST column — so read
+      // the zip from r[r.length-1], NOT a hardcoded index. (Hardcoding r[1] made
+      // every 2019 row resolve to the state FIPS "48", so no popOld was ever
+      // stored and the whole layer showed "No data".)
+      rowsNew.slice(1).forEach(r => {
+        const zip=r[r.length-1], pop=parseInt(r[0]);
+        if(!txZips.has(zip) || isNaN(pop)) return;
+        growthRaw[zip] = growthRaw[zip] || {};
+        growthRaw[zip].popNew = pop;
+      });
+      rowsOld.slice(1).forEach(r => {
+        const zip=r[r.length-1], pop=parseInt(r[0]);
+        if(!txZips.has(zip) || isNaN(pop)) return;
+        growthRaw[zip] = growthRaw[zip] || {};
+        growthRaw[zip].popOld = pop;
+      });
+    }
+
+    status.textContent = 'Computing growth...';
+    Object.keys(growthRaw).forEach(zip => {
+      const g = growthRaw[zip];
+      if(g.popOld==null || g.popNew==null) return;
+      if(g.popOld < GROWTH_MIN_POP) return; // skip noisy low-pop ZIPs
+      let pct = (g.popNew - g.popOld) / g.popOld;
+      pct = Math.max(-0.5, Math.min(1.5, pct)); // clamp extreme outliers
+      growthData[zip] = pct;
+    });
+
+    if(growthLayer) map.removeLayer(growthLayer);
+    growthLayer = L.geoJSON(growthGeoData, {
+      style: feat => {
+        const p = growthData[feat.properties.zip];
+        return { fillColor: growthColor(p==null?null:p), fillOpacity:0.5, color:'rgba(0,0,0,0.35)', weight:0.7 };
+      },
+      onEachFeature: (feat, layer) => {
+        const zip = feat.properties.zip;
+        zipLayerMap.set(zip, layer);
+        const p = growthData[zip];
+        const label = p!=null ? `${p>=0?'+':''}${(p*100).toFixed(1)}% since 2019` : 'No data';
+        layer.bindTooltip(`<strong>ZIP ${zip}</strong><div class="income-tip-amount">${label}</div>`, {sticky:false, className:'income-tip', offset:[10,-4]});
+        layer.on('click', function(e){
+          e.originalEvent._vfZipClick = true;
+          L.DomEvent.stopPropagation(e);
+          layer.closeTooltip();
+          selectZip(zip, feat, e.originalEvent.shiftKey);
+        });
+      }
+    }).addTo(map);
+    growthLayer.bringToBack();
+    legend.classList.add('show');
+    status.textContent = `${Object.keys(growthData).length.toLocaleString()} ZIP codes loaded`;
+    updateLayerKpis();
+  }catch(err){
+    status.textContent = 'Error: '+err.message;
+    document.getElementById('toggle-growth').checked = false;
+    console.error('Growth layer:', err);
+  }
+}
+
+/*  Dev mode  */
+let devMode = false;
+
+function getCustomClinics(){ try{ return JSON.parse(localStorage.getItem('vf_custom')||'[]'); }catch(e){ return []; } }
+function saveCustomClinics(arr){ localStorage.setItem('vf_custom', JSON.stringify(arr)); }
+
+function toggleDevMode(){
+  devMode = !devMode;
+  const btn = document.getElementById('dev-btn');
+  const badge = document.getElementById('dev-badge');
+  const hint = document.getElementById('dev-hint');
+  const propBtn = document.getElementById('property-mode-btn');
+  if(devMode){
+    btn.classList.add('active');
+    btn.innerHTML='<svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> Exit Dev';
+    document.body.classList.add('dev-mode');
+    badge.classList.add('show');
+    hint.classList.add('show');
+    propBtn.style.display = 'flex';
+  } else {
+    btn.classList.remove('active');
+    btn.innerHTML='<svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg> Dev Mode';
+    document.body.classList.remove('dev-mode');
+    badge.classList.remove('show');
+    hint.classList.remove('show');
+    propBtn.style.display = 'none';
+    addPropertyMode = false;
+    propBtn.classList.remove('active');
+  }
+}
+
+let addPropertyMode = false;
+function togglePropertyAddMode(){
+  addPropertyMode = !addPropertyMode;
+  const propBtn = document.getElementById('property-mode-btn');
+  const hint = document.getElementById('dev-hint');
+  if(addPropertyMode){
+    propBtn.classList.add('active');
+    hint.textContent = 'Click anywhere to add a property listing';
+  } else {
+    propBtn.classList.remove('active');
+    hint.textContent = 'Click anywhere on the map to add a clinic';
+  }
+}
+
+// Click map to add clinic or property in dev mode
+map.on('click', e => {
+  if(!devMode || drawingMode) return;
+  if(addPropertyMode){
+    showAddPropertyModal(e.latlng.lat, e.latlng.lng);
+  } else {
+    showAddClinicModal(e.latlng.lat, e.latlng.lng);
+  }
+});
+
+function showAddClinicModal(lat, lon){
+  const existing = document.getElementById('add-clinic-modal');
+  if(existing) existing.remove();
+  const modal = document.createElement('div');
+  modal.id = 'add-clinic-modal';
+  modal.className = 'modal-overlay';
+  modal.innerHTML = `
+    <div class="modal">
+      <div class="modal-title">Add Clinic</div>
+      <div class="modal-field">
+        <label class="modal-label">Clinic Name *</label>
+        <input class="modal-input" id="add-name" placeholder="e.g. Westside Animal Hospital" autofocus/>
+      </div>
+      <div class="modal-field">
+        <label class="modal-label">PE Owner (leave blank if independent)</label>
+        <input class="modal-input" id="add-pe" placeholder="e.g. KKR, Harvest Partners..."/>
+      </div>
+      <div class="modal-field">
+        <label class="modal-label">Website</label>
+        <input class="modal-input" id="add-website" placeholder="https://..."/>
+      </div>
+      <div style="font-size:11px;color:var(--subtle);margin-top:-4px;"> ${lat.toFixed(5)}, ${lon.toFixed(5)}</div>
+      <div class="modal-row">
+        <button class="modal-btn secondary" onclick="document.getElementById('add-clinic-modal').remove()">Cancel</button>
+        <button class="modal-btn primary" onclick="saveNewClinic(${lat},${lon})">Add Clinic</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if(e.target===modal) modal.remove(); });
+  setTimeout(()=>document.getElementById('add-name')?.focus(),50);
+}
+
+function saveNewClinic(lat, lon){
+  const name = document.getElementById('add-name')?.value.trim();
+  const pe = document.getElementById('add-pe')?.value.trim()||null;
+  const website = document.getElementById('add-website')?.value.trim()||'';
+  if(!name){ document.getElementById('add-name').style.borderColor='#dc2626'; return; }
+  const customs = getCustomClinics();
+  customs.push({name, pe, website, lat, lon, id: Date.now()});
+  saveCustomClinics(customs);
+  document.getElementById('add-clinic-modal').remove();
+  fetchClinics(); // refresh to show new clinic
+}
+
+function deleteCustomClinic(id){
+  const customs = getCustomClinics().filter(c=>c.id!==id);
+  saveCustomClinics(customs);
+  fetchClinics();
+}
+
+/*  Property listings (Available Properties layer)  */
+function getProperties(){ try{ return JSON.parse(localStorage.getItem('vf_properties')||'[]'); }catch(e){ return []; } }
+function saveProperties(arr){ localStorage.setItem('vf_properties', JSON.stringify(arr)); }
+
+const PROPERTY_TYPE_LABELS = { lease:'For Lease', sale:'For Sale', lot:'Vacant Lot' };
+
+function estimateStations(sqft){
+  const n = parseInt(sqft);
+  if(!n || n<=0) return '';
+  return Math.max(1, Math.round(n/2000));
+}
+
+function updateStationSuggestion(){
+  const sqftEl = document.getElementById('prop-sqft');
+  const stationsEl = document.getElementById('prop-stations');
+  if(!sqftEl || !stationsEl) return;
+  if(!stationsEl.value || stationsEl.dataset.auto==='1'){
+    stationsEl.value = estimateStations(sqftEl.value);
+    stationsEl.dataset.auto = '1';
+  }
+}
+
+function showAddPropertyModal(lat, lon, editId){
+  const existing = document.getElementById('add-property-modal');
+  if(existing) existing.remove();
+
+  let p = { address:'', listingType:'lease', sqft:'', stations:'', price:'', url:'', notes:'' };
+  if(editId){
+    const found = getProperties().find(x=>x.id===editId);
+    if(found) p = found;
+  }
+
+  const modal = document.createElement('div');
+  modal.id = 'add-property-modal';
+  modal.className = 'modal-overlay';
+  modal.innerHTML = `
+    <div class="modal" style="width:380px">
+      <div class="modal-title">${editId?'Edit Property':'Add Property Listing'}</div>
+      <div class="modal-field">
+        <label class="modal-label">Address *</label>
+        <input class="modal-input" id="prop-address" placeholder="e.g. 1820 W Main St, Lewisville TX" value="${(p.address||'').replace(/"/g,'&quot;')}" autofocus/>
+      </div>
+      <div class="modal-field">
+        <label class="modal-label">Listing Type</label>
+        <select class="modal-input" id="prop-type">
+          <option value="lease" ${p.listingType==='lease'?'selected':''}>For Lease</option>
+          <option value="sale" ${p.listingType==='sale'?'selected':''}>For Sale</option>
+          <option value="lot" ${p.listingType==='lot'?'selected':''}>Vacant Lot</option>
+        </select>
+      </div>
+      <div style="display:flex;gap:10px;">
+        <div class="modal-field" style="flex:1">
+          <label class="modal-label">Square Footage</label>
+          <input class="modal-input" id="prop-sqft" type="number" placeholder="e.g. 4000" value="${p.sqft||''}" oninput="updateStationSuggestion()"/>
+        </div>
+        <div class="modal-field" style="flex:1">
+          <label class="modal-label">Est. Vet Stations</label>
+          <input class="modal-input" id="prop-stations" type="number" placeholder="auto" value="${p.stations||''}"/>
+        </div>
+      </div>
+      <div class="modal-field">
+        <label class="modal-label">Price / Lease Rate</label>
+        <input class="modal-input" id="prop-price" placeholder="e.g. $22/sqft/yr or $850,000" value="${(p.price||'').replace(/"/g,'&quot;')}"/>
+      </div>
+      <div class="modal-field">
+        <label class="modal-label">Listing URL</label>
+        <input class="modal-input" id="prop-url" placeholder="https://..." value="${(p.url||'').replace(/"/g,'&quot;')}"/>
+      </div>
+      <div class="modal-field">
+        <label class="modal-label">Notes</label>
+        <input class="modal-input" id="prop-notes" placeholder="Optional notes..." value="${(p.notes||'').replace(/"/g,'&quot;')}"/>
+      </div>
+      <div style="font-size:11px;color:var(--subtle);margin-top:-4px;">${lat.toFixed(5)}, ${lon.toFixed(5)}</div>
+      <div class="modal-row">
+        <button class="modal-btn secondary" onclick="document.getElementById('add-property-modal').remove()">Cancel</button>
+        <button class="modal-btn primary" onclick="savePropertyEntry(${lat},${lon}${editId?`,'${editId}'`:''})">${editId?'Save Changes':'Add Property'}</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if(e.target===modal) modal.remove(); });
+  setTimeout(()=>document.getElementById('prop-address')?.focus(),50);
+}
+
+function savePropertyEntry(lat, lon, editId){
+  const address = document.getElementById('prop-address')?.value.trim();
+  if(!address){ document.getElementById('prop-address').style.borderColor='#dc2626'; return; }
+  const listingType = document.getElementById('prop-type')?.value || 'lease';
+  const sqft = document.getElementById('prop-sqft')?.value.trim() || '';
+  const stations = document.getElementById('prop-stations')?.value.trim() || '';
+  const price = document.getElementById('prop-price')?.value.trim() || '';
+  const url = document.getElementById('prop-url')?.value.trim() || '';
+  const notes = document.getElementById('prop-notes')?.value.trim() || '';
+
+  const properties = getProperties();
+  if(editId){
+    const idx = properties.findIndex(p=>p.id===editId);
+    if(idx>=0) properties[idx] = {...properties[idx], address, listingType, sqft, stations, price, url, notes, lat, lon};
+  } else {
+    properties.push({ id:'prop_'+Date.now(), address, listingType, sqft, stations, price, url, notes, lat, lon });
+  }
+  saveProperties(properties);
+  document.getElementById('add-property-modal').remove();
+  renderPropertyLayer();
+  const toggle = document.getElementById('toggle-properties');
+  if(toggle && !toggle.checked){
+    toggle.checked = true;
+    propertyLayer.addTo(map);
+  }
+}
+
+function deleteProperty(id){
+  map.closePopup();
+  const properties = getProperties().filter(p=>p.id!==id);
+  saveProperties(properties);
+  renderPropertyLayer();
+}
+
+function buildPropertyPopup(p){
+  const typeClass = p.listingType||'lease';
+  const typeLabel = PROPERTY_TYPE_LABELS[typeClass] || 'For Lease';
+  const statsHTML = [
+    p.sqft ? `<div><b>${parseInt(p.sqft).toLocaleString()}</b> sq ft</div>` : '',
+    p.stations ? `<div>Suitable for <b>${p.stations}</b> veterinarian practice${p.stations==1?'':'s'}</div>` : '',
+    p.price ? `<div><b>${p.price}</b></div>` : ''
+  ].filter(Boolean).join('');
+  const linkHTML = p.url ? `<a class="property-popup-link" href="${p.url}" target="_blank" rel="noopener">
+      <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
+      View Listing
+    </a>` : '';
+  const notesHTML = p.notes ? `<div class="property-popup-notes">${p.notes}</div>` : '';
+  const devControls = devMode ? `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);display:flex;gap:6px;">
+      <button class="settings-btn save" style="flex:1;font-size:11.5px;padding:5px 8px" onclick="map.closePopup();showAddPropertyModal(${p.lat},${p.lon},'${p.id}')">Edit</button>
+      <button class="settings-btn delete" style="flex:1;font-size:11.5px;padding:5px 8px" onclick="deleteProperty('${p.id}')">Delete</button>
+    </div>` : '';
+  return `<div class="popup">
+    <div class="popup-name" style="margin-bottom:6px">${p.address}</div>
+    <span class="property-popup-type ${typeClass}">${typeLabel}</span>
+    <div class="property-popup-stats">${statsHTML}</div>
+    ${linkHTML}
+    ${notesHTML}
+    ${devControls}
+  </div>`;
+}
+
+function renderPropertyLayer(){
+  propertyLayer.clearLayers();
+  const properties = getProperties();
+  properties.forEach(p => {
+    L.marker([p.lat, p.lon], {icon: makeIcon('#0d9488')})
+      .bindPopup(buildPropertyPopup(p), {maxWidth:260})
+      .addTo(propertyLayer);
+  });
+  const status = document.getElementById('property-status');
+  if(status) status.textContent = properties.length
+    ? `${properties.length} ${properties.length===1?'listing':'listings'}`
+    : 'No properties yet — use Dev Mode + Add Property to drop one';
+}
+
+function togglePropertyLayer(on){
+  if(on){
+    renderPropertyLayer();
+    propertyLayer.addTo(map);
+  } else {
+    map.removeLayer(propertyLayer);
+  }
+}
+
+/*  Fetch clinics  */
+async function fetchClinics(){
+  const myReq = ++fetchSeq; // claim this as the latest request
+  const zoom=map.getZoom();
+  const zm=document.getElementById('zoom-msg');
+  if(zoom<MIN_ZOOM){zm.style.display='block';clearMarkers();clinics=[];renderList();setStatus('Zoom in to search this area');return;}
+  zm.style.display='none';
+  const b=map.getBounds();
+  const {lat,lng}=map.getCenter();
+  const s=b.getSouth(),w=b.getWest(),n=b.getNorth(),e=b.getEast();
+  showPill('Searching...');setStatus('Loading clinics...');
+
+  const deleted=getDeleted(), overrides=getOverrides();
+
+  // Build into a LOCAL array — don't touch shared `clinics` until we know
+  // this request is still the latest (prevents overlapping fetches clobbering
+  // each other when the user pans rapidly).
+  const local=[];
+
+  // SOURCE 1: PE clinics direct from spreadsheet — guaranteed complete
+  if(peLoaded){
+    for(const coord of PE_COORDS){
+      const [plat,plon,owner,brand,clinicName,clinicWebsite]=coord;
+      if(plat<s||plat>n||plon<w||plon>e) continue;
+      const ck=`${Math.round(plat*1000)}_${Math.round(plon*1000)}`;
+      if(deleted[ck]) continue;
+      const ovr=overrides[ck];
+      const pe=ovr?(ovr.pe?{owner:ovr.pe,brand:'Manual override',manual:true}:null):{owner,brand};
+      const nm=ovr?.name||clinicName||'Unknown Clinic';
+      local.push({name:nm,website:clinicWebsite||'',addr:'',pe,peChecked:true,lat:plat,lon:plon,dist:hav(lat,lng,plat,plon),fromSheet:true});
+    }
+  }
+
+  // SOURCE 2: OpenStreetMap via Overpass — adds independent clinics
+  // Overpass rate-limits hard during rapid zoom/pan. Track whether it actually
+  // succeeded so a failed call doesn't wipe independents or mark the area loaded.
+  let overpassOk = false;
+  const mirrors = [
+    'https://overpass-api.de/api/interpreter',
+    'https://overpass.kumi.systems/api/interpreter'
+  ];
+  const q=`[out:json][timeout:20];(node["amenity"="veterinary"](${s},${w},${n},${e});way["amenity"="veterinary"](${s},${w},${n},${e}););out center tags;`;
+  for(let attempt=0; attempt<mirrors.length && !overpassOk; attempt++){
+    try{
+      const res=await fetch(mirrors[attempt],{method:'POST',body:'data='+encodeURIComponent(q)});
+      if(myReq!==fetchSeq) return; // superseded by newer fetch
+      if(!res.ok) throw new Error('Overpass '+res.status);
+      const data=await res.json();
+      if(myReq!==fetchSeq) return;
+      for(const el of data.elements){
+        const clat=el.lat||el.center?.lat,clon=el.lon||el.center?.lon;
+        if(!clat||!clon) continue;
+        const t=el.tags||{};
+        const clinicName=t.name||t.operator||'Veterinary Clinic';
+        const ck=`${Math.round(clat*1000)}_${Math.round(clon*1000)}`;
+        if(deleted[ck]) continue;
+        const dupe=local.some(c=>Math.abs(c.lat-clat)<0.003&&Math.abs(c.lon-clon)<0.004);
+        if(dupe) continue;
+        const pe=checkPE(clinicName,clat,clon,ck,overrides);
+        const parts=[t['addr:housenumber'],t['addr:street'],t['addr:city'],t['addr:state']].filter(Boolean);
+        const nm=overrides[ck]?.name||clinicName;
+        local.push({name:nm,website:t.website||t['contact:website']||'',addr:parts.join(' '),pe,peChecked:peLoaded,lat:clat,lon:clon,dist:hav(lat,lng,clat,clon)});
+      }
+      overpassOk = true;
+    }catch(err){
+      if(myReq!==fetchSeq) return;
+      // brief backoff before trying the next mirror
+      await new Promise(r=>setTimeout(r,400));
+      if(myReq!==fetchSeq) return;
+    }
+  }
+
+  // If Overpass failed entirely, fall back to the independents from the last
+  // good load that still fall within the current view — so they don't vanish.
+  if(!overpassOk && lastIndependents.length){
+    for(const c of lastIndependents){
+      if(c.lat<s||c.lat>n||c.lon<w||c.lon>e) continue;
+      const dupe=local.some(x=>Math.abs(x.lat-c.lat)<0.003&&Math.abs(x.lon-c.lon)<0.004);
+      if(dupe) continue;
+      local.push({...c, dist:hav(lat,lng,c.lat,c.lon)});
+    }
+    setStatus('Map service busy — showing last known clinics',true);
+  }
+
+  // Final check before we commit to shared state
+  if(myReq!==fetchSeq) return;
+
+  // Add custom clinics from dev mode
+  const customs = getCustomClinics();
+  for(const c of customs){
+    if(c.lat<s||c.lat>n||c.lon<w||c.lon>e) continue;
+    const ck=`${Math.round(c.lat*1000)}_${Math.round(c.lon*1000)}`;
+    if(deleted[ck]) continue;
+    const dupe=local.some(x=>Math.abs(x.lat-c.lat)<0.0005&&Math.abs(x.lon-c.lon)<0.0005);
+    if(dupe) continue;
+    const pe=c.pe?{owner:c.pe,brand:'Custom entry',manual:true}:null;
+    local.push({name:c.name,website:c.website||'',addr:'Custom location',pe,peChecked:true,lat:c.lat,lon:c.lon,dist:hav(lat,lng,c.lat,c.lon),customId:c.id});
+  }
+
+  // Deduplicate
+  local.sort((a,b)=>a.dist-b.dist);
+  const seen=[];
+  const deduped=local.filter(c=>{
+    const normN=c.name.trim().toLowerCase();
+    const isDupe=seen.some(s=>(normN===s.name&&normN!=='veterinary clinic')||(Math.abs(s.lat-c.lat)<0.0005&&Math.abs(s.lon-c.lon)<0.0005));
+    if(!isDupe) seen.push({name:normN,lat:c.lat,lon:c.lon});
+    return !isDupe;
+  });
+
+  // Commit: now safe to replace shared state and redraw
+  clearMarkers();
+  activeIdx=null;
+  clinics=deduped;
+
+  const batch=[];
+  markers=clinics.map((c,i)=>{
+    const m=L.marker([c.lat,c.lon],{icon:makeIcon(pinColor(c))})
+      .bindPopup(buildPopup(c),{maxWidth:260})
+      .on('click',()=>{
+        if(activeIdx!==null){const p=document.getElementById('c'+activeIdx);if(p)p.className='card';}
+        activeIdx=i;const el=document.getElementById('c'+i);
+        if(el){el.className='card '+(c.pe?'act-pe':'act-ind');el.scrollIntoView({behavior:'smooth',block:'nearest'});}
+      });
+    batch.push(m);return m;
+  });
+  batch.forEach(m=>clusterGroup.addLayer(m));
+  renderList();
+
+  // Cache the independents from this load so a future rate-limited fetch can
+  // fall back to them instead of showing PE-only.
+  if(overpassOk){
+    lastIndependents = clinics.filter(c=>!c.fromSheet && !c.customId).map(c=>({
+      name:c.name, website:c.website, addr:c.addr, pe:c.pe, peChecked:c.peChecked, lat:c.lat, lon:c.lon
+    }));
+    loadedBounds = map.getBounds(); // only trust the cache when Overpass worked
+  } else {
+    loadedBounds = null; // force a retry on the next move
+  }
+
+  const viewBounds = map.getBounds();
+  const inView = clinics.filter(c=>viewBounds.contains([c.lat,c.lon]));
+  const peInView = inView.filter(c=>c.pe).length;
+  if(overpassOk){
+    setStatus(`${inView.length} clinic${inView.length!==1?'s':''} in view · ${peInView} PE-owned`);
+  } else {
+    setStatus(`${inView.length} shown · map service busy, retrying on next move`,true);
+  }
+  showPill('');
+  updateClinicKpis();
+  updateLayerKpis();
+}
+
+let loadedBounds = null;
+let fetchSeq = 0; // monotonic token — guards against overlapping async fetches
+let lastIndependents = []; // cache of last successfully-loaded independents (Overpass fallback)
+
+// Clear zip highlight on map click
+map.on('click', (e) => {
+  // If clicking the bare map (not a ZIP polygon or clinic), clear ZIP selection
+  if(!drawnArea && selectedZips.size && !e.originalEvent._vfZipClick){
+    clearZipSelection();
+  }
+});
+
+map.on('move',()=>{
+  if(clinics.length) renderList();
+  if(!drawnArea) updateClinicKpis();
+});
+map.on('moveend',()=>{
+  clearTimeout(fetchTimer);
+  fetchTimer = setTimeout(()=>{
+    const b = map.getBounds();
+    // Only refresh viewport KPIs when no draw area is active
+    if(!drawnArea){
+      updateClinicKpis();
+      updateLayerKpis();
+    }
+    // Only reload if we've moved significantly outside the loaded area
+    // (i.e. new viewport isn't fully contained within a buffered version of loaded bounds)
+    if(loadedBounds){
+      const latBuffer = (loadedBounds.getNorth()-loadedBounds.getSouth()) * 0.35;
+      const lngBuffer = (loadedBounds.getEast()-loadedBounds.getWest()) * 0.35;
+      const buffered = L.latLngBounds(
+        [loadedBounds.getSouth()-latBuffer, loadedBounds.getWest()-lngBuffer],
+        [loadedBounds.getNorth()+latBuffer, loadedBounds.getEast()+lngBuffer]
+      );
+      if(buffered.contains(b)) return; // still within buffer, don't reload
+    }
+    fetchClinics();
+  }, 900); // longer debounce so rapid zoom/pan settles before hitting Overpass
+});
+
+/*  Autocomplete  */
+let acT=null,acF=-1,acI=[];
+document.getElementById('loc').addEventListener('input',e=>{
+  clearTimeout(acT);const q=e.target.value.trim();
+  if(q.length<3){closeSugg();return;}
+  acT=setTimeout(()=>fetchSugg(q),300);
+});
+document.getElementById('loc').addEventListener('keydown',e=>{
+  const box=document.getElementById('sugg');
+  if(!box.classList.contains('open'))return;
+  if(e.key==='ArrowDown'){e.preventDefault();moveFocus(1);}
+  else if(e.key==='ArrowUp'){e.preventDefault();moveFocus(-1);}
+  else if(e.key==='Enter'&&acF>=0){e.preventDefault();selectSugg(acF);}
+  else if(e.key==='Escape'){closeSugg();}
+});
+document.addEventListener('click',e=>{if(!e.target.closest('.ac-wrap'))closeSugg();});
+async function fetchSugg(q){
+  try{
+    const r=await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=6&addressdetails=1&countrycodes=us&viewbox=-106.6,25.8,-93.5,36.5&bounded=1`,{headers:{'Accept-Language':'en'}});
+    const data=await r.json();
+    acI=data.map(d=>{const a=d.address||{};const parts=[a.city||a.town||a.village||a.county,a.state].filter(Boolean);return{label:parts.join(', ')||d.display_name.split(',').slice(0,2).join(','),lat:parseFloat(d.lat),lon:parseFloat(d.lon)};});
+    renderSugg();
+  }catch(e){closeSugg();}
+}
+function renderSugg(){
+  const box=document.getElementById('sugg');
+  if(!acI.length){closeSugg();return;}
+  acF=-1;
+  box.innerHTML=acI.map((s,i)=>`<div class="sugg-item" onmousedown="selectSugg(${i})"><svg fill="none" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>${s.label}</div>`).join('');
+  box.classList.add('open');
+}
+function moveFocus(dir){
+  const items=document.querySelectorAll('.sugg-item');
+  if(acF>=0)items[acF].classList.remove('focused');
+  acF=Math.max(0,Math.min(acI.length-1,acF+dir));
+  items[acF].classList.add('focused');
+}
+function selectSugg(i){document.getElementById('loc').value=acI[i].label;closeSugg();map.setView([acI[i].lat,acI[i].lon],13);}
+function closeSugg(){document.getElementById('sugg').classList.remove('open');acF=-1;}
+async function jumpTo(){
+  const loc=document.getElementById('loc').value.trim();if(!loc)return;closeSugg();
+  try{
+    const r=await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(loc)}&format=json&limit=1&countrycodes=us`,{headers:{'Accept-Language':'en'}});
+    const d=await r.json();
+    if(!d.length){setStatus('Location not found',true);return;}
+    map.setView([parseFloat(d[0].lat),parseFloat(d[0].lon)],13);
+  }catch(e){setStatus('Failed to locate',true);}
+}
+document.getElementById('loc').addEventListener('keydown',e=>{if(e.key==='Enter'&&acF<0)jumpTo();});
+
+/*  ── Section nav + KPI bar (Phase 1) ──  */
+function vfToast(msg){
+  let t=document.getElementById('vf-toast');
+  if(!t){
+    t=document.createElement('div'); t.id='vf-toast';
+    t.style.cssText='position:fixed;bottom:30px;left:50%;transform:translateX(-50%);background:rgba(15,23,42,.92);color:#fff;padding:10px 18px;border-radius:20px;font-size:13px;font-weight:500;z-index:3000;box-shadow:0 4px 16px rgba(0,0,0,.28);transition:opacity .25s;pointer-events:none;backdrop-filter:blur(4px);';
+    document.body.appendChild(t);
+  }
+  t.textContent=msg; t.style.opacity='1';
+  clearTimeout(t._timer); t._timer=setTimeout(()=>{t.style.opacity='0';},2800);
+}
+
+const SECTION_MSG={
+  properties:'A dedicated Properties view is coming. For now, use the Available Properties layer under Layers.',
+  reports:'Reports are coming in a later phase.'
+};
+function switchSection(s){
+  document.querySelectorAll('.nav-link').forEach(n=>n.classList.toggle('active',n.dataset.section===s));
+  const opp=document.getElementById('opp-panel');
+  if(s==='map'){
+    opp.classList.remove('show');
+    return;
+  }
+  if(s==='opportunity'){
+    opp.classList.add('show');
+    openOpportunity();
+    return;
+  }
+  // properties / reports — not built yet; revert nav to map
+  opp.classList.remove('show');
+  document.querySelectorAll('.nav-link').forEach(n=>n.classList.toggle('active',n.dataset.section==='map'));
+  vfToast(SECTION_MSG[s]||'Coming soon.');
+}
+
+/* ─── Opportunity scoring ─────────────────────────────────────────────────────
+   Scope: a fixed North Texas (DFW) region. Score = weighted blend of three
+   normalized (0–100) inputs across the regional ZIP set:
+     • income      — incomeData[zip]
+     • pet demand  — dogData[zip].est
+     • low comp    — inverse of weighted clinic count (PE counts more than indep)
+──────────────────────────────────────────────────────────────────────────────*/
+const DFW_BOUNDS = L.latLngBounds([32.55, -97.55], [33.45, -96.55]); // North Texas region
+const DFW_MIN_LAT=32.55, DFW_MAX_LAT=33.45, DFW_MIN_LON=-97.55, DFW_MAX_LON=-96.55;
+
+// Shared ZIP boundary geometry — fetched + parsed once, reused by all layers.
+let _zipGeoCache = null, _zipGeoPromise = null;
+async function loadZipGeometry(){
+  if(_zipGeoCache) return _zipGeoCache;
+  if(_zipGeoPromise) return _zipGeoPromise; // a load is already in flight
+  _zipGeoPromise = (async () => {
+    const geoRes = await fetch('tx-zips.json', {cache:'force-cache'});
+    if(!geoRes.ok) throw new Error('tx-zips.json missing — deploy all 3 files');
+    _zipGeoCache = await geoRes.json();
+    return _zipGeoCache;
+  })();
+  return _zipGeoPromise;
+}
+let oppScored = [];      // [{zip, city, score, fIncome, fDemand, fComp, feat}]
+let oppLoading = false;
+
+function getOppWeights(){
+  const wi=+document.getElementById('w-income').value;
+  const wd=+document.getElementById('w-demand').value;
+  const wc=+document.getElementById('w-comp').value;
+  const wg=+document.getElementById('w-growth').value;
+  const sum=wi+wd+wc+wg || 1;
+  return {
+    income: wi/sum,
+    demand: wd/sum,
+    comp:   wc/sum,
+    growth: wg/sum,
+    peMult: (+document.getElementById('w-pe').value)/10 // 1.0×–4.0×
+  };
+}
+
+function onWeightChange(){
+  const wi=+document.getElementById('w-income').value;
+  const wd=+document.getElementById('w-demand').value;
+  const wc=+document.getElementById('w-comp').value;
+  const wg=+document.getElementById('w-growth').value;
+  const sum=wi+wd+wc+wg || 1;
+  document.getElementById('w-income-val').textContent=Math.round(wi/sum*100)+'%';
+  document.getElementById('w-demand-val').textContent=Math.round(wd/sum*100)+'%';
+  document.getElementById('w-comp-val').textContent=Math.round(wc/sum*100)+'%';
+  document.getElementById('w-growth-val').textContent=Math.round(wg/sum*100)+'%';
+  document.getElementById('w-pe-val').textContent=((+document.getElementById('w-pe').value)/10).toFixed(1)+'×';
+  rescoreAndRender();
+}
+
+function oppPreset(kind){
+  const set=(i,d,c,g)=>{
+    document.getElementById('w-income').value=i;
+    document.getElementById('w-demand').value=d;
+    document.getElementById('w-comp').value=c;
+    document.getElementById('w-growth').value=g;
+  };
+  if(kind==='balanced')    set(25,25,25,25);
+  if(kind==='underserved') set(20,20,40,20);
+  if(kind==='cashflow')    set(40,25,20,15);
+  if(kind==='growth')      set(20,20,20,40);
+  onWeightChange();
+}
+
+// Snapshots so the opportunity score has ALL datasets even though the map
+// only ever fills one at a time (mutual exclusion).
+let oppIncomeSnap = {};
+let oppDogSnap = {};
+let oppGrowthSnap = {};
+let oppGeoSnap = null;
+
+// Ensure income + pet + growth data are loaded, then compute base inputs per ZIP
+async function openOpportunity(){
+  const wrap=document.getElementById('opp-list-wrap');
+  if(oppLoading) return;
+  // If already scored once this session, just re-render
+  if(oppScored.length){ rescoreAndRender(); return; }
+  oppLoading=true;
+  wrap.innerHTML='<div class="opp-loading">Loading income, pet-demand, and growth data for North Texas…</div>';
+
+  try{
+    // Load income first, snapshot it (toggling others later would clear incomeData)
+    if(!Object.keys(incomeData).length){
+      document.getElementById('toggle-income').checked=true;
+      await toggleIncomeLayer(true);
+    }
+    oppGeoSnap = incomeGeoData;
+    oppIncomeSnap = {...incomeData};
+
+    // Then pets, snapshot
+    if(!Object.keys(dogData).length){
+      document.getElementById('toggle-pets').checked=true;
+      await toggleDogLayer(true);
+    }
+    if(!oppGeoSnap) oppGeoSnap = dogGeoData;
+    oppDogSnap = {};
+    Object.keys(dogData).forEach(z=> oppDogSnap[z]=dogData[z].est);
+
+    // Then growth, snapshot
+    if(!Object.keys(growthData).length){
+      document.getElementById('toggle-growth').checked=true;
+      await toggleGrowthLayer(true);
+    }
+    if(!oppGeoSnap) oppGeoSnap = growthGeoData;
+    oppGrowthSnap = {...growthData};
+
+    // Turn OFF all choropleths so landing on a ZIP shows the plain base map.
+    if(growthLayer){ document.getElementById('toggle-growth').checked=false; await toggleGrowthLayer(false); }
+    if(dogLayer){ document.getElementById('toggle-pets').checked=false; await toggleDogLayer(false); }
+    if(incomeLayer){ document.getElementById('toggle-income').checked=false; await toggleIncomeLayer(false); }
+  }catch(e){
+    wrap.innerHTML='<div class="opp-empty">Couldn’t load the scoring data.<br>Make sure tx-zips.json is deployed, then try again.</div>';
+    oppLoading=false;
+    return;
+  }
+
+  buildOppBaseInputs();
+  oppLoading=false;
+  rescoreAndRender();
+}
+
+// Compute the raw per-ZIP inputs (income, demand, weighted competition) for
+// every ZIP whose centroid sits in the DFW region.
+function buildOppBaseInputs(){
+  const geo = oppGeoSnap || incomeGeoData || dogGeoData;
+  if(!geo){ oppScored=[]; return; }
+  const incSrc = Object.keys(oppIncomeSnap).length ? oppIncomeSnap : incomeData;
+  const dogSrc = oppDogSnap;
+  const growthSrc = Object.keys(oppGrowthSnap).length ? oppGrowthSnap : growthData;
+
+  // Cheap bbox + centroid straight from GeoJSON coords (no Leaflet objects)
+  function rawBBox(f){
+    const g=f.geometry; if(!g) return null;
+    let minLat=90,maxLat=-90,minLon=180,maxLon=-180;
+    const rings = g.type==='Polygon' ? g.coordinates
+                : g.type==='MultiPolygon' ? g.coordinates.flat() : [];
+    for(const ring of rings){
+      for(const pt of ring){
+        const lon=pt[0], lat=pt[1];
+        if(lat<minLat)minLat=lat; if(lat>maxLat)maxLat=lat;
+        if(lon<minLon)minLon=lon; if(lon>maxLon)maxLon=lon;
+      }
+    }
+    if(minLat>maxLat) return null;
+    return {minLat,maxLat,minLon,maxLon, cLat:(minLat+maxLat)/2, cLon:(minLon+maxLon)/2};
+  }
+  const inRegion=(lat,lon)=> lat>=DFW_MIN_LAT&&lat<=DFW_MAX_LAT&&lon>=DFW_MIN_LON&&lon<=DFW_MAX_LON;
+
+  const rows=[];
+  for(const f of geo.features){
+    const zip=f.properties.zip;
+    if(!zip) continue;
+    const bb=rawBBox(f);
+    if(!bb) continue;
+    if(!inRegion(bb.cLat,bb.cLon)) continue; // cheap region reject FIRST
+
+    const inc = incSrc[zip]!=null ? incSrc[zip] : null;
+    const dog = dogSrc[zip]!=null ? dogSrc[zip] : null;
+    const grow = growthSrc[zip]!=null ? growthSrc[zip] : null;
+    if(inc==null && dog==null && grow==null) continue; // no data — skip
+
+    // Count clinics inside this ZIP polygon (bbox pre-filter for speed)
+    let peCount=0, indCount=0;
+    if(peLoaded && typeof PE_COORDS!=='undefined'){
+      for(const coord of PE_COORDS){
+        const plat=coord[0], plon=coord[1];
+        if(plat<bb.minLat||plat>bb.maxLat||plon<bb.minLon||plon>bb.maxLon) continue;
+        if(pointInGeoJSON(plat,plon,f)) peCount++;
+      }
+    }
+    for(const cl of clinics){
+      if(cl.pe) continue;
+      if(cl.lat<bb.minLat||cl.lat>bb.maxLat||cl.lon<bb.minLon||cl.lon>bb.maxLon) continue;
+      if(pointInGeoJSON(cl.lat,cl.lon,f)) indCount++;
+    }
+
+    rows.push({ zip, feat:f, city:(f.properties.city||f.properties.po_name||''), inc, dog, grow, peCount, indCount });
+  }
+  oppBaseRows=rows;
+}
+let oppBaseRows=[];
+
+// Normalize 0–100 across the regional set, apply weights, sort, render
+function rescoreAndRender(){
+  if(!oppBaseRows.length){
+    document.getElementById('opp-list-wrap').innerHTML='<div class="opp-empty">No ZIP data in the North Texas region yet.</div>';
+    return;
+  }
+  const w=getOppWeights();
+
+  // Build arrays for min-max normalization
+  const incs=oppBaseRows.map(r=>r.inc).filter(v=>v!=null);
+  const dogs=oppBaseRows.map(r=>r.dog).filter(v=>v!=null);
+  const grows=oppBaseRows.map(r=>r.grow).filter(v=>v!=null);
+  const comps=oppBaseRows.map(r=> (r.peCount*w.peMult + r.indCount) );
+
+  const mm=arr=>{ const mn=Math.min(...arr), mx=Math.max(...arr); return {mn,mx,rng:(mx-mn)||1}; };
+  const incMM=incs.length?mm(incs):{mn:0,mx:1,rng:1};
+  const dogMM=dogs.length?mm(dogs):{mn:0,mx:1,rng:1};
+  const growMM=grows.length?mm(grows):{mn:0,mx:1,rng:1};
+  const compMM=mm(comps);
+
+  oppScored=oppBaseRows.map(r=>{
+    const fIncome = r.inc!=null ? (r.inc-incMM.mn)/incMM.rng*100 : 0;
+    const fDemand = r.dog!=null ? (r.dog-dogMM.mn)/dogMM.rng*100 : 0;
+    const fGrowth = r.grow!=null ? (r.grow-growMM.mn)/growMM.rng*100 : 0;
+    const compRaw = r.peCount*w.peMult + r.indCount;
+    // Invert competition: less competition → higher score
+    const fComp = 100 - ((compRaw-compMM.mn)/compMM.rng*100);
+    const score = fIncome*w.income + fDemand*w.demand + fComp*w.comp + fGrowth*w.growth;
+    return { ...r, fIncome, fDemand, fComp, fGrowth, score };
+  }).sort((a,b)=>b.score-a.score);
+
+  renderOppList();
+}
+
+function oppScoreColor(s){ return s>=80?'#15803d':s>=65?'#4d7c0f':s>=50?'#b45309':'#64748b'; }
+
+function renderOppList(){
+  const wrap=document.getElementById('opp-list-wrap');
+  document.getElementById('opp-sub').textContent=
+    `${oppScored.length} ZIPs scored across North Texas · ranked best to worst`;
+  const rows=oppScored.map((r,i)=>{
+    const col=oppScoreColor(r.score);
+    const cityLabel=r.city ? r.city : (r.peCount+r.indCount)+' clinics';
+    return `<div class="opp-row" onclick="oppSelect('${r.zip}')">
+      <div class="opp-rank ${i<3?'top':''}">${i+1}</div>
+      <div class="opp-main">
+        <div class="opp-zip">${r.zip}</div>
+        <div class="opp-city">${cityLabel} · ${r.peCount} PE / ${r.indCount} indep</div>
+        <div class="opp-factors">
+          <div class="opp-fbar"><i style="width:${r.fIncome.toFixed(0)}%;background:#15803d"></i></div>
+          <div class="opp-fbar"><i style="width:${r.fDemand.toFixed(0)}%;background:#4338ca"></i></div>
+          <div class="opp-fbar"><i style="width:${r.fComp.toFixed(0)}%;background:#b45309"></i></div>
+          <div class="opp-fbar"><i style="width:${(r.fGrowth||0).toFixed(0)}%;background:#0d9488"></i></div>
+        </div>
+        <div class="opp-flabel"><span>Income</span><span>Demand</span><span>Low comp</span><span>Growth</span></div>
+      </div>
+      <div class="opp-score" style="background:${col}">${Math.round(r.score)}</div>
+    </div>`;
+  }).join('');
+  wrap.innerHTML=`<div class="opp-list-head"><span>#</span><span>ZIP</span><span style="text-align:center">Score</span></div>${rows}`;
+
+  // Reflect the current #1 in the KPI bar
+  if(oppScored.length){
+    const top=oppScored[0];
+    const kEl=document.getElementById('kpi-opp'), kFoot=document.getElementById('kpi-opp-foot');
+    if(kEl){ kEl.textContent=top.zip; kEl.classList.remove('pending'); }
+    if(kFoot){ kFoot.textContent=`score ${Math.round(top.score)} · ${top.city||'North Texas'}`; }
+  }
+}
+
+// Click a ranked ZIP → prepare everything while still on the Opportunity
+// screen, then reveal the finished map (no watching it load).
+function oppSelect(zip){
+  const r=oppScored.find(x=>x.zip===zip);
+  if(!r || !r.feat){ return; }
+
+  // Validate geometry up front
+  let bounds;
+  try{ bounds = L.geoJSON(r.feat).getBounds(); }catch(e){ bounds=null; }
+  if(!bounds || !bounds.isValid()){
+    vfToast('That ZIP has no mappable boundary.');
+    return;
+  }
+
+  // Show the loading overlay over the opportunity screen
+  const overlay=document.getElementById('opp-overlay');
+  document.getElementById('opp-load-zip').textContent='ZIP '+zip+' — '+(r.city||'North Texas');
+  overlay.classList.add('show');
+
+  // Clear any prior selection
+  selectedZips.forEach((entry, z) => _unhighlightZip(z));
+  selectedZips.clear();
+
+  // The opp panel still covers the map, so the map div has no size yet for the
+  // new view. Position the map now (instant, behind the overlay), invalidate its
+  // size so tiles render, then register the selection and let it settle.
+  // We keep the panel shown until everything is ready.
+  const finish = () => {
+    // Register selection + draw border + filter pins/KPIs (synchronous, fast)
+    selectedZips.set(zip, { feat: r.feat });
+    _highlightZip(zip);
+    const bl = zipBorderLayers.get(zip);
+    if(bl && bl.bringToFront) bl.bringToFront();
+    applyZipSelection();
+    // Reveal the map
+    overlay.classList.remove('show');
+    switchSection('map');
+    // One more nudge so Leaflet recalculates size after the panel hides
+    setTimeout(()=>{ map.invalidateSize(); map.fitBounds(bounds, {maxZoom:13, padding:[50,50], animate:false}); }, 30);
+  };
+
+  // Position the map under the overlay first so tiles begin loading
+  map.fitBounds(bounds, {maxZoom:13, padding:[50,50], animate:false});
+  // Give the tiles a brief head start, then finish + reveal
+  map.once('moveend', () => setTimeout(finish, 250));
+  // Fallback if moveend doesn't fire (already at target)
+  setTimeout(() => { if(overlay.classList.contains('show')) finish(); }, 700);
+}
+
+// Guard: don't let the bare-map click handler clear a selection that was just
+// set programmatically from the Opportunity tab (no real user map click).
+
+function marketPickerNote(){ vfToast('Market presets are coming soon — search or pan to move around Texas for now.'); }
+
+/* ─── Polygon intersection math (Sutherland-Hodgman) ─────────────────────────
+   All coordinates are plain [lat, lng] arrays (same units as Leaflet LatLng).
+   Area is computed with the shoelace formula — units are degrees², but we only
+   need the ratio, so absolute scale doesn't matter.
+──────────────────────────────────────────────────────────────────────────────*/
+function _polyArea(pts){
+  let a=0;
+  for(let i=0,j=pts.length-1;i<pts.length;j=i++){
+    a+=pts[j][0]*pts[i][1];
+    a-=pts[i][0]*pts[j][1];
+  }
+  return Math.abs(a)/2;
+}
+function _intersectSegment(a,b,c,d){
+  // Intersection point of lines a→b and c→d
+  const A1=b[1]-a[1],B1=a[0]-b[0],C1=A1*a[0]+B1*a[1];
+  const A2=d[1]-c[1],B2=c[0]-d[0],C2=A2*c[0]+B2*c[1];
+  const det=A1*B2-A2*B1;
+  if(Math.abs(det)<1e-12) return null;
+  return [(C1*B2-C2*B1)/det,(A1*C2-A2*C1)/det];
+}
+function _inside(p,a,b){
+  // Is point p on the "inside" of edge a→b (left side)?
+  return (b[0]-a[0])*(p[1]-a[1])-(b[1]-a[1])*(p[0]-a[0])>=0;
+}
+function sutherlandHodgman(subject, clip){
+  // Both subject and clip are arrays of [lat,lng] pairs, closed polygons.
+  let output=[...subject];
+  for(let i=0;i<clip.length;i++){
+    if(!output.length) return [];
+    const input=output;
+    output=[];
+    const a=clip[i], b=clip[(i+1)%clip.length];
+    for(let j=0;j<input.length;j++){
+      const cur=input[j], prev=input[(j+input.length-1)%input.length];
+      const curIn=_inside(cur,a,b), prevIn=_inside(prev,a,b);
+      if(curIn){
+        if(!prevIn){ const pt=_intersectSegment(prev,cur,a,b); if(pt) output.push(pt); }
+        output.push(cur);
+      } else if(prevIn){
+        const pt=_intersectSegment(prev,cur,a,b); if(pt) output.push(pt);
+      }
+    }
+  }
+  return output;
+}
+
+// Convert a drawnArea to a [lat,lng][] polygon
+function drawnAreaToPolygon(){
+  if(!drawnArea) return null;
+  if(drawnArea.type==='rect'){
+    const b=drawnArea.bounds;
+    return [
+      [b.getNorth(),b.getWest()],[b.getNorth(),b.getEast()],
+      [b.getSouth(),b.getEast()],[b.getSouth(),b.getWest()]
+    ];
+  }
+  if(drawnArea.type==='poly'){
+    return drawnArea.points.map(p=>[p.lat,p.lng]);
+  }
+  return null;
+}
+
+// Extract [lat,lng][] ring from a Leaflet GeoJSON layer feature
+function layerToRing(l){
+  try{
+    const geo=l.toGeoJSON();
+    const coords=geo.geometry.coordinates;
+    const ring=geo.geometry.type==='Polygon'?coords[0]:coords[0][0];
+    return ring.map(c=>[c[1],c[0]]); // GeoJSON is [lng,lat]
+  }catch(e){ return null; }
+}
+
+// Compute area-weighted average of a value across ZIPs that intersect the draw shape.
+// dataLookup(zip) → number|null
+// Returns {value, zipCount} or null
+function areaWeightedZipStat(layer, drawPoly, dataLookup, mode='avg'){
+  if(!layer||!drawPoly) return null;
+  let weightedSum=0, totalWeight=0, count=0;
+  layer.eachLayer(l=>{
+    const zip=l.feature&&l.feature.properties&&l.feature.properties.zip;
+    if(!zip) return;
+    const val=dataLookup(zip);
+    if(val==null) return;
+    const ring=layerToRing(l);
+    if(!ring||ring.length<3) return;
+    const clipped=sutherlandHodgman(ring, drawPoly);
+    if(!clipped||clipped.length<3) return;
+    const w=_polyArea(clipped);
+    if(w<1e-14) return;
+    weightedSum+=val*w;
+    totalWeight+=w;
+    count++;
+  });
+  if(!totalWeight) return null;
+  return { value: mode==='sum' ? weightedSum/totalWeight*totalWeight : weightedSum/totalWeight, total: weightedSum, weight: totalWeight, count };
+}
+
+/* ─── Clinic KPI ─────────────────────────────────────────────────────────────*/
+function updateClinicKpis(){
+  const cEl=document.getElementById('kpi-clinics');
+  if(!cEl) return;
+
+  let inView;
+  if(drawnArea){
+    // Draw mode: use the captured set
+    inView=clinics.filter(c=>areaClinicKeys.has(clinicKey(c)));
+  } else {
+    const b=map.getBounds();
+    inView=clinics.filter(c=>b.contains([c.lat,c.lon]));
+  }
+
+  const pe=inView.filter(c=>c.pe).length;
+  const indep=inView.length-pe;
+  cEl.textContent=inView.length.toLocaleString();
+  const cFoot=document.getElementById('kpi-clinics-foot');
+  const scopeLabel=drawnArea?'in drawn area':'in view';
+  cFoot.innerHTML=inView.length
+    ? `<span class="k-split"><span class="k-dot" style="background:var(--navy)"></span>${indep} indep</span><span class="k-split"><span class="k-dot" style="background:var(--red)"></span>${pe} PE</span>`
+    : (drawnArea?'No clinics in area':'Pan or search to load');
+
+  const pEl=document.getElementById('kpi-pe'), pFoot=document.getElementById('kpi-pe-foot');
+  if(inView.length){
+    pEl.textContent=Math.round(pe/inView.length*100)+'%';
+    pEl.classList.remove('pending');
+    pFoot.textContent=`of clinics ${scopeLabel}`;
+  } else {
+    pEl.textContent='—'; pEl.classList.add('pending'); pFoot.textContent=`of clinics ${scopeLabel}`;
+  }
+}
+
+/* ─── Layer KPIs — viewport mode (no draw active) ───────────────────────────*/
+function inViewZipValues(layer, dataLookup){
+  const b=map.getBounds(), out=[];
+  if(!layer) return out;
+  layer.eachLayer(l=>{
+    const zip=l.feature&&l.feature.properties&&l.feature.properties.zip;
+    if(!zip) return;
+    const v=dataLookup(zip);
+    if(v==null) return;
+    let c; try{ c=l.getBounds().getCenter(); }catch(e){ return; }
+    if(b.contains(c)) out.push(v);
+  });
+  return out;
+}
+
+/* ─── Layer KPIs — draw mode (area-weighted) ─────────────────────────────────*/
+function updateDrawLayerKpis(drawPoly){
+  const incEl=document.getElementById('kpi-income'), incFoot=document.getElementById('kpi-income-foot');
+  if(incEl){
+    if(incomeLayer && Object.keys(incomeData).length){
+      const res=areaWeightedZipStat(incomeLayer, drawPoly, z=>incomeData[z]!=null?incomeData[z]:null, 'avg');
+      if(res){
+        const v=res.value;
+        incEl.textContent= v>=1000 ? '$'+(v/1000).toFixed(1)+'k' : '$'+Math.round(v);
+        incEl.classList.remove('pending');
+        incFoot.textContent=`area-weighted avg · ${res.count} ZIP${res.count!==1?'s':''}`;
+      } else { incEl.textContent='—'; incEl.classList.add('pending'); incFoot.textContent='No ZIP data in area'; }
+    } else { incEl.textContent='Off'; incEl.classList.add('pending'); incFoot.textContent='Turn on the income layer'; }
+  }
+
+  const dEl=document.getElementById('kpi-dogs'), dFoot=document.getElementById('kpi-dogs-foot');
+  if(dEl){
+    if(dogLayer && Object.keys(dogData).length){
+      // For dog households: weight the per-ZIP density (est/area) then scale up by drawn area.
+      // Simpler + more correct: sum (clipped_fraction × ZIP_total_est)
+      let totalDogs=0, totalWeight=0, count=0;
+      dogLayer.eachLayer(l=>{
+        const zip=l.feature&&l.feature.properties&&l.feature.properties.zip;
+        if(!zip||!dogData[zip]) return;
+        const ring=layerToRing(l);
+        if(!ring||ring.length<3) return;
+        const fullArea=_polyArea(ring);
+        if(fullArea<1e-14) return;
+        const clipped=sutherlandHodgman(ring, drawPoly);
+        if(!clipped||clipped.length<3) return;
+        const clippedArea=_polyArea(clipped);
+        const fraction=Math.min(clippedArea/fullArea,1);
+        if(fraction<0.0001) return;
+        totalDogs+=dogData[zip].est*fraction;
+        totalWeight+=fraction;
+        count++;
+      });
+      if(count){
+        const sum=Math.round(totalDogs);
+        dEl.textContent= sum>=1000 ? (sum/1000).toFixed(0)+'k' : sum.toLocaleString();
+        dEl.classList.remove('pending');
+        dFoot.textContent=`area-weighted est · ${count} ZIP${count!==1?'s':''}`;
+      } else { dEl.textContent='—'; dEl.classList.add('pending'); dFoot.textContent='No ZIP data in area'; }
+    } else { dEl.textContent='Off'; dEl.classList.add('pending'); dFoot.textContent='Turn on the pet density layer'; }
+  }
+}
+
+/* ─── Layer KPIs — viewport mode ─────────────────────────────────────────────*/
+function updateLayerKpis(){
+  if(drawnArea){
+    const drawPoly=drawnAreaToPolygon();
+    if(drawPoly) { updateDrawLayerKpis(drawPoly); return; }
+  }
+  // No draw — use viewport median / sum
+  const incEl=document.getElementById('kpi-income'), incFoot=document.getElementById('kpi-income-foot');
+  if(incEl){
+    if(incomeLayer && Object.keys(incomeData).length){
+      const vals=inViewZipValues(incomeLayer, z=>incomeData[z]!=null?incomeData[z]:null);
+      if(vals.length){
+        vals.sort((a,b)=>a-b);
+        const med=vals[Math.floor(vals.length/2)];
+        incEl.textContent= med>=1000 ? '$'+(med/1000).toFixed(1)+'k' : '$'+med;
+        incEl.classList.remove('pending');
+        incFoot.textContent=`median of ${vals.length} ZIP${vals.length!==1?'s':''} in view`;
+      } else { incEl.textContent='—'; incEl.classList.add('pending'); incFoot.textContent='No ZIPs in view'; }
+    } else { incEl.textContent='Off'; incEl.classList.add('pending'); incFoot.textContent='Turn on the income layer'; }
+  }
+  const dEl=document.getElementById('kpi-dogs'), dFoot=document.getElementById('kpi-dogs-foot');
+  if(dEl){
+    if(dogLayer && Object.keys(dogData).length){
+      const vals=inViewZipValues(dogLayer, z=>dogData[z]?dogData[z].est:null);
+      if(vals.length){
+        const sum=vals.reduce((a,b)=>a+b,0);
+        dEl.textContent= sum>=1000 ? (sum/1000).toFixed(0)+'k' : sum.toLocaleString();
+        dEl.classList.remove('pending');
+        dFoot.textContent=`across ${vals.length} ZIP${vals.length!==1?'s':''} in view`;
+      } else { dEl.textContent='—'; dEl.classList.add('pending'); dFoot.textContent='No ZIPs in view'; }
+    } else { dEl.textContent='Off'; dEl.classList.add('pending'); dFoot.textContent='Turn on the pet density layer'; }
+  }
+}
+</script>
+</body>
+</html>
