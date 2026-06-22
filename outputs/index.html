@@ -721,7 +721,15 @@ function checkPE(name, lat, lon, key, overrides) {
 }
 
 /*  Map  */
-const map = L.map('map',{minZoom:4, boxZoom:false}).setView([31.0,-99.0],7);
+// renderer padding 1.0 (not Leaflet's default 0.1): the shared SVG renderer draws
+// vector overlays — ZIP borders, choropleth fills, drawn areas — a full viewport
+// beyond the map edge on every side. With the default 0.1 the SVG was only ~38px
+// larger than the map, so panning a hair clipped the highlighted ZIP/area and it
+// appeared to "follow" the screen / drift out of its boundaries until the next
+// redraw. All vectors share this one renderer (no per-layer custom renderer — see
+// gotchas). 1.0 = the SVG is ~3× the viewport per axis; bigger smooths fast pans
+// but renders more off-screen choropleth polygons, so this balances the two.
+const map = L.map('map',{minZoom:4, boxZoom:false, renderer: L.svg({padding:1})}).setView([31.0,-99.0],7);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap',maxZoom:19}).addTo(map);
 
 const clusterGroup = L.layerGroup();
