@@ -506,7 +506,7 @@ body.dev-mode .search-bar{background:var(--amber-light);border-bottom-color:#fde
       <div class="layer-row">
         <div>
           <div class="layer-name">Population Growth</div>
-          <div class="layer-desc">Population change by ZIP (2019→2024 ACS, latest available) — where demand is heading</div>
+          <div class="layer-desc">Population change by ZIP (2021→2024 ACS, same-boundary) — where demand is heading</div>
         </div>
         <label class="toggle" style="margin-left:12px">
           <input type="checkbox" id="toggle-growth" onchange="toggleGrowthLayer(this.checked)"/>
@@ -570,7 +570,7 @@ body.dev-mode .search-bar{background:var(--amber-light);border-bottom-color:#fde
     </div>
   </div>
   <div class="dog-legend" id="growth-legend">
-    <div class="legend-title">Population Growth (2019–2024)</div>
+    <div class="legend-title">Population Growth (2021–2024)</div>
     <div class="legend-scale">
       <div class="legend-scale-item"><div class="legend-scale-color" style="background:#14532d"></div> 20%+</div>
       <div class="legend-scale-item"><div class="legend-scale-color" style="background:#16a34a"></div> 10% – 20%</div>
@@ -830,12 +830,27 @@ function cardTag(c){
   return c.pe?`<span class="tag-pe">PE Owned</span>`:`<span class="tag-ind">Independent</span>`;
 }
 function renderList(){
-  // Only show clinics actually within the current viewport
-  const b = map.getBounds();
-  const visible = clinics.filter(c => b.contains([c.lat, c.lon]));
-  document.getElementById('badge').textContent = visible.length;
+  // Scope the list to match the markers the user can actually see:
+  //   ZIP selection → clinics inside the selected ZIP polygon(s)
+  //   otherwise     → clinics within the current viewport
+  let visible;
+  if(!drawnArea && selectedZips.size){
+    const feats=[...selectedZips.values()].map(e=>e.feat);
+    visible = clinics.filter(c => feats.some(f => pointInGeoJSON(c.lat, c.lon, f)));
+  } else {
+    const b = map.getBounds();
+    visible = clinics.filter(c => b.contains([c.lat, c.lon]));
+  }
+  const badge=document.getElementById('badge');
+  if(badge) badge.textContent = visible.length;  // null in ZIP-selection sidebar — guard it
   const l=document.getElementById('list');
-  if(!visible.length){l.innerHTML='<div class="empty">No clinics in current view.<br>Pan or zoom to find clinics.</div>';return;}
+  if(!l) return;
+  if(!visible.length){
+    const msg = (!drawnArea && selectedZips.size)
+      ? 'No clinics in selected ZIP'+(selectedZips.size>1?'s':'')+'.'
+      : 'No clinics in current view.<br>Pan or zoom to find clinics.';
+    l.innerHTML='<div class="empty">'+msg+'</div>';return;
+  }
   l.innerHTML=visible.map(c=>{
     const i = clinics.indexOf(c);
     return `<div class="card" id="c${i}" onclick="focusClinic(${i})">
@@ -1714,17 +1729,24 @@ async function toggleDogLayer(on){
 }
 
 /* ─── Population Growth layer ─────────────────────────────────────────────────
-   Population change per ZIP using the two latest NON-OVERLAPPING ACS 5-year
-   datasets: 2020–2024 (released Jan 2026) vs 2015–2019. Non-overlapping years
-   give a clean signal with no shared-year smearing. Variable B01003_001E (total
-   population). growthData[zip] = decimal pct change (0.12 = +12%).
+   Population change per ZIP using two ACS 5-year vintages that share the SAME
+   ZCTA boundary definitions: 2024 (2020–2024) vs 2021 (2017–2021). Variable
+   B01003_001E (total population). growthData[zip] = decimal pct change (~3yr).
+
+   WHY 2021 AND NOT AN OLDER VINTAGE: ZCTA boundaries were redrawn after the 2020
+   Census. ACS vintages ≤2020 use 2010-Census ZCTAs; vintages ≥2021 use 2020-
+   Census ZCTAs. Comparing across that line is invalid wherever a ZCTA was split,
+   merged, or created — e.g. 2019's single 75034 (108k) was split into 75033 /
+   75034 / 75036 by 2024, producing a fake −50% "crash" for fast-growing Frisco.
+   2021 is the EARLIEST vintage on 2020 boundaries, so it's the longest window
+   that still compares the same physical geography. Do not move OLD back to ≤2020.
 ──────────────────────────────────────────────────────────────────────────────*/
 let growthRaw = {};   // zip -> {popNew, popOld}
 let growthData = {};  // zip -> pct (decimal)
 let growthGeoData = null;
 let growthLayer = null;
 const GROWTH_YEAR_NEW = 2024;     // latest ACS 5-year (2020–2024)
-const GROWTH_YEAR_OLD = 2019;     // non-overlapping prior (2015–2019)
+const GROWTH_YEAR_OLD = 2021;     // earliest 2020-ZCTA vintage (2017–2021)
 const GROWTH_MIN_POP = 500;       // ignore ZIPs below this baseline pop (noisy)
 
 function growthColor(pct){
@@ -1812,7 +1834,7 @@ async function toggleGrowthLayer(on){
         const zip = feat.properties.zip;
         zipLayerMap.set(zip, layer);
         const p = growthData[zip];
-        const label = p!=null ? `${p>=0?'+':''}${(p*100).toFixed(1)}% since 2019` : 'No data';
+        const label = p!=null ? `${p>=0?'+':''}${(p*100).toFixed(1)}% since 2021` : 'No data';
         layer.bindTooltip(`<strong>ZIP ${zip}</strong><div class="income-tip-amount">${label}</div>`, {sticky:false, className:'income-tip', offset:[10,-4]});
         layer.on('click', function(e){
           e.originalEvent._vfZipClick = true;
@@ -2253,8 +2275,14 @@ async function fetchClinics(){
     setStatus(`${inView.length} shown · map service busy, retrying on next move`,true);
   }
   showPill('');
-  updateClinicKpis();
-  updateLayerKpis();
+  if(!drawnArea && selectedZips.size){
+    // A fetch may have added clinics outside the selected ZIP(s) — their markers
+    // default to visible — so re-scope markers, KPIs, and the list to the selection.
+    applyZipSelection();
+  } else {
+    updateClinicKpis();
+    updateLayerKpis();
+  }
 }
 
 let loadedBounds = null;
@@ -2270,6 +2298,9 @@ map.on('click', (e) => {
 });
 
 map.on('move',()=>{
+  // A ZIP selection is pan-invariant — its scoped KPIs/list don't change as the
+  // map moves, so skip the per-clinic recompute while one is active.
+  if(selectedZips.size) return;
   if(clinics.length) renderList();
   if(!drawnArea) updateClinicKpis();
 });
@@ -2277,8 +2308,8 @@ map.on('moveend',()=>{
   clearTimeout(fetchTimer);
   fetchTimer = setTimeout(()=>{
     const b = map.getBounds();
-    // Only refresh viewport KPIs when no draw area is active
-    if(!drawnArea){
+    // Only refresh viewport KPIs when neither a draw area nor a ZIP selection is active
+    if(!drawnArea && !selectedZips.size){
       updateClinicKpis();
       updateLayerKpis();
     }
@@ -2795,23 +2826,30 @@ function updateClinicKpis(){
   const cEl=document.getElementById('kpi-clinics');
   if(!cEl) return;
 
-  let inView;
+  let inView, scopeLabel, emptyMsg;
   if(drawnArea){
     // Draw mode: use the captured set
     inView=clinics.filter(c=>areaClinicKeys.has(clinicKey(c)));
+    scopeLabel='in drawn area'; emptyMsg='No clinics in area';
+  } else if(selectedZips.size){
+    // ZIP selection: only clinics inside the selected ZIP polygon(s) are visible
+    const feats=[...selectedZips.values()].map(e=>e.feat);
+    inView=clinics.filter(c=>feats.some(f=>pointInGeoJSON(c.lat,c.lon,f)));
+    scopeLabel=selectedZips.size>1?'in selected ZIPs':'in selected ZIP';
+    emptyMsg='No clinics in selected ZIP'+(selectedZips.size>1?'s':'');
   } else {
     const b=map.getBounds();
     inView=clinics.filter(c=>b.contains([c.lat,c.lon]));
+    scopeLabel='in view'; emptyMsg='Pan or search to load';
   }
 
   const pe=inView.filter(c=>c.pe).length;
   const indep=inView.length-pe;
   cEl.textContent=inView.length.toLocaleString();
   const cFoot=document.getElementById('kpi-clinics-foot');
-  const scopeLabel=drawnArea?'in drawn area':'in view';
   cFoot.innerHTML=inView.length
     ? `<span class="k-split"><span class="k-dot" style="background:var(--navy)"></span>${indep} indep</span><span class="k-split"><span class="k-dot" style="background:var(--red)"></span>${pe} PE</span>`
-    : (drawnArea?'No clinics in area':'Pan or search to load');
+    : emptyMsg;
 
   const pEl=document.getElementById('kpi-pe'), pFoot=document.getElementById('kpi-pe-foot');
   if(inView.length){
