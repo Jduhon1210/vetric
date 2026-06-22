@@ -761,6 +761,33 @@ const setStatus=(t,e=false)=>{const s=document.getElementById('status');s.textCo
 const showPill=(t)=>{const el=document.getElementById('map-pill');el.textContent=t;el.style.display=t?'block':'none';};
 function clearMarkers(){clusterGroup.clearLayers();markers=[];}
 
+// Show/hide a clinic marker. Also toggles pointer-events: a HIDDEN (opacity 0)
+// marker must NOT swallow clicks — otherwise clicking where an invisible pin sits
+// pops that clinic instead of selecting the ZIP/area beneath it. With pointer-events
+// off, the click falls through to the ZIP polygon (or map) underneath as intended.
+function setMarkerVisible(m, visible){
+  if(!m) return;
+  m.setOpacity(visible ? 1 : 0);
+  if(m._icon) m._icon.style.pointerEvents = visible ? '' : 'none';
+}
+
+// Loaded pins persist across pans instead of vanishing when they leave the view.
+// We accumulate up to MAX_CLINICS; past that, the farthest from the current map
+// center are evicted (keeps memory + marker count bounded on long panning sessions).
+const MAX_CLINICS = 1500;
+function mergeClinics(existing, fresh, center){
+  const byKey = new Map();
+  for(const c of existing) byKey.set(clinicKey(c), c);
+  for(const c of fresh)    byKey.set(clinicKey(c), c); // fresh wins for in-view dupes
+  let all = [...byKey.values()];
+  for(const c of all) c.dist = hav(center.lat, center.lng, c.lat, c.lon);
+  if(all.length > MAX_CLINICS){
+    all.sort((a,b)=>a.dist-b.dist);   // nearest first
+    all = all.slice(0, MAX_CLINICS);  // drop the farthest from view
+  }
+  return all;
+}
+
 /*  Popup  */
 function buildPopup(c) {
   const key = clinicKey(c);
@@ -1112,7 +1139,7 @@ function clearArea(){
   if(drawLayer){map.removeLayer(drawLayer);drawLayer=null;}
   if(freePreview){map.removeLayer(freePreview);freePreview=null;}
   drawRect=null;
-  markers.forEach(m=>m.setOpacity(1));
+  markers.forEach(m=>setMarkerVisible(m,true));
   renderNormalSidebar();
   // Revert KPI bar to viewport mode
   updateClinicKpis();
@@ -1210,7 +1237,7 @@ function applyAreaFilter(){
     const inArea=areaClinicKeys.has(clinicKey(c));
     if(!inArea){
       // Outside area — hide completely
-      if(markers[i]) markers[i].setOpacity(0);
+      setMarkerVisible(markers[i], false);
       return;
     }
     // Inside area — apply filter
@@ -1219,7 +1246,7 @@ function applyAreaFilter(){
     else if(activeFilter==='pe') show=!!c.pe;
     // Apply company filter
     if(show&&c.pe&&activeCompanies.size>0) show=activeCompanies.has(c.pe.owner);
-    if(markers[i]) markers[i].setOpacity(show?1:0);
+    setMarkerVisible(markers[i], show);
     if(show){
       visibleCount++;
       listItems.push(`
@@ -1377,7 +1404,7 @@ function selectZip(zip, feat, shiftHeld){
 function clearZipSelection(){
   selectedZips.forEach((entry, z) => _unhighlightZip(z));
   selectedZips.clear();
-  if(!drawnArea) markers.forEach(m => m.setOpacity(1));
+  if(!drawnArea) markers.forEach(m => setMarkerVisible(m,true));
   updateClinicKpis();
   updateLayerKpis();
   renderNormalSidebar();
@@ -1401,7 +1428,7 @@ function applyZipSelection(){
       if(inside) return;
       if(pointInGeoJSON(c.lat, c.lon, feat)) inside = true;
     });
-    if(markers[i]) markers[i].setOpacity(inside ? 1 : 0);
+    setMarkerVisible(markers[i], inside);
     if(inside){ shown++; if(c.pe) pe++; }
   });
 
@@ -2244,10 +2271,11 @@ async function fetchClinics(){
     return !isDupe;
   });
 
-  // Commit: now safe to replace shared state and redraw
+  // Commit: merge this view's results into the accumulated set (pins persist across
+  // pans rather than vanishing), then redraw. Rebuild is synchronous so no flicker.
   clearMarkers();
   activeIdx=null;
-  clinics=deduped;
+  clinics=mergeClinics(clinics, deduped, {lat,lng});
 
   const batch=[];
   markers=clinics.map((c,i)=>{
