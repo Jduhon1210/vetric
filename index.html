@@ -3018,19 +3018,28 @@ function updateLayerKpis(){
   }
 }
 
-/* ─── Evaluate placement — suitability heatmap within a selected ZIP ───────────
-   Border-aware: competition is a gravity score over EVERY clinic within the
-   catchment radius, including ones just over the ZIP line — so a small ZIP
-   ringed by clinics scores honestly instead of looking wide-open. A grid of
-   candidate points inside the polygon is scored on demand (ZIP-level), low
-   competition (gravity), and retail access (OSM shops). Degrades gracefully:
-   if Overpass is unreachable, retail is skipped and competition uses the
-   statewide PE set + already-loaded independents. */
-let evalActive=false, evalZip=null, evalFeat=null, evalRadiusMi=3, evalDemand=0.5;
-let evalShow={heat:true, comp:false, retail:false}; // comp = range rings, retail = shop dots (opt-in); competitor dots always show
-let evalLayers={heat:null, comp:null, retail:null, pins:null};
-let evalExtraVets=[], evalRetail=[], evalCells=[], evalTop=[], evalRecalcTimer=null;
-const EVAL_W={demand:0.30, comp:0.45, retail:0.25};
+/* ─── Evaluate placement — multi-factor site suitability within a ZIP ──────────
+   Scores a fine grid of candidate points inside the polygon and MASKS OUT
+   undeveloped / rural land so recommendations land where people and commerce
+   are (handles ZIPs that are half city, half farmland). Factors:
+     • neighborhood demand — gravity to residential areas + named places,
+       blended with the ZIP's income & dog-ownership
+     • low competition     — border-aware gravity over EVERY clinic within the
+       catchment radius (incl. ones just over the ZIP line), PE weighted 1.6x
+     • retail access       — gravity to shops + commercial land use
+     • road access         — proximity to an arterial road (visibility/access)
+   Rural mask: a candidate with no residential/commercial/retail within ~1mi is
+   dropped. Degrades gracefully — any layer Overpass can't return is dropped and
+   its weight redistributed; competition always works (statewide PE set). */
+let evalActive=false, evalZip=null, evalFeat=null, evalRadiusMi=3, evalZipAffluence=0.5;
+let evalShow={heat:true, comp:true, retail:false, hoods:false}; // competitor range rings on by default — they show why border ZIPs are contested
+let evalLayers={heat:null, comp:null, retail:null, hoods:null, pins:null};
+let evalData={vets:[], retail:[], resid:[], roads:[]};
+let evalDataOk={retail:false, roads:false, resid:false};
+let evalCells=[], evalTop=[], evalCompsCache=[], evalRecalcTimer=null;
+const EVAL_W={demand:0.30, comp:0.30, retail:0.22, access:0.18};
+const EVAL_TOP_N=5;
+const _grav=(d,R)=>d<R?1-d/R:0;
 
 function _evalBBox(feat){
   let minLa=90,maxLa=-90,minLo=180,maxLo=-180;
@@ -3041,7 +3050,14 @@ function _evalBBox(feat){
   }
   return {minLa,maxLa,minLo,maxLo};
 }
-function _evalZipDemand(zip){
+function _evalBuffer(feat, radiusMi){
+  const bb=_evalBBox(feat), midLa=(bb.minLa+bb.maxLa)/2;
+  const bufLa=radiusMi/69, bufLo=radiusMi/(69*Math.cos(midLa*Math.PI/180));
+  return {s:bb.minLa-bufLa, n:bb.maxLa+bufLa, w:bb.minLo-bufLo, e:bb.maxLo+bufLo};
+}
+// ZIP-level affluence/pet index (0..1) from income + dog households — modulates
+// the sub-ZIP residential demand so a richer, dog-heavier ZIP scores higher.
+function _evalZipAffluence(zip){
   const inc = incomeData[zip]!=null?incomeData[zip]:(typeof oppIncomeSnap!=='undefined'&&oppIncomeSnap[zip]!=null?oppIncomeSnap[zip]:null);
   const dog = dogData[zip]?dogData[zip].est:(typeof oppDogSnap!=='undefined'&&oppDogSnap[zip]!=null?oppDogSnap[zip]:null);
   let d=0,n=0;
@@ -3049,44 +3065,58 @@ function _evalZipDemand(zip){
   if(dog!=null){ d+=Math.max(0,Math.min(1,dog/6000)); n++; }
   return n? d/n : 0.5;
 }
-// In-memory competitor set within the buffered bbox — PE (statewide) + loaded
-// independents + any vets found via Overpass. No network; cheap, recompute-safe.
+// Competitor set within the buffered bbox — PE (statewide) + loaded independents
+// + vets found via Overpass. No network; cheap, recompute-safe on slider drag.
 function _evalCompetitors(feat, radiusMi){
-  const bb=_evalBBox(feat);
-  const midLa=(bb.minLa+bb.maxLa)/2;
-  const bufLa=radiusMi/69, bufLo=radiusMi/(69*Math.cos(midLa*Math.PI/180));
-  const s=bb.minLa-bufLa,n=bb.maxLa+bufLa,w=bb.minLo-bufLo,e=bb.maxLo+bufLo;
+  const {s,n,w,e}=_evalBuffer(feat, radiusMi);
   const deleted=getDeleted(), byKey=new Map();
   const add=(la,lo,pe)=>{ if(la<s||la>n||lo<w||lo>e) return; const k=`${Math.round(la*1000)}_${Math.round(lo*1000)}`; if(deleted[k]) return; if(!byKey.has(k)) byKey.set(k,{lat:la,lon:lo,pe:!!pe}); };
   if(peLoaded && typeof PE_COORDS!=='undefined') for(const c of PE_COORDS) add(c[0],c[1],true);
   for(const c of clinics) add(c.lat,c.lon,c.pe);
-  for(const v of evalExtraVets) add(v.lat,v.lon,v.pe);
+  for(const v of evalData.vets) add(v.lat,v.lon,false);
   return [...byKey.values()];
 }
-// One-time best-effort Overpass: adds independent vets + retail in the buffer.
-async function _evalFetchOverpass(feat){
-  evalExtraVets=[]; evalRetail=[];
-  const bb=_evalBBox(feat);
-  const midLa=(bb.minLa+bb.maxLa)/2;
-  const bufLa=evalRadiusMi/69, bufLo=evalRadiusMi/(69*Math.cos(midLa*Math.PI/180));
-  const s=bb.minLa-bufLa,n=bb.maxLa+bufLa,w=bb.minLo-bufLo,e=bb.maxLo+bufLo;
-  const q=`[out:json][timeout:25];(node["amenity"="veterinary"](${s},${w},${n},${e});way["amenity"="veterinary"](${s},${w},${n},${e});node["shop"](${s},${w},${n},${e});way["shop"](${s},${w},${n},${e}););out center 600;`;
-  for(const mirror of ['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter']){
-    try{
-      const res=await fetch(mirror,{method:'POST',body:'data='+encodeURIComponent(q)});
-      if(!res.ok) throw new Error('overpass');
-      const data=await res.json();
-      const vets=[], retail=[];
-      for(const el of data.elements){
-        const la=el.lat||(el.center&&el.center.lat), lo=el.lon||(el.center&&el.center.lon);
-        if(!la||!lo) continue;
-        const t=el.tags||{};
-        if(t.amenity==='veterinary') vets.push({lat:la,lon:lo,pe:false});
-        else if(t.shop) retail.push({lat:la,lon:lo,name:t.name||t.shop});
-      }
-      evalExtraVets=vets; evalRetail=retail;
-      return;
-    }catch(e){ /* try next mirror */ }
+async function _overpass(query){
+  for(const m of ['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter']){
+    try{ const res=await fetch(m,{method:'POST',body:'data='+encodeURIComponent(query)}); if(!res.ok) throw 0; return await res.json(); }
+    catch(e){}
+  }
+  return null;
+}
+// Two best-effort Overpass passes for the buffered area: (A) vets, shops,
+// residential + commercial land use, named places; (B) arterial road geometry.
+async function _evalFetchContext(feat, setStage){
+  evalData={vets:[], retail:[], resid:[], roads:[]};
+  evalDataOk={retail:false, roads:false, resid:false};
+  const {s,n,w,e}=_evalBuffer(feat, Math.max(evalRadiusMi,3));
+  const bbox=`(${s},${w},${n},${e})`;
+  if(setStage) setStage('fetching clinics, retail & neighborhoods…');
+  const qa=`[out:json][timeout:30];(node["amenity"="veterinary"]${bbox};way["amenity"="veterinary"]${bbox};node["shop"]${bbox};way["shop"]${bbox};way["landuse"="residential"]${bbox};way["landuse"~"commercial|retail"]${bbox};node["place"~"suburb|neighbourhood|quarter|town|village|hamlet|city"]${bbox};);out center 3000;`;
+  const da=await _overpass(qa);
+  if(da){
+    for(const el of da.elements){
+      const la=el.lat||(el.center&&el.center.lat), lo=el.lon||(el.center&&el.center.lon);
+      if(!la||!lo) continue;
+      const t=el.tags||{};
+      if(t.amenity==='veterinary') evalData.vets.push({lat:la,lon:lo});
+      else if(t.shop) evalData.retail.push({lat:la,lon:lo});
+      else if(t.landuse==='commercial'||t.landuse==='retail'){ evalData.retail.push({lat:la,lon:lo,area:true}); evalData.resid.push({lat:la,lon:lo,w:0.4}); }
+      else if(t.landuse==='residential') evalData.resid.push({lat:la,lon:lo,w:1});
+      else if(t.place) evalData.resid.push({lat:la,lon:lo,w:1.3});
+    }
+    evalDataOk.retail=evalData.retail.length>0;
+    evalDataOk.resid=evalData.resid.length>0;
+  }
+  if(!evalActive) return;
+  if(setStage) setStage('mapping road access…');
+  const qb=`[out:json][timeout:30];(way["highway"~"^(motorway|trunk|primary|secondary|tertiary)$"]${bbox};);out geom 4000;`;
+  const db=await _overpass(qb);
+  if(db){
+    const pts=[];
+    for(const el of db.elements){ if(el.geometry) for(const g of el.geometry) pts.push({lat:g.lat,lon:g.lon}); }
+    const stride=Math.max(1,Math.ceil(pts.length/3500));
+    evalData.roads=pts.filter((_,i)=>i%stride===0);
+    evalDataOk.roads=evalData.roads.length>0;
   }
 }
 async function openEvaluate(){
@@ -3094,71 +3124,112 @@ async function openEvaluate(){
   const zip=[...selectedZips.keys()][0];
   evalActive=true; evalZip=zip; evalFeat=selectedZips.get(zip).feat;
   const sb=document.querySelector('.sidebar');
-  if(sb) sb.innerHTML='<div class="opp-loading">Analyzing ZIP '+zip+' — competition, demand, retail access…</div>';
+  const setStage=msg=>{ if(sb && evalActive) sb.innerHTML='<div class="opp-loading">Analyzing ZIP '+zip+' — '+msg+'</div>'; };
+  setStage('starting…');
   markers.forEach(m=>setMarkerVisible(m,false)); // competitors drawn by the eval layer
-  evalDemand=_evalZipDemand(zip);
-  await _evalFetchOverpass(evalFeat);
+  evalZipAffluence=_evalZipAffluence(zip);
+  await _evalFetchContext(evalFeat, setStage);
   if(!evalActive) return; // user bailed during fetch
-  _evalComputeAndRender();
+  setStage('scoring candidate sites…');
+  setTimeout(()=>{ if(evalActive) _evalComputeAndRender(); }, 30);
 }
 function _evalComputeAndRender(){
   const feat=evalFeat, bb=_evalBBox(feat);
-  const R=evalRadiusMi*1609.344, RETAIL_R=1609.344;
-  const competitors=_evalCompetitors(feat, evalRadiusMi);
-  const cellsAcross=22;
+  const R=evalRadiusMi*1609.344;
+  const RET_R=1609.344, DEM_R=4000, ACC_R=900, DEVGATE=1700; // metres
+  const comps=_evalCompetitors(feat, evalRadiusMi);
+  const hasRetail=evalDataOk.retail, hasRoads=evalDataOk.roads, hasResid=evalDataOk.resid;
+  const haveDev=hasResid||hasRetail; // only mask rural land if we actually have OSM dev data
+  // cheap lat-band prefilters (skip far points before the trig in hav)
+  const band=m=>m/111000;
+  const bR=band(R), bDem=band(DEM_R), bRet=band(RET_R), bAcc=band(ACC_R), bGate=band(DEVGATE);
+  const SITE_ROAD=300, SITE_COMM=300; // metres — a clinic sits on arterial frontage or in a retail/commercial area, NOT a subdivision interior
+  const canGate=hasRoads||hasRetail;
+  const cellsAcross=30;
   const stepLa=(bb.maxLa-bb.minLa)/cellsAcross, stepLo=(bb.maxLo-bb.minLo)/cellsAcross;
   const grid=[];
   for(let la=bb.minLa+stepLa/2; la<bb.maxLa; la+=stepLa)
     for(let lo=bb.minLo+stepLo/2; lo<bb.maxLo; lo+=stepLo){
       if(!pointInGeoJSON(la,lo,feat)) continue;
-      let comp=0, nearest=Infinity;
-      for(const c of competitors){ const d=hav(la,lo,c.lat,c.lon); if(d<nearest)nearest=d; if(d<R) comp+=(c.pe?1.6:1.0)*(1-d/R); }
-      let ret=0; for(const r of evalRetail){ const d=hav(la,lo,r.lat,r.lon); if(d<RETAIL_R) ret+=(1-d/RETAIL_R); }
-      grid.push({la,lo,comp,ret,nearest,stepLa,stepLo});
+      // nearest arterial (siting gate + road-access score)
+      let nearRoad=Infinity; for(const r of evalData.roads){ if(Math.abs(r.lat-la)>bAcc) continue; const d=hav(la,lo,r.lat,r.lon); if(d<nearRoad){ nearRoad=d; if(d<40) break; } }
+      // nearest retail / commercial (siting gate)
+      let nearRetail=Infinity; for(const r of evalData.retail){ if(Math.abs(r.lat-la)>bRet) continue; const d=hav(la,lo,r.lat,r.lon); if(d<nearRetail){ nearRetail=d; if(d<40) break; } }
+      // SITING GATE: keep only commercially-placeable cells — arterial frontage or
+      // in/next to a retail/commercial area. Drops subdivision interiors and rural
+      // land. Falls back to the broad development mask only if we have no road/retail
+      // data at all (sparse OSM), so the tool still returns something.
+      let siteable;
+      if(canGate) siteable=(hasRoads && nearRoad<SITE_ROAD)||(hasRetail && nearRetail<SITE_COMM);
+      else { let nd=Infinity; for(const r of evalData.resid){ if(Math.abs(r.lat-la)>bGate) continue; const d=hav(la,lo,r.lat,r.lon); if(d<nd)nd=d; } siteable=!haveDev||nd<=DEVGATE; }
+      if(!siteable) continue;
+      // neighborhood demand — the rooftops within ~2.5mi this site can draw from
+      let dem=0; for(const r of evalData.resid){ if(Math.abs(r.lat-la)>bDem) continue; const d=hav(la,lo,r.lat,r.lon); if(d<DEM_R) dem+=(r.w||1)*_grav(d,DEM_R); }
+      // retail access (co-tenancy / visibility)
+      let ret=0; for(const r of evalData.retail){ if(Math.abs(r.lat-la)>bRet) continue; const d=hav(la,lo,r.lat,r.lon); if(d<RET_R) ret+=(r.area?0.6:1)*_grav(d,RET_R); }
+      // competition (border-aware gravity); scan all comps for the true nearest readout
+      let comp=0, nearC=Infinity; for(const c of comps){ const d=hav(la,lo,c.lat,c.lon); if(d<nearC)nearC=d; if(d<R) comp+=(c.pe?1.6:1)*_grav(d,R); }
+      grid.push({la,lo,dem,ret,comp,nearC,nearRoad,stepLa,stepLo});
     }
-  const maxComp=Math.max(1e-6,...grid.map(g=>g.comp));
-  const maxRet=Math.max(1e-6,...grid.map(g=>g.ret));
-  const retailOk=evalRetail.length>0;
+  evalCompsCache=comps;
+  if(!grid.length){ evalCells=[]; evalTop=[]; _evalRenderLayers(); _evalRenderSidebar(); return; }
+  const maxOf=f=>Math.max(1e-6,...grid.map(f));
+  const maxDem=maxOf(g=>g.dem), maxRet=maxOf(g=>g.ret), maxComp=maxOf(g=>g.comp);
   for(const g of grid){
-    g.lowComp=1-g.comp/maxComp;
-    g.retailN=retailOk?g.ret/maxRet:0.5;
-    g.score=EVAL_W.demand*evalDemand + EVAL_W.comp*g.lowComp + EVAL_W.retail*g.retailN;
+    g.demandN = hasResid ? 0.55*(g.dem/maxDem)+0.45*evalZipAffluence : evalZipAffluence;
+    g.retailN = hasRetail ? g.ret/maxRet : 0.5;
+    g.accessN = hasRoads ? Math.max(0,1-g.nearRoad/ACC_R) : 0.5;
+    g.lowComp = 1-g.comp/maxComp;
+    // Core: a clinic needs BOTH customers and low competition — a competition-free
+    // pocket with nobody around is not a good site, so these multiply into the base.
+    const core = 0.55*g.demandN + 0.45*g.lowComp;
+    // Modifiers: weak road access discounts up to 35%; nearby retail is a bonus.
+    // Each defaults to neutral (=1) when its layer is missing so it can't sink every site.
+    const accessMult = hasRoads ? 0.65+0.35*g.accessN : 1;
+    const retailBonus = hasRetail ? 0.88+0.24*g.retailN : 1;
+    g.score = Math.max(0, Math.min(1, core*accessMult*retailBonus));
   }
   evalCells=grid;
+  // relative colour scale so the heatmap has clear contrast within this ZIP
+  const sMin=Math.min(...grid.map(g=>g.score)), sMax=Math.max(...grid.map(g=>g.score)), sRange=Math.max(1e-6,sMax-sMin);
+  for(const g of grid) g.scoreRel=(g.score-sMin)/sRange;
   const sorted=[...grid].sort((a,b)=>b.score-a.score);
-  const minSep=Math.max(bb.maxLa-bb.minLa, bb.maxLo-bb.minLo)*0.22;
+  const minSep=Math.max(bb.maxLa-bb.minLa, bb.maxLo-bb.minLo)*0.16;
   const top=[];
-  for(const g of sorted){ if(top.every(t=>Math.hypot(t.la-g.la,t.lo-g.lo)>minSep)){ top.push(g); if(top.length===3) break; } }
+  for(const g of sorted){ if(top.every(t=>Math.hypot(t.la-g.la,t.lo-g.lo)>minSep)){ top.push(g); if(top.length===EVAL_TOP_N) break; } }
   evalTop=top;
-  evalCompetitorsCache=competitors;
   _evalRenderLayers();
   _evalRenderSidebar();
 }
-let evalCompetitorsCache=[];
 function _evalClearLayers(){ for(const k in evalLayers){ if(evalLayers[k]){ map.removeLayer(evalLayers[k]); evalLayers[k]=null; } } }
-function _evalColor(s){ const t=Math.max(0,Math.min(1,(s-0.35)/0.45)); return t>0.66?'#639922':t>0.33?'#EF9F27':'#E24B4A'; }
+function _evalColor(t){ return t>0.62?'#639922':t>0.3?'#EF9F27':'#E24B4A'; }
 function _evalRenderLayers(){
   _evalClearLayers();
   if(evalShow.heat){
     const heat=L.layerGroup();
     for(const g of evalCells)
       L.rectangle([[g.la-g.stepLa/2,g.lo-g.stepLo/2],[g.la+g.stepLa/2,g.lo+g.stepLo/2]],
-        {stroke:false,fillColor:_evalColor(g.score),fillOpacity:0.5,interactive:false}).addTo(heat);
+        {stroke:false,fillColor:_evalColor(g.scoreRel),fillOpacity:0.5,interactive:false}).addTo(heat);
     heat.addTo(map); if(heat.bringToBack) heat.bringToBack(); evalLayers.heat=heat;
+  }
+  if(evalShow.hoods && evalData.resid.length){
+    const hoods=L.layerGroup();
+    for(const r of evalData.resid) L.circleMarker([r.lat,r.lon],{radius:r.place?4:2.5,color:'#15803d',weight:1,fillColor:'#22c55e',fillOpacity:0.7,interactive:false}).addTo(hoods);
+    hoods.addTo(map); evalLayers.hoods=hoods;
+  }
+  if(evalShow.retail && evalData.retail.length){
+    const ret=L.layerGroup();
+    for(const r of evalData.retail) L.circleMarker([r.lat,r.lon],{radius:r.area?3.5:2.5,color:'#1d4ed8',weight:1,fillColor:'#3b82f6',fillOpacity:0.85,interactive:false}).addTo(ret);
+    ret.addTo(map); evalLayers.retail=ret;
   }
   {
     // Competitor dots always show during analysis; the range rings are opt-in.
     const comp=L.layerGroup(), R=evalRadiusMi*1609.344;
-    if(evalShow.comp) for(const c of evalCompetitorsCache)
-      L.circle([c.lat,c.lon],{radius:R,stroke:true,color:'#A32D2D',weight:1,dashArray:'4 4',opacity:0.25,fill:false,interactive:false}).addTo(comp);
-    for(const c of evalCompetitorsCache)
+    if(evalShow.comp) for(const c of evalCompsCache)
+      L.circle([c.lat,c.lon],{radius:R,stroke:true,color:'#dc2626',weight:1.3,dashArray:'5 5',opacity:0.5,fill:false,interactive:false}).addTo(comp);
+    for(const c of evalCompsCache)
       L.circleMarker([c.lat,c.lon],{radius:4,color:'#fff',weight:1.5,fillColor:c.pe?'#b91c1c':'#dc2626',fillOpacity:1,interactive:false}).addTo(comp);
     comp.addTo(map); evalLayers.comp=comp;
-  }
-  if(evalShow.retail && evalRetail.length){
-    const ret=L.layerGroup();
-    for(const r of evalRetail) L.circleMarker([r.lat,r.lon],{radius:3,color:'#1d4ed8',weight:1,fillColor:'#3b82f6',fillOpacity:0.85,interactive:false}).addTo(ret);
-    ret.addTo(map); evalLayers.retail=ret;
   }
   const pins=L.layerGroup();
   evalTop.forEach((g,i)=>{
@@ -3168,33 +3239,37 @@ function _evalRenderLayers(){
 }
 function _evalRenderSidebar(){
   const sb=document.querySelector('.sidebar'); if(!sb) return;
-  const retailOk=evalRetail.length>0;
-  const bar=(label,v,color)=>`<div class="eval-bar"><span>${label}</span><span class="eval-track"><span style="width:${Math.round(Math.max(0,Math.min(1,v))*100)}%;background:${color}"></span></span></div>`;
+  const hasRetail=evalDataOk.retail, hasRoads=evalDataOk.roads, hasResid=evalDataOk.resid;
+  const bar=(label,v,on)=>`<div class="eval-bar"><span>${label}</span><span class="eval-track"><span style="width:${on?Math.round(Math.max(0,Math.min(1,v))*100):0}%;background:${!on?'#cbd5e1':v>0.6?'#639922':v>0.35?'#BA7517':'#dc2626'}"></span></span></div>`;
   const cards=evalTop.map((g,i)=>{
     const headline=Math.round(g.score*100);
-    const nearMi=(g.nearest/1609.344).toFixed(1);
+    const nearStr = isFinite(g.nearC) ? (g.nearC/1609.344).toFixed(1)+' mi to nearest clinic' : 'no clinics nearby';
+    const roadStr = hasRoads ? (g.nearRoad<160?'on an arterial':(g.nearRoad/1609.344).toFixed(1)+' mi to arterial') : '';
     return `<div class="eval-card" onclick="evalFlyTo(${i})">
       <div class="eval-card-head"><span class="eval-rank">${i+1}</span><span class="eval-card-title">Site ${i+1}</span><span class="eval-score">${headline}</span></div>
-      <div class="eval-why">${nearMi} mi to nearest clinic${retailOk?' · retail nearby':''}</div>
-      ${bar('Demand', evalDemand, '#639922')}
-      ${bar('Low competition', g.lowComp, g.lowComp>0.6?'#639922':'#BA7517')}
-      ${bar('Retail access', g.retailN, retailOk?'#639922':'#94a3b8')}
+      <div class="eval-why">${nearStr}${roadStr?' · '+roadStr:''}</div>
+      ${bar('Neighborhood demand', g.demandN, true)}
+      ${bar('Low competition', g.lowComp, true)}
+      ${bar('Retail access', g.retailN, hasRetail)}
+      ${bar('Road access', g.accessN, hasRoads)}
     </div>`;
-  }).join('') || '<div class="empty">No buildable spots scored in this ZIP.</div>';
+  }).join('') || '<div class="empty">No developed, buildable spots in this ZIP — it may be largely rural.</div>';
   const chip=(k,label)=>`<span class="eval-chip ${evalShow[k]?'on':''}" onclick="evalToggle('${k}')">${label}</span>`;
+  const missing=[]; if(!hasRetail)missing.push('retail'); if(!hasRoads)missing.push('roads'); if(!hasResid)missing.push('neighborhoods');
+  const warn = missing.length ? `<span class="eval-warn">${missing.join(' + ')} data unavailable (offline/rate-limited) — those factors were dropped and weights rebalanced.</span>` : '';
   sb.innerHTML=`
     <div class="area-header">
       <span class="area-title">Placement analysis · ${evalZip}</span>
       <button class="clear-area-btn" onclick="clearEvaluate()">Clear analysis</button>
     </div>
-    <div class="eval-verdict"><span class="eval-strong">${evalTop.length} viable site${evalTop.length!==1?'s':''}.</span> Best spots sit away from the clinics within range.${retailOk?'':'<span class="eval-warn">Retail data unavailable (offline/rate-limited) — score uses demand + competition only.</span>'}</div>
+    <div class="eval-verdict"><span class="eval-strong">${evalTop.length} viable site${evalTop.length!==1?'s':''}.</span> ${evalCells.length} commercially-siteable cells scored; subdivision interiors &amp; rural land excluded.${warn}</div>
     <div class="eval-slider">
       <div class="eval-slider-row"><span>Competitor range</span><span id="eval-range-val">${evalRadiusMi.toFixed(1)} mi</span></div>
       <input type="range" min="1" max="6" step="0.5" value="${evalRadiusMi}" oninput="onEvalRadius(this.value)"/>
     </div>
-    <div class="eval-toggle-row">${chip('heat','Heatmap')}${chip('comp','Competitor range')}${chip('retail','Retail')}</div>
+    <div class="eval-toggle-row">${chip('heat','Heatmap')}${chip('hoods','Neighborhoods')}${chip('retail','Retail')}${chip('comp','Competitor range')}</div>
     <div class="eval-cards">${cards}</div>
-    <div class="eval-note">Competition counts every clinic within range — including those just over the ZIP border — so a small ringed ZIP scores honestly.</div>
+    <div class="eval-note">Sites are limited to arterial frontage and retail/commercial areas — subdivision interiors and rural land are excluded — so every pin is a placeable location. Competition counts every clinic within range, including ones just over the ZIP border.</div>
     <div class="status-bar" id="status"></div>`;
 }
 function onEvalRadius(v){
@@ -3207,7 +3282,8 @@ function evalToggle(k){ evalShow[k]=!evalShow[k]; _evalRenderLayers(); const sb=
 function evalFlyTo(i){ const g=evalTop[i]; if(g) map.setView([g.la,g.lo], Math.max(map.getZoom(),14), {animate:true}); }
 function clearEvaluate(){
   evalActive=false; _evalClearLayers();
-  evalExtraVets=[]; evalRetail=[]; evalCells=[]; evalTop=[]; evalCompetitorsCache=[];
+  evalData={vets:[], retail:[], resid:[], roads:[]}; evalDataOk={retail:false,roads:false,resid:false};
+  evalCells=[]; evalTop=[]; evalCompsCache=[];
   if(selectedZips.size) applyZipSelection();
   else { markers.forEach(m=>setMarkerVisible(m,true)); renderNormalSidebar(); }
 }
