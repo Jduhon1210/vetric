@@ -3040,6 +3040,17 @@ let evalCells=[], evalTop=[], evalCompsCache=[], evalRecalcTimer=null;
 const EVAL_W={demand:0.30, comp:0.30, retail:0.22, access:0.18};
 const EVAL_TOP_N=5;
 const _grav=(d,R)=>d<R?1-d/R:0;
+// point→segment distance in metres (equirectangular; accurate at clinic-catchment
+// scale). Used so road frontage is measured to the road LINE, not just its sparse
+// vertices — otherwise a tight frontage gate wrongly drops cells beside long straights.
+function _segDistM(la,lo,s){
+  const k=111320, kx=k*Math.cos(la*Math.PI/180);
+  const ax=(s.aLon-lo)*kx, ay=(s.aLat-la)*k, bx=(s.bLon-lo)*kx, by=(s.bLat-la)*k;
+  const dx=bx-ax, dy=by-ay, L2=dx*dx+dy*dy;
+  let t=L2>0?-(ax*dx+ay*dy)/L2:0; if(t<0)t=0; else if(t>1)t=1;
+  const px=ax+t*dx, py=ay+t*dy;
+  return Math.sqrt(px*px+py*py);
+}
 
 function _evalBBox(feat){
   let minLa=90,maxLa=-90,minLo=180,maxLo=-180;
@@ -3078,8 +3089,13 @@ function _evalCompetitors(feat, radiusMi){
 }
 async function _overpass(query){
   for(const m of ['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter']){
-    try{ const res=await fetch(m,{method:'POST',body:'data='+encodeURIComponent(query)}); if(!res.ok) throw 0; return await res.json(); }
-    catch(e){}
+    try{
+      const ctrl=new AbortController(), to=setTimeout(()=>ctrl.abort(),25000); // don't hang the UI if Overpass stalls
+      const res=await fetch(m,{method:'POST',body:'data='+encodeURIComponent(query),signal:ctrl.signal});
+      clearTimeout(to);
+      if(!res.ok) throw 0;
+      return await res.json();
+    }catch(e){}
   }
   return null;
 }
@@ -3109,13 +3125,13 @@ async function _evalFetchContext(feat, setStage){
   }
   if(!evalActive) return;
   if(setStage) setStage('mapping road access…');
-  const qb=`[out:json][timeout:30];(way["highway"~"^(motorway|trunk|primary|secondary|tertiary)$"]${bbox};);out geom 4000;`;
+  const qb=`[out:json][timeout:30];(way["highway"~"^(motorway|trunk|primary|secondary|tertiary)$"]${bbox};);out geom 5000;`;
   const db=await _overpass(qb);
   if(db){
-    const pts=[];
-    for(const el of db.elements){ if(el.geometry) for(const g of el.geometry) pts.push({lat:g.lat,lon:g.lon}); }
-    const stride=Math.max(1,Math.ceil(pts.length/3500));
-    evalData.roads=pts.filter((_,i)=>i%stride===0);
+    const segs=[];
+    for(const el of db.elements){ const g=el.geometry; if(!g) continue; for(let i=0;i+1<g.length;i++) segs.push({aLat:g[i].lat,aLon:g[i].lon,bLat:g[i+1].lat,bLon:g[i+1].lon}); }
+    const stride=Math.max(1,Math.ceil(segs.length/6000));
+    evalData.roads = stride>1 ? segs.filter((_,i)=>i%stride===0) : segs;
     evalDataOk.roads=evalData.roads.length>0;
   }
 }
@@ -3139,20 +3155,23 @@ function _evalComputeAndRender(){
   const RET_R=1609.344, DEM_R=4000, ACC_R=900, DEVGATE=1700; // metres
   const comps=_evalCompetitors(feat, evalRadiusMi);
   const hasRetail=evalDataOk.retail, hasRoads=evalDataOk.roads, hasResid=evalDataOk.resid;
+  // Without road OR retail data we can't tell commercial corridors from
+  // neighborhoods — refuse to paint a heatmap that could blanket houses. Retry.
+  if(!hasRoads && !hasRetail){ evalCells=[]; evalTop=[]; evalCompsCache=comps; _evalClearLayers(); _evalRenderUnavailable(); return; }
   const haveDev=hasResid||hasRetail; // only mask rural land if we actually have OSM dev data
   // cheap lat-band prefilters (skip far points before the trig in hav)
   const band=m=>m/111000;
   const bR=band(R), bDem=band(DEM_R), bRet=band(RET_R), bAcc=band(ACC_R), bGate=band(DEVGATE);
-  const SITE_ROAD=300, SITE_COMM=300; // metres — a clinic sits on arterial frontage or in a retail/commercial area, NOT a subdivision interior
+  const SITE_ROAD=200, SITE_COMM=280; // metres — a clinic sits ON arterial frontage (tight, so the heatmap never bleeds into a subdivision interior) or in a retail/commercial area
   const canGate=hasRoads||hasRetail;
-  const cellsAcross=30;
+  const cellsAcross=36;
   const stepLa=(bb.maxLa-bb.minLa)/cellsAcross, stepLo=(bb.maxLo-bb.minLo)/cellsAcross;
   const grid=[];
   for(let la=bb.minLa+stepLa/2; la<bb.maxLa; la+=stepLa)
     for(let lo=bb.minLo+stepLo/2; lo<bb.maxLo; lo+=stepLo){
       if(!pointInGeoJSON(la,lo,feat)) continue;
-      // nearest arterial (siting gate + road-access score)
-      let nearRoad=Infinity; for(const r of evalData.roads){ if(Math.abs(r.lat-la)>bAcc) continue; const d=hav(la,lo,r.lat,r.lon); if(d<nearRoad){ nearRoad=d; if(d<40) break; } }
+      // nearest arterial via point→segment distance (siting gate + road-access score)
+      let nearRoad=Infinity; for(const s of evalData.roads){ if(Math.abs(s.aLat-la)>bAcc && Math.abs(s.bLat-la)>bAcc) continue; const d=_segDistM(la,lo,s); if(d<nearRoad){ nearRoad=d; if(d<30) break; } }
       // nearest retail / commercial (siting gate)
       let nearRetail=Infinity; for(const r of evalData.retail){ if(Math.abs(r.lat-la)>bRet) continue; const d=hav(la,lo,r.lat,r.lon); if(d<nearRetail){ nearRetail=d; if(d<40) break; } }
       // SITING GATE: keep only commercially-placeable cells — arterial frontage or
@@ -3202,7 +3221,14 @@ function _evalComputeAndRender(){
   _evalRenderSidebar();
 }
 function _evalClearLayers(){ for(const k in evalLayers){ if(evalLayers[k]){ map.removeLayer(evalLayers[k]); evalLayers[k]=null; } } }
-function _evalColor(t){ return t>0.62?'#639922':t>0.3?'#EF9F27':'#E24B4A'; }
+function _evalColor(t){
+  t=t<0?0:t>1?1:t;
+  // smooth red -> orange -> amber -> light-green -> green ramp (refined gradient,
+  // vs hard 3-colour buckets) so neighbouring cells blend into a clean surface
+  const stops=[[0,[224,68,68]],[0.35,[238,140,38]],[0.6,[244,196,48]],[0.8,[150,196,89]],[1,[60,138,40]]];
+  for(let i=1;i<stops.length;i++){ const b=stops[i]; if(t<=b[0]){ const a=stops[i-1], f=(t-a[0])/(b[0]-a[0]||1); return `rgb(${Math.round(a[1][0]+(b[1][0]-a[1][0])*f)},${Math.round(a[1][1]+(b[1][1]-a[1][1])*f)},${Math.round(a[1][2]+(b[1][2]-a[1][2])*f)})`; } }
+  return 'rgb(60,138,40)';
+}
 function _evalRenderLayers(){
   _evalClearLayers();
   if(evalShow.heat){
@@ -3270,6 +3296,14 @@ function _evalRenderSidebar(){
     <div class="eval-toggle-row">${chip('heat','Heatmap')}${chip('hoods','Neighborhoods')}${chip('retail','Retail')}${chip('comp','Competitor range')}</div>
     <div class="eval-cards">${cards}</div>
     <div class="eval-note">Sites are limited to arterial frontage and retail/commercial areas — subdivision interiors and rural land are excluded — so every pin is a placeable location. Competition counts every clinic within range, including ones just over the ZIP border.</div>
+    <div class="status-bar" id="status"></div>`;
+}
+function _evalRenderUnavailable(){
+  const sb=document.querySelector('.sidebar'); if(!sb) return;
+  sb.innerHTML=`
+    <div class="area-header"><span class="area-title">Placement analysis · ${evalZip}</span><button class="clear-area-btn" onclick="clearEvaluate()">Clear analysis</button></div>
+    <div class="eval-verdict"><span class="eval-warn" style="display:block">Couldn't load road &amp; retail data — OpenStreetMap (Overpass) is busy or rate-limited. Without it the tool can't tell commercial corridors from neighborhoods, so it won't guess.</span></div>
+    <div style="padding:4px 14px;"><button class="eval-btn" onclick="openEvaluate()">Retry analysis →</button></div>
     <div class="status-bar" id="status"></div>`;
 }
 function onEvalRadius(v){
