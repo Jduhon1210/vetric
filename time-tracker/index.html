@@ -96,6 +96,23 @@
   .t-actions{display:flex;gap:7px;align-items:center}
   .icon-btn{background:transparent;color:var(--faint);padding:9px;font-size:15px;line-height:1;border-radius:9px}
   .icon-btn:hover{color:var(--red);background:rgba(255,255,255,.06)}
+  .btn-danger-ghost{background:transparent;color:var(--red);border:1px solid rgba(251,113,133,.45)}
+  .btn-danger-ghost:hover{background:rgba(251,113,133,.14);filter:none}
+
+  /* Edit-time modal */
+  .modal-bg{position:fixed;inset:0;background:rgba(6,10,22,.66);backdrop-filter:blur(4px);
+    display:none;align-items:center;justify-content:center;z-index:50;padding:20px}
+  .modal-bg.open{display:flex}
+  .modal{background:var(--panel-solid);border:1px solid var(--line-strong);border-radius:var(--radius);
+    padding:24px;width:100%;max-width:360px;box-shadow:0 24px 60px rgba(0,0,0,.5)}
+  .modal h3{font-size:17px;font-weight:730;margin-bottom:4px}
+  .modal .msub{font-size:12.5px;color:var(--muted);margin-bottom:18px}
+  .modal-row{display:flex;gap:12px;margin-bottom:20px}
+  .modal-row label{flex:1;font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);font-weight:600}
+  .modal-row input{width:100%;margin-top:7px;background:rgba(0,0,0,.25);border:1px solid var(--line-strong);
+    border-radius:var(--radius-sm);color:var(--txt);padding:12px 14px;font-size:18px;font-weight:650;
+    font-variant-numeric:tabular-nums;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .modal-actions{display:flex;gap:10px;justify-content:flex-end}
 
   .empty{text-align:center;color:var(--muted);padding:64px 20px;font-size:15px;
     background:var(--panel);border:1px dashed var(--line-strong);border-radius:var(--radius)}
@@ -130,6 +147,7 @@
       <button class="btn-start" onclick="startAll()">▶ Start all</button>
       <button class="btn-stop" onclick="stopAll()">⏸ Stop all</button>
       <button class="btn-ghost" onclick="exportCSV()">⤓ Export</button>
+      <button class="btn-danger-ghost" onclick="clearAll()">🗑 Clear all</button>
     </div>
   </header>
 
@@ -147,6 +165,21 @@
   <div class="timers" id="timers"></div>
 
   <footer>Saved in your browser · Timers keep running even if you close the tab · Conclude rounds up to the next whole hour</footer>
+</div>
+
+<div class="modal-bg" id="editModal" onclick="if(event.target===this)closeEdit()">
+  <div class="modal">
+    <h3>Edit time</h3>
+    <div class="msub" id="editName"></div>
+    <div class="modal-row">
+      <label>Hours<input id="editH" type="number" min="0" inputmode="numeric" onkeydown="if(event.key==='Enter')saveEdit()"></label>
+      <label>Minutes<input id="editM" type="number" min="0" max="59" inputmode="numeric" onkeydown="if(event.key==='Enter')saveEdit()"></label>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-ghost" onclick="closeEdit()">Cancel</button>
+      <button class="btn-accent" onclick="saveEdit()">Save time</button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -198,18 +231,39 @@ function reopen(id){
   save(); render();
 }
 
-function resetTimer(id){
-  const t = timers.find(x=>x.id===id); if(!t) return;
-  if(!confirm('Reset "'+t.name+'" back to 0:00:00?')) return;
-  t.elapsed = 0; t.concluded = false; t.billedHours = 0;
-  t.startedAt = t.startedAt ? Date.now() : null;
-  save(); render();
-}
 function delTimer(id){
   const t = timers.find(x=>x.id===id);
   if(t && !confirm('Delete "'+t.name+'"?')) return;
   timers = timers.filter(x=>x.id!==id);
   save(); render();
+}
+function clearAll(){
+  if(timers.length === 0) return;
+  if(!confirm('Clear ALL companies and their tracked time?\nThis cannot be undone.')) return;
+  timers = []; lastHours = -1; lastActive = -1;
+  save(); render();
+}
+
+// ---- Edit time modal ----
+let editId = null;
+function openEdit(id){
+  const t = timers.find(x=>x.id===id); if(!t || t.concluded) return;
+  editId = id;
+  const ms = currentMs(t);
+  document.getElementById('editName').textContent = t.name;
+  document.getElementById('editH').value = Math.floor(ms/3600000);
+  document.getElementById('editM').value = Math.floor((ms%3600000)/60000);
+  document.getElementById('editModal').classList.add('open');
+  setTimeout(()=>document.getElementById('editH').select(), 0);
+}
+function closeEdit(){ editId = null; document.getElementById('editModal').classList.remove('open'); }
+function saveEdit(){
+  const t = timers.find(x=>x.id===editId); if(!t){ closeEdit(); return; }
+  const h = Math.max(0, parseInt(document.getElementById('editH').value, 10) || 0);
+  const m = Math.max(0, Math.min(59, parseInt(document.getElementById('editM').value, 10) || 0));
+  t.elapsed = (h*3600 + m*60) * 1000;
+  if(t.startedAt) t.startedAt = Date.now();  // keep a running timer counting from the new base
+  save(); render(); closeEdit();
 }
 
 function currentMs(t){ return t.elapsed + (t.startedAt ? Date.now() - t.startedAt : 0); }
@@ -237,10 +291,17 @@ function render(){
       } else {
         meta = `<span style="color:var(--faint)">not started</span>`;
       }
-      const mainBtn = t.concluded
-        ? `<button class="btn-ghost" onclick="reopen('${t.id}')">↺ Reopen</button>`
-        : `<button class="${running?'btn-stop':'btn-start'}" onclick="toggle('${t.id}')">${running?'⏸ Stop':'▶ Start'}</button>
+      let actions;
+      if(t.concluded){
+        actions = `<button class="btn-ghost" onclick="reopen('${t.id}')">↺ Reopen</button>`;
+      } else {
+        const paused = !running && t.elapsed > 0;
+        const lbl = running ? '⏸ Pause' : (paused ? '▶ Resume' : '▶ Start');
+        const cls = running ? 'btn-stop' : 'btn-start';
+        actions = `<button class="${cls}" onclick="toggle('${t.id}')">${lbl}</button>
+           <button class="btn-ghost" onclick="openEdit('${t.id}')">✎ Edit time</button>
            <button class="btn-conclude" onclick="conclude('${t.id}')">✓ Conclude</button>`;
+      }
       return `<div class="timer ${running?'running':''} ${t.concluded?'concluded':''}">
         <div class="dot"></div>
         <div>
@@ -249,8 +310,7 @@ function render(){
         </div>
         <div class="t-time" data-time="${t.id}">${fmt(currentMs(t))}</div>
         <div class="t-actions">
-          ${mainBtn}
-          <button class="icon-btn" title="Reset" onclick="resetTimer('${t.id}')">↺</button>
+          ${actions}
           <button class="icon-btn" title="Delete" onclick="delTimer('${t.id}')">✕</button>
         </div>
       </div>`;
