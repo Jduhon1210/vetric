@@ -499,7 +499,7 @@ body.dev-mode .search-bar{background:var(--amber-light);border-bottom-color:#fde
           <div class="set-row"><div class="set-name">Median income</div><div class="set-src">U.S. Census ACS 2022 5-year estimates (variable B19013), per ZIP (ZCTA).</div></div>
           <div class="set-row"><div class="set-name">Pet ownership density <span class="set-badge model">modeled</span></div><div class="set-src">Estimated per ZIP from the Texas statewide dog-ownership rate, adjusted by Census ACS 2022 housing data — not a direct pet survey.</div></div>
           <div class="set-row"><div class="set-name">Population growth</div><div class="set-src">U.S. Census ACS, 2021 vs 2024 5-year vintages on matching 2020-ZCTA boundaries (~3-year window for a valid same-boundary comparison).</div></div>
-          <div class="set-row"><div class="set-name">New construction</div><div class="set-src">U.S. Census ACS 2022 5-year (B25034) — share of a ZIP's homes built 2010 or later. A proxy for new rooftops / future demand.</div></div>
+          <div class="set-row"><div class="set-name">New construction</div><div class="set-src">U.S. Census ACS 2024 5-year (B25034, latest available) — share of a ZIP's homes built 2010 or later. A proxy for new rooftops / future demand.</div></div>
           <div class="set-row"><div class="set-name">Traffic counts (AADT) <span class="set-badge live">live</span></div><div class="set-src">TxDOT open data (ArcGIS) — annual average daily traffic at count stations across Texas.</div></div>
           <div class="set-row"><div class="set-name">Retail · roads · neighborhoods <span class="set-badge live">live</span></div><div class="set-src">OpenStreetMap via Overpass — shops, commercial &amp; residential land use, and arterial roads. Used by the Evaluate site analysis.</div></div>
 
@@ -2801,7 +2801,7 @@ let oppGeoSnap = null;
 let constructionData = {}; // zip -> 0..1
 async function ensureConstructionData(){
   if(Object.keys(constructionData).length) return;
-  const url='https://api.census.gov/data/2022/acs/acs5?get=B25034_001E,B25034_002E,B25034_003E&for=zip%20code%20tabulation%20area:*&key=3429f2401376a586a8f6ffc02bb5678ee32fbf44';
+  const url='https://api.census.gov/data/2024/acs/acs5?get=B25034_001E,B25034_002E,B25034_003E&for=zip%20code%20tabulation%20area:*&key=3429f2401376a586a8f6ffc02bb5678ee32fbf44';
   const res=await fetch(url,{cache:'force-cache'});
   if(!res.ok) throw new Error('Census construction API error');
   const rows=await res.json();
