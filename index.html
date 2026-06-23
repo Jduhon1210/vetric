@@ -246,6 +246,8 @@ body.dev-mode .search-bar{background:var(--amber-light);border-bottom-color:#fde
   backdrop-filter:blur(4px);
 }
 .income-legend.show{display:block;}
+.traffic-legend{position:absolute;bottom:36px;left:14px;background:rgba(255,255,255,0.97);border-radius:var(--radius-lg);padding:14px 16px;box-shadow:0 4px 20px rgba(0,0,0,.12);border:1px solid var(--border);z-index:500;display:none;min-width:178px;backdrop-filter:blur(4px);}
+.traffic-legend.show{display:block;}
 .legend-title{
   font-size:10px;font-weight:700;color:var(--muted);
   margin-bottom:10px;text-transform:uppercase;
@@ -329,6 +331,18 @@ body.dev-mode .search-bar{background:var(--amber-light);border-bottom-color:#fde
 .eval-toggle-row{display:flex;gap:6px;padding:0 12px 8px;flex-wrap:wrap;}
 .eval-chip{font-size:11px;border:1px solid var(--border2);border-radius:20px;padding:3px 10px;cursor:pointer;color:#64748b;background:#fff;user-select:none;}
 .eval-chip.on{background:var(--navy);color:#fff;border-color:var(--navy);}
+.eval-legend{position:absolute;bottom:26px;left:14px;background:rgba(255,255,255,0.97);border-radius:var(--radius-lg);padding:12px 14px;box-shadow:0 4px 20px rgba(0,0,0,.14);border:1px solid var(--border);z-index:500;min-width:188px;backdrop-filter:blur(4px);display:none;}
+.eval-legend.show{display:block;}
+.eval-legend .legend-grad{height:10px;border-radius:5px;background:linear-gradient(90deg,#3c8a28,#96c459,#f4c430,#ef9c27,#e04444);margin:2px 0 4px;}
+.eval-legend .legend-grad-lbl{display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted);margin-bottom:10px;font-weight:600;}
+.eval-leg-row{display:flex;align-items:center;gap:9px;font-size:12px;color:var(--text2);font-weight:500;margin-bottom:7px;}
+.eval-leg-row:last-child{margin-bottom:0;}
+.eval-sym{width:16px;flex-shrink:0;display:flex;align-items:center;justify-content:center;}
+.eval-sym-pin{width:15px;height:15px;border-radius:50%;background:var(--navy);border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.3);}
+.eval-sym-comp{width:11px;height:11px;border-radius:50%;background:#dc2626;border:1.5px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.12);}
+.eval-sym-ring{width:15px;height:15px;border-radius:50%;border:1.5px dashed #dc2626;}
+.eval-sym-hood{width:11px;height:11px;border-radius:50%;background:#22c55e;border:1px solid #15803d;}
+.eval-sym-retail{width:11px;height:11px;border-radius:50%;background:#3b82f6;border:1px solid #1d4ed8;}
 .filter-tabs{display:flex;padding:10px 16px;gap:6px;border-bottom:1px solid var(--border);flex-shrink:0;}
 .ftab{font-size:12px;font-weight:500;padding:5px 12px;border-radius:20px;border:1px solid var(--border2);background:var(--bg);color:var(--muted);cursor:pointer;transition:all .15s;letter-spacing:.01em;}
 .ftab:hover{border-color:var(--navy);color:var(--navy);}
@@ -554,14 +568,18 @@ body.dev-mode .search-bar{background:var(--amber-light);border-bottom-color:#fde
       </div>
       <div class="layer-status" id="property-status">Off</div>
     </div>
-    <div class="layer-item" style="opacity:.5">
+    <div class="layer-item">
       <div class="layer-row">
         <div>
-          <div class="layer-name">Population Growth</div>
-          <div class="layer-desc">Coming soon</div>
+          <div class="layer-name">Traffic Counts</div>
+          <div class="layer-desc">TxDOT annual average daily traffic (AADT) — vehicles/day at count stations; bigger &amp; darker = busier road</div>
         </div>
-        <label class="toggle"><input type="checkbox" disabled/><span class="toggle-slider"></span></label>
+        <label class="toggle" style="margin-left:12px">
+          <input type="checkbox" id="toggle-traffic" onchange="toggleTrafficLayer(this.checked)"/>
+          <span class="toggle-slider"></span>
+        </label>
       </div>
+      <div class="layer-status" id="traffic-status">Off</div>
     </div>
     <div class="layer-item" style="opacity:.5">
       <div class="layer-row">
@@ -607,6 +625,16 @@ body.dev-mode .search-bar{background:var(--amber-light);border-bottom-color:#fde
     </div>
   </div>
   <div class="dev-hint" id="dev-hint">Click anywhere on the map to add a clinic</div>
+  <div class="traffic-legend" id="traffic-legend">
+    <div class="legend-title">Traffic — vehicles/day (AADT)</div>
+    <div class="legend-scale">
+      <div class="legend-scale-item"><div class="legend-scale-color" style="background:#b30000"></div> 75k+</div>
+      <div class="legend-scale-item"><div class="legend-scale-color" style="background:#e34a33"></div> 30k – 75k</div>
+      <div class="legend-scale-item"><div class="legend-scale-color" style="background:#fc8d59"></div> 10k – 30k</div>
+      <div class="legend-scale-item"><div class="legend-scale-color" style="background:#fdbb84"></div> 2k – 10k</div>
+      <div class="legend-scale-item"><div class="legend-scale-color" style="background:#fee8c8"></div> under 2k</div>
+    </div>
+  </div>
   <div id="map"></div>
 
   <!-- ── Opportunity scoring panel ── -->
@@ -2180,6 +2208,65 @@ function renderPropertyLayer(){
     : 'No properties yet — use Dev Mode + Add Property to drop one';
 }
 
+/* ─── Traffic counts layer — TxDOT AADT (annual avg daily traffic) ─────────────
+   Point overlay fetched live from TxDOT's ArcGIS feature service (open CORS, no
+   key). Viewport-limited like the clinic fetch; each count station is a circle
+   sized + coloured by vehicles/day. Independent of the choropleth fills (it's
+   points, not a fill), so it can sit on top of any other layer. */
+const TRAFFIC_URL='https://services.arcgis.com/KTcxiTD9dsQw4r7Z/arcgis/rest/services/TxDOT_TPP_Annual_AADT_Data_(SPM_View)/FeatureServer/0/query';
+const TRAFFIC_MIN_ZOOM=11;
+let trafficLayer=null, trafficSeq=0;
+function _trafficColor(v){ return v>=75000?'#b30000':v>=30000?'#e34a33':v>=10000?'#fc8d59':v>=2000?'#fdbb84':'#fee8c8'; }
+function _trafficRadius(v){ return Math.max(3, Math.min(13, 2.5+Math.sqrt(v)/45)); }
+async function toggleTrafficLayer(on){
+  const status=document.getElementById('traffic-status');
+  const legend=document.getElementById('traffic-legend');
+  if(!on){
+    if(trafficLayer){ map.removeLayer(trafficLayer); trafficLayer=null; }
+    if(legend) legend.classList.remove('show');
+    status.textContent='Off';
+    return;
+  }
+  if(legend) legend.classList.add('show');
+  await fetchTraffic();
+}
+async function fetchTraffic(){
+  const toggle=document.getElementById('toggle-traffic');
+  if(!toggle || !toggle.checked) return;
+  const status=document.getElementById('traffic-status');
+  if(map.getZoom() < TRAFFIC_MIN_ZOOM){
+    if(trafficLayer){ map.removeLayer(trafficLayer); trafficLayer=null; }
+    status.textContent='Zoom in to load traffic';
+    return;
+  }
+  const myReq=++trafficSeq;
+  status.textContent='Loading traffic…';
+  const b=map.getBounds(), s=b.getSouth(), w=b.getWest(), n=b.getNorth(), e=b.getEast();
+  const params=`where=LATEST_AADT_QTY%3E0&geometry=${w},${s},${e},${n}&geometryType=esriGeometryEnvelope&inSR=4326&spatialRel=esriSpatialRelIntersects&outFields=LATEST_AADT_QTY,LATEST_AADT_YR,ON_ROAD&returnGeometry=true&outSR=4326&f=geojson&resultRecordCount=2000`;
+  try{
+    const res=await fetch(TRAFFIC_URL+'?'+params);
+    if(myReq!==trafficSeq) return; // superseded by a newer pan
+    const data=await res.json();
+    if(myReq!==trafficSeq) return;
+    if(trafficLayer){ map.removeLayer(trafficLayer); trafficLayer=null; }
+    const lg=L.layerGroup(); let count=0;
+    for(const f of (data.features||[])){
+      const c=f.geometry&&f.geometry.coordinates, v=f.properties&&f.properties.LATEST_AADT_QTY;
+      if(!c||v==null) continue;
+      const road=f.properties.ON_ROAD&&f.properties.ON_ROAD!=='-'?f.properties.ON_ROAD:'Road';
+      L.circleMarker([c[1],c[0]],{radius:_trafficRadius(v),color:'#fff',weight:0.7,fillColor:_trafficColor(v),fillOpacity:0.85})
+        .bindPopup(`<strong>${road}</strong><div class="income-tip-amount">${v.toLocaleString()} vehicles/day</div><div style="font-size:11px;color:#64748b">AADT · ${f.properties.LATEST_AADT_YR||''}</div>`,{maxWidth:220})
+        .addTo(lg);
+      count++;
+    }
+    lg.addTo(map); trafficLayer=lg;
+    status.textContent=`${count.toLocaleString()} count station${count!==1?'s':''} in view`;
+  }catch(err){
+    if(myReq!==trafficSeq) return;
+    status.textContent='Traffic data unavailable';
+    console.error('Traffic layer:', err);
+  }
+}
 function togglePropertyLayer(on){
   if(on){
     renderPropertyLayer();
@@ -2377,6 +2464,7 @@ map.on('moveend',()=>{
       updateClinicKpis();
       updateLayerKpis();
     }
+    fetchTraffic(); // refresh AADT points for the new view (no-op unless the layer is on)
     // Only reload if we've moved significantly outside the loaded area
     // (i.e. new viewport isn't fully contained within a buffered version of loaded bounds)
     if(loadedBounds){
@@ -3157,7 +3245,7 @@ function _evalComputeAndRender(){
   const hasRetail=evalDataOk.retail, hasRoads=evalDataOk.roads, hasResid=evalDataOk.resid;
   // Without road OR retail data we can't tell commercial corridors from
   // neighborhoods — refuse to paint a heatmap that could blanket houses. Retry.
-  if(!hasRoads && !hasRetail){ evalCells=[]; evalTop=[]; evalCompsCache=comps; _evalClearLayers(); _evalRenderUnavailable(); return; }
+  if(!hasRoads && !hasRetail){ evalCells=[]; evalTop=[]; evalCompsCache=comps; _evalClearLayers(); _evalHideLegend(); _evalRenderUnavailable(); return; }
   const haveDev=hasResid||hasRetail; // only mask rural land if we actually have OSM dev data
   // cheap lat-band prefilters (skip far points before the trig in hav)
   const band=m=>m/111000;
@@ -3262,7 +3350,24 @@ function _evalRenderLayers(){
     L.marker([g.la,g.lo],{icon:L.divIcon({className:'',html:`<div class="eval-pin">${i+1}</div>`,iconSize:[26,26],iconAnchor:[13,13]})}).addTo(pins);
   });
   pins.addTo(map); evalLayers.pins=pins;
+  _evalRenderLegend();
 }
+function _evalRenderLegend(){
+  let el=document.getElementById('eval-legend');
+  if(!el){ el=document.createElement('div'); el.id='eval-legend'; el.className='eval-legend'; (document.querySelector('.main')||document.body).appendChild(el); }
+  const rows=[];
+  rows.push(`<div class="eval-leg-row"><span class="eval-sym"><span class="eval-sym-pin"></span></span>Recommended site (top ${evalTop.length||5})</div>`);
+  rows.push(`<div class="eval-leg-row"><span class="eval-sym"><span class="eval-sym-comp"></span></span>Existing clinic (competitor)</div>`);
+  if(evalShow.comp) rows.push(`<div class="eval-leg-row"><span class="eval-sym"><span class="eval-sym-ring"></span></span>Competitor reach (${evalRadiusMi.toFixed(1)} mi)</div>`);
+  if(evalShow.hoods) rows.push(`<div class="eval-leg-row"><span class="eval-sym"><span class="eval-sym-hood"></span></span>Neighborhood (demand)</div>`);
+  if(evalShow.retail) rows.push(`<div class="eval-leg-row"><span class="eval-sym"><span class="eval-sym-retail"></span></span>Retail / commercial</div>`);
+  el.innerHTML=`
+    <div class="legend-title">Placement suitability</div>
+    ${evalShow.heat?`<div class="legend-grad"></div><div class="legend-grad-lbl"><span>Best site</span><span>Poor</span></div>`:''}
+    ${rows.join('')}`;
+  el.classList.add('show');
+}
+function _evalHideLegend(){ const el=document.getElementById('eval-legend'); if(el) el.classList.remove('show'); }
 function _evalRenderSidebar(){
   const sb=document.querySelector('.sidebar'); if(!sb) return;
   const hasRetail=evalDataOk.retail, hasRoads=evalDataOk.roads, hasResid=evalDataOk.resid;
@@ -3315,7 +3420,7 @@ function onEvalRadius(v){
 function evalToggle(k){ evalShow[k]=!evalShow[k]; _evalRenderLayers(); const sb=document.querySelector('.sidebar'); const c=sb&&sb.querySelector(`.eval-chip[onclick*="'${k}'"]`); if(c) c.classList.toggle('on', evalShow[k]); }
 function evalFlyTo(i){ const g=evalTop[i]; if(g) map.setView([g.la,g.lo], Math.max(map.getZoom(),14), {animate:true}); }
 function clearEvaluate(){
-  evalActive=false; _evalClearLayers();
+  evalActive=false; _evalClearLayers(); _evalHideLegend();
   evalData={vets:[], retail:[], resid:[], roads:[]}; evalDataOk={retail:false,roads:false,resid:false};
   evalCells=[]; evalTop=[]; evalCompsCache=[];
   if(selectedZips.size) applyZipSelection();
