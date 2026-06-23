@@ -659,24 +659,29 @@ body.dev-mode .search-bar{background:var(--amber-light);border-bottom-color:#fde
           <button class="opp-preset" onclick="oppPreset('growth')">High-growth</button>
         </div>
         <div class="weight-row">
-          <div class="weight-head"><span class="weight-name">Income</span><span class="weight-val" id="w-income-val">25%</span></div>
+          <div class="weight-head"><span class="weight-name">Income</span><span class="weight-val" id="w-income-val">20%</span></div>
           <div class="weight-desc">Higher median household income scores higher</div>
-          <input type="range" class="opp-slider" id="w-income" min="0" max="100" value="25" oninput="onWeightChange()"/>
+          <input type="range" class="opp-slider" id="w-income" min="0" max="100" value="20" oninput="onWeightChange()"/>
         </div>
         <div class="weight-row">
-          <div class="weight-head"><span class="weight-name">Pet demand</span><span class="weight-val" id="w-demand-val">25%</span></div>
+          <div class="weight-head"><span class="weight-name">Pet demand</span><span class="weight-val" id="w-demand-val">20%</span></div>
           <div class="weight-desc">More dog-owning households scores higher</div>
-          <input type="range" class="opp-slider" id="w-demand" min="0" max="100" value="25" oninput="onWeightChange()"/>
+          <input type="range" class="opp-slider" id="w-demand" min="0" max="100" value="20" oninput="onWeightChange()"/>
         </div>
         <div class="weight-row">
-          <div class="weight-head"><span class="weight-name">Low competition</span><span class="weight-val" id="w-comp-val">25%</span></div>
-          <div class="weight-desc">Fewer existing clinics scores higher (underserved markets)</div>
-          <input type="range" class="opp-slider" id="w-comp" min="0" max="100" value="25" oninput="onWeightChange()"/>
+          <div class="weight-head"><span class="weight-name">Underservice</span><span class="weight-val" id="w-comp-val">20%</span></div>
+          <div class="weight-desc">More pet households per existing clinic scores higher — demand the market can't yet serve (vs. raw clinic count)</div>
+          <input type="range" class="opp-slider" id="w-comp" min="0" max="100" value="20" oninput="onWeightChange()"/>
         </div>
         <div class="weight-row">
-          <div class="weight-head"><span class="weight-name">Population growth</span><span class="weight-val" id="w-growth-val">25%</span></div>
+          <div class="weight-head"><span class="weight-name">Population growth</span><span class="weight-val" id="w-growth-val">20%</span></div>
           <div class="weight-desc">Faster-growing ZIPs score higher (where demand is heading)</div>
-          <input type="range" class="opp-slider" id="w-growth" min="0" max="100" value="25" oninput="onWeightChange()"/>
+          <input type="range" class="opp-slider" id="w-growth" min="0" max="100" value="20" oninput="onWeightChange()"/>
+        </div>
+        <div class="weight-row">
+          <div class="weight-head"><span class="weight-name">New construction</span><span class="weight-val" id="w-cons-val">20%</span></div>
+          <div class="weight-desc">Higher share of recently-built homes scores higher (new rooftops = future demand)</div>
+          <input type="range" class="opp-slider" id="w-cons" min="0" max="100" value="20" oninput="onWeightChange()"/>
         </div>
         <div class="opp-divider"></div>
         <div class="weight-row">
@@ -2661,12 +2666,14 @@ function getOppWeights(){
   const wd=+document.getElementById('w-demand').value;
   const wc=+document.getElementById('w-comp').value;
   const wg=+document.getElementById('w-growth').value;
-  const sum=wi+wd+wc+wg || 1;
+  const wn=+document.getElementById('w-cons').value;
+  const sum=wi+wd+wc+wg+wn || 1;
   return {
     income: wi/sum,
     demand: wd/sum,
     comp:   wc/sum,
     growth: wg/sum,
+    cons:   wn/sum,
     peMult: (+document.getElementById('w-pe').value)/10 // 1.0×–4.0×
   };
 }
@@ -2676,26 +2683,29 @@ function onWeightChange(){
   const wd=+document.getElementById('w-demand').value;
   const wc=+document.getElementById('w-comp').value;
   const wg=+document.getElementById('w-growth').value;
-  const sum=wi+wd+wc+wg || 1;
+  const wn=+document.getElementById('w-cons').value;
+  const sum=wi+wd+wc+wg+wn || 1;
   document.getElementById('w-income-val').textContent=Math.round(wi/sum*100)+'%';
   document.getElementById('w-demand-val').textContent=Math.round(wd/sum*100)+'%';
   document.getElementById('w-comp-val').textContent=Math.round(wc/sum*100)+'%';
   document.getElementById('w-growth-val').textContent=Math.round(wg/sum*100)+'%';
+  document.getElementById('w-cons-val').textContent=Math.round(wn/sum*100)+'%';
   document.getElementById('w-pe-val').textContent=((+document.getElementById('w-pe').value)/10).toFixed(1)+'×';
   rescoreAndRender();
 }
 
 function oppPreset(kind){
-  const set=(i,d,c,g)=>{
+  const set=(i,d,c,g,n)=>{
     document.getElementById('w-income').value=i;
     document.getElementById('w-demand').value=d;
     document.getElementById('w-comp').value=c;
     document.getElementById('w-growth').value=g;
+    document.getElementById('w-cons').value=n;
   };
-  if(kind==='balanced')    set(25,25,25,25);
-  if(kind==='underserved') set(20,20,40,20);
-  if(kind==='cashflow')    set(40,25,20,15);
-  if(kind==='growth')      set(20,20,20,40);
+  if(kind==='balanced')    set(20,20,20,20,20);
+  if(kind==='underserved') set(15,15,40,15,15);
+  if(kind==='cashflow')    set(35,25,20,10,10);
+  if(kind==='growth')      set(15,15,15,25,30);
   onWeightChange();
 }
 
@@ -2704,7 +2714,25 @@ function oppPreset(kind){
 let oppIncomeSnap = {};
 let oppDogSnap = {};
 let oppGrowthSnap = {};
+let oppConstructionSnap = {};
 let oppGeoSnap = null;
+
+// New-construction signal: share of a ZIP's homes built 2010 or later (ACS B25034).
+// Forward-ish proxy for new rooftops → future pet demand. Fetched once, cached.
+let constructionData = {}; // zip -> 0..1
+async function ensureConstructionData(){
+  if(Object.keys(constructionData).length) return;
+  const url='https://api.census.gov/data/2022/acs/acs5?get=B25034_001E,B25034_002E,B25034_003E&for=zip%20code%20tabulation%20area:*&key=3429f2401376a586a8f6ffc02bb5678ee32fbf44';
+  const res=await fetch(url,{cache:'force-cache'});
+  if(!res.ok) throw new Error('Census construction API error');
+  const rows=await res.json();
+  rows.slice(1).forEach(r=>{
+    const zip=r[r.length-1]; // ZCTA is always the last column (vintage-safe, like growth)
+    const total=parseInt(r[0]), recent=parseInt(r[1])+parseInt(r[2]); // built 2010+
+    if(!total||isNaN(total)||isNaN(recent)) return;
+    constructionData[zip]=Math.max(0,Math.min(1,recent/total));
+  });
+}
 
 // Ensure income + pet + growth data are loaded, then compute base inputs per ZIP
 async function openOpportunity(){
@@ -2741,6 +2769,10 @@ async function openOpportunity(){
     if(!oppGeoSnap) oppGeoSnap = growthGeoData;
     oppGrowthSnap = {...growthData};
 
+    // New construction (ACS recent-build share) — standalone fetch (no layer), snapshot
+    try{ await ensureConstructionData(); }catch(e){}
+    oppConstructionSnap = {...constructionData};
+
     // Turn OFF all choropleths so landing on a ZIP shows the plain base map.
     if(growthLayer){ document.getElementById('toggle-growth').checked=false; await toggleGrowthLayer(false); }
     if(dogLayer){ document.getElementById('toggle-pets').checked=false; await toggleDogLayer(false); }
@@ -2764,6 +2796,7 @@ function buildOppBaseInputs(){
   const incSrc = Object.keys(oppIncomeSnap).length ? oppIncomeSnap : incomeData;
   const dogSrc = oppDogSnap;
   const growthSrc = Object.keys(oppGrowthSnap).length ? oppGrowthSnap : growthData;
+  const consSrc = Object.keys(oppConstructionSnap).length ? oppConstructionSnap : constructionData;
 
   // Cheap bbox + centroid straight from GeoJSON coords (no Leaflet objects)
   function rawBBox(f){
@@ -2794,6 +2827,7 @@ function buildOppBaseInputs(){
     const inc = incSrc[zip]!=null ? incSrc[zip] : null;
     const dog = dogSrc[zip]!=null ? dogSrc[zip] : null;
     const grow = growthSrc[zip]!=null ? growthSrc[zip] : null;
+    const cons = consSrc[zip]!=null ? consSrc[zip] : null;
     if(inc==null && dog==null && grow==null) continue; // no data — skip
 
     // Count clinics inside this ZIP polygon (bbox pre-filter for speed)
@@ -2811,7 +2845,7 @@ function buildOppBaseInputs(){
       if(pointInGeoJSON(cl.lat,cl.lon,f)) indCount++;
     }
 
-    rows.push({ zip, feat:f, city:(f.properties.city||f.properties.po_name||''), inc, dog, grow, peCount, indCount });
+    rows.push({ zip, feat:f, city:(f.properties.city||f.properties.po_name||''), inc, dog, grow, cons, peCount, indCount });
   }
   oppBaseRows=rows;
 }
@@ -2829,23 +2863,29 @@ function rescoreAndRender(){
   const incs=oppBaseRows.map(r=>r.inc).filter(v=>v!=null);
   const dogs=oppBaseRows.map(r=>r.dog).filter(v=>v!=null);
   const grows=oppBaseRows.map(r=>r.grow).filter(v=>v!=null);
-  const comps=oppBaseRows.map(r=> (r.peCount*w.peMult + r.indCount) );
+  const conss=oppBaseRows.map(r=>r.cons).filter(v=>v!=null);
+  // Underservice = pet households per (PE-weighted) clinic — high means demand the
+  // market can't yet serve. Demand-relative, so a small ZIP with few clinics no longer
+  // looks "open" just because the raw count is low.
+  const _under=r=> r.dog!=null ? r.dog/(r.peCount*w.peMult + r.indCount + 1) : null;
+  const unders=oppBaseRows.map(_under).filter(v=>v!=null);
 
   const mm=arr=>{ const mn=Math.min(...arr), mx=Math.max(...arr); return {mn,mx,rng:(mx-mn)||1}; };
   const incMM=incs.length?mm(incs):{mn:0,mx:1,rng:1};
   const dogMM=dogs.length?mm(dogs):{mn:0,mx:1,rng:1};
   const growMM=grows.length?mm(grows):{mn:0,mx:1,rng:1};
-  const compMM=mm(comps);
+  const consMM=conss.length?mm(conss):{mn:0,mx:1,rng:1};
+  const underMM=unders.length?mm(unders):{mn:0,mx:1,rng:1};
 
   oppScored=oppBaseRows.map(r=>{
     const fIncome = r.inc!=null ? (r.inc-incMM.mn)/incMM.rng*100 : 0;
     const fDemand = r.dog!=null ? (r.dog-dogMM.mn)/dogMM.rng*100 : 0;
     const fGrowth = r.grow!=null ? (r.grow-growMM.mn)/growMM.rng*100 : 0;
-    const compRaw = r.peCount*w.peMult + r.indCount;
-    // Invert competition: less competition → higher score
-    const fComp = 100 - ((compRaw-compMM.mn)/compMM.rng*100);
-    const score = fIncome*w.income + fDemand*w.demand + fComp*w.comp + fGrowth*w.growth;
-    return { ...r, fIncome, fDemand, fComp, fGrowth, score };
+    const fCons   = r.cons!=null ? (r.cons-consMM.mn)/consMM.rng*100 : 0;
+    const u=_under(r);
+    const fComp = u!=null ? (u-underMM.mn)/underMM.rng*100 : 0; // underservice — higher is better
+    const score = fIncome*w.income + fDemand*w.demand + fComp*w.comp + fGrowth*w.growth + fCons*w.cons;
+    return { ...r, fIncome, fDemand, fComp, fGrowth, fCons, score };
   }).sort((a,b)=>b.score-a.score);
 
   renderOppList();
@@ -2870,8 +2910,9 @@ function renderOppList(){
           <div class="opp-fbar"><i style="width:${r.fDemand.toFixed(0)}%;background:#4338ca"></i></div>
           <div class="opp-fbar"><i style="width:${r.fComp.toFixed(0)}%;background:#b45309"></i></div>
           <div class="opp-fbar"><i style="width:${(r.fGrowth||0).toFixed(0)}%;background:#0d9488"></i></div>
+          <div class="opp-fbar"><i style="width:${(r.fCons||0).toFixed(0)}%;background:#7c3aed"></i></div>
         </div>
-        <div class="opp-flabel"><span>Income</span><span>Demand</span><span>Low comp</span><span>Growth</span></div>
+        <div class="opp-flabel"><span>Income</span><span>Demand</span><span>Underserved</span><span>Growth</span><span>New build</span></div>
       </div>
       <div class="opp-score" style="background:${col}">${Math.round(r.score)}</div>
     </div>`;
