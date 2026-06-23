@@ -3115,15 +3115,16 @@ function updateLayerKpis(){
      • low competition     — border-aware gravity over EVERY clinic within the
        catchment radius (incl. ones just over the ZIP line), PE weighted 1.6x
      • retail access       — gravity to shops + commercial land use
-     • road access         — proximity to an arterial road (visibility/access)
+     • road visibility     — TxDOT traffic volume (AADT) on the frontage road
+       (falls back to road class) — the drive-by / new-client signal
    Rural mask: a candidate with no residential/commercial/retail within ~1mi is
    dropped. Degrades gracefully — any layer Overpass can't return is dropped and
    its weight redistributed; competition always works (statewide PE set). */
 let evalActive=false, evalZip=null, evalFeat=null, evalRadiusMi=3, evalZipAffluence=0.5;
 let evalShow={heat:true, comp:true, retail:false, hoods:false}; // competitor range rings on by default — they show why border ZIPs are contested
 let evalLayers={heat:null, comp:null, retail:null, hoods:null, pins:null};
-let evalData={vets:[], retail:[], resid:[], roads:[]};
-let evalDataOk={retail:false, roads:false, resid:false};
+let evalData={vets:[], retail:[], resid:[], roads:[], aadt:[]};
+let evalDataOk={retail:false, roads:false, resid:false, aadt:false};
 let evalCells=[], evalTop=[], evalCompsCache=[], evalRecalcTimer=null;
 const EVAL_W={demand:0.30, comp:0.30, retail:0.22, access:0.18};
 const EVAL_TOP_N=5;
@@ -3139,6 +3140,14 @@ function _segDistM(la,lo,s){
   const px=ax+t*dx, py=ay+t*dy;
   return Math.sqrt(px*px+py*py);
 }
+// Road VISIBILITY from traffic volume (TxDOT AADT). Saturating log curve: a busy
+// commercial arterial is far more visible / drive-by than a quiet street, but past
+// ~60k vehicles/day the marginal new-client value plateaus (and freeway access gets
+// awkward), so we stop rewarding it. This is the revenue lever — visibility drives
+// new-client acquisition, so a high-traffic frontage lifts the site's score.
+function _aadtVis(v){ if(!(v>0)) return null; return Math.max(0, Math.min(1, (Math.log10(v)-3)/(Math.log10(60000)-3))); }
+// Fallback when no traffic count sits near a cell: OSM road class as a coarse proxy.
+function _clsVis(c){ return c>=5?0.82:c>=4?0.66:c>=3?0.44:c>=2?0.26:0.15; }
 
 function _evalBBox(feat){
   let minLa=90,maxLa=-90,minLo=180,maxLo=-180;
@@ -3190,8 +3199,8 @@ async function _overpass(query){
 // Two best-effort Overpass passes for the buffered area: (A) vets, shops,
 // residential + commercial land use, named places; (B) arterial road geometry.
 async function _evalFetchContext(feat, setStage){
-  evalData={vets:[], retail:[], resid:[], roads:[]};
-  evalDataOk={retail:false, roads:false, resid:false};
+  evalData={vets:[], retail:[], resid:[], roads:[], aadt:[]};
+  evalDataOk={retail:false, roads:false, resid:false, aadt:false};
   const {s,n,w,e}=_evalBuffer(feat, Math.max(evalRadiusMi,3));
   const bbox=`(${s},${w},${n},${e})`;
   if(setStage) setStage('fetching clinics, retail & neighborhoods…');
@@ -3212,16 +3221,31 @@ async function _evalFetchContext(feat, setStage){
     evalDataOk.resid=evalData.resid.length>0;
   }
   if(!evalActive) return;
-  if(setStage) setStage('mapping road access…');
+  if(setStage) setStage('mapping road network…');
   const qb=`[out:json][timeout:30];(way["highway"~"^(motorway|trunk|primary|secondary|tertiary)$"]${bbox};);out geom 5000;`;
   const db=await _overpass(qb);
   if(db){
+    const clsMap={motorway:5,trunk:5,primary:4,secondary:3,tertiary:2};
     const segs=[];
-    for(const el of db.elements){ const g=el.geometry; if(!g) continue; for(let i=0;i+1<g.length;i++) segs.push({aLat:g[i].lat,aLon:g[i].lon,bLat:g[i+1].lat,bLon:g[i+1].lon}); }
+    for(const el of db.elements){ const g=el.geometry; if(!g) continue; const cls=clsMap[el.tags&&el.tags.highway]||2; for(let i=0;i+1<g.length;i++) segs.push({aLat:g[i].lat,aLon:g[i].lon,bLat:g[i+1].lat,bLon:g[i+1].lon,cls}); }
     const stride=Math.max(1,Math.ceil(segs.length/6000));
     evalData.roads = stride>1 ? segs.filter((_,i)=>i%stride===0) : segs;
     evalDataOk.roads=evalData.roads.length>0;
   }
+  if(!evalActive) return;
+  // TxDOT traffic counts (AADT) — turns "near an arterial" into "near a HIGH-TRAFFIC
+  // arterial", the real drive-by visibility signal. Best-effort; cells with no nearby
+  // count fall back to road class.
+  if(setStage) setStage('weighing road traffic…');
+  try{
+    const params=`where=LATEST_AADT_QTY%3E0&geometry=${w},${s},${e},${n}&geometryType=esriGeometryEnvelope&inSR=4326&spatialRel=esriSpatialRelIntersects&outFields=LATEST_AADT_QTY,ON_ROAD&returnGeometry=true&outSR=4326&f=geojson&resultRecordCount=4000`;
+    const ctrl=new AbortController(), to=setTimeout(()=>ctrl.abort(),20000);
+    const res=await fetch(TRAFFIC_URL+'?'+params,{signal:ctrl.signal}); clearTimeout(to);
+    if(res.ok){ const d=await res.json(); const arr=[];
+      for(const f of (d.features||[])){ const c=f.geometry&&f.geometry.coordinates, v=f.properties&&f.properties.LATEST_AADT_QTY; if(c&&v!=null) arr.push({lat:c[1],lon:c[0],v,road:(f.properties.ON_ROAD&&f.properties.ON_ROAD!=='-')?f.properties.ON_ROAD:null}); }
+      evalData.aadt=arr; evalDataOk.aadt=arr.length>0;
+    }
+  }catch(e){}
 }
 async function openEvaluate(){
   if(selectedZips.size!==1){ vfToast('Select a single ZIP to evaluate placement.'); return; }
@@ -3242,7 +3266,7 @@ function _evalComputeAndRender(){
   const R=evalRadiusMi*1609.344;
   const RET_R=1609.344, DEM_R=4000, ACC_R=900, DEVGATE=1700; // metres
   const comps=_evalCompetitors(feat, evalRadiusMi);
-  const hasRetail=evalDataOk.retail, hasRoads=evalDataOk.roads, hasResid=evalDataOk.resid;
+  const hasRetail=evalDataOk.retail, hasRoads=evalDataOk.roads, hasResid=evalDataOk.resid, hasAADT=evalDataOk.aadt;
   // Without road OR retail data we can't tell commercial corridors from
   // neighborhoods — refuse to paint a heatmap that could blanket houses. Retry.
   if(!hasRoads && !hasRetail){ evalCells=[]; evalTop=[]; evalCompsCache=comps; _evalClearLayers(); _evalHideLegend(); _evalRenderUnavailable(); return; }
@@ -3250,6 +3274,7 @@ function _evalComputeAndRender(){
   // cheap lat-band prefilters (skip far points before the trig in hav)
   const band=m=>m/111000;
   const bR=band(R), bDem=band(DEM_R), bRet=band(RET_R), bAcc=band(ACC_R), bGate=band(DEVGATE);
+  const VIS_R=450, bVis=band(VIS_R); // frontage-traffic search radius for AADT
   const SITE_ROAD=200, SITE_COMM=280; // metres — a clinic sits ON arterial frontage (tight, so the heatmap never bleeds into a subdivision interior) or in a retail/commercial area
   const canGate=hasRoads||hasRetail;
   const cellsAcross=36;
@@ -3259,7 +3284,7 @@ function _evalComputeAndRender(){
     for(let lo=bb.minLo+stepLo/2; lo<bb.maxLo; lo+=stepLo){
       if(!pointInGeoJSON(la,lo,feat)) continue;
       // nearest arterial via point→segment distance (siting gate + road-access score)
-      let nearRoad=Infinity; for(const s of evalData.roads){ if(Math.abs(s.aLat-la)>bAcc && Math.abs(s.bLat-la)>bAcc) continue; const d=_segDistM(la,lo,s); if(d<nearRoad){ nearRoad=d; if(d<30) break; } }
+      let nearRoad=Infinity, nearCls=2; for(const s of evalData.roads){ if(Math.abs(s.aLat-la)>bAcc && Math.abs(s.bLat-la)>bAcc) continue; const d=_segDistM(la,lo,s); if(d<nearRoad){ nearRoad=d; nearCls=s.cls||2; if(d<30) break; } }
       // nearest retail / commercial (siting gate)
       let nearRetail=Infinity; for(const r of evalData.retail){ if(Math.abs(r.lat-la)>bRet) continue; const d=hav(la,lo,r.lat,r.lon); if(d<nearRetail){ nearRetail=d; if(d<40) break; } }
       // SITING GATE: keep only commercially-placeable cells — arterial frontage or
@@ -3270,13 +3295,16 @@ function _evalComputeAndRender(){
       if(canGate) siteable=(hasRoads && nearRoad<SITE_ROAD)||(hasRetail && nearRetail<SITE_COMM);
       else { let nd=Infinity; for(const r of evalData.resid){ if(Math.abs(r.lat-la)>bGate) continue; const d=hav(la,lo,r.lat,r.lon); if(d<nd)nd=d; } siteable=!haveDev||nd<=DEVGATE; }
       if(!siteable) continue;
+      // frontage traffic: busiest AADT station within ~450m = the road this cell fronts
+      let aadt=0, aadtRoad=null;
+      for(const a of evalData.aadt){ if(Math.abs(a.lat-la)>bVis) continue; const d=hav(la,lo,a.lat,a.lon); if(d<VIS_R && a.v>aadt){ aadt=a.v; aadtRoad=a.road; } }
       // neighborhood demand — the rooftops within ~2.5mi this site can draw from
       let dem=0; for(const r of evalData.resid){ if(Math.abs(r.lat-la)>bDem) continue; const d=hav(la,lo,r.lat,r.lon); if(d<DEM_R) dem+=(r.w||1)*_grav(d,DEM_R); }
       // retail access (co-tenancy / visibility)
       let ret=0; for(const r of evalData.retail){ if(Math.abs(r.lat-la)>bRet) continue; const d=hav(la,lo,r.lat,r.lon); if(d<RET_R) ret+=(r.area?0.6:1)*_grav(d,RET_R); }
       // competition (border-aware gravity); scan all comps for the true nearest readout
       let comp=0, nearC=Infinity; for(const c of comps){ const d=hav(la,lo,c.lat,c.lon); if(d<nearC)nearC=d; if(d<R) comp+=(c.pe?1.6:1)*_grav(d,R); }
-      grid.push({la,lo,dem,ret,comp,nearC,nearRoad,stepLa,stepLo});
+      grid.push({la,lo,dem,ret,comp,nearC,nearRoad,nearCls,aadt,aadtRoad,stepLa,stepLo});
     }
   evalCompsCache=comps;
   if(!grid.length){ evalCells=[]; evalTop=[]; _evalRenderLayers(); _evalRenderSidebar(); return; }
@@ -3285,14 +3313,19 @@ function _evalComputeAndRender(){
   for(const g of grid){
     g.demandN = hasResid ? 0.55*(g.dem/maxDem)+0.45*evalZipAffluence : evalZipAffluence;
     g.retailN = hasRetail ? g.ret/maxRet : 0.5;
-    g.accessN = hasRoads ? Math.max(0,1-g.nearRoad/ACC_R) : 0.5;
+    // Road VISIBILITY: traffic volume on the frontage road (AADT) when a count is
+    // near, else road class as a proxy. The drive-by / new-client revenue signal —
+    // a busy commercial arterial is worth far more than a quiet street.
+    const av = g.aadt>0 ? _aadtVis(g.aadt) : null;
+    g.accessN = av!=null ? av : ((hasRoads||hasAADT) ? _clsVis(g.nearCls) : 0.5);
     g.lowComp = 1-g.comp/maxComp;
     // Core: a clinic needs BOTH customers and low competition — a competition-free
     // pocket with nobody around is not a good site, so these multiply into the base.
     const core = 0.55*g.demandN + 0.45*g.lowComp;
-    // Modifiers: weak road access discounts up to 35%; nearby retail is a bonus.
+    // Modifiers: low road visibility discounts up to 35%; a busy high-traffic frontage
+    // lifts the score up to ~5% (the revenue payoff). Retail co-tenancy is a bonus.
     // Each defaults to neutral (=1) when its layer is missing so it can't sink every site.
-    const accessMult = hasRoads ? 0.65+0.35*g.accessN : 1;
+    const accessMult = (hasRoads||hasAADT) ? 0.65+0.40*g.accessN : 1;
     const retailBonus = hasRetail ? 0.88+0.24*g.retailN : 1;
     g.score = Math.max(0, Math.min(1, core*accessMult*retailBonus));
   }
@@ -3370,19 +3403,21 @@ function _evalRenderLegend(){
 function _evalHideLegend(){ const el=document.getElementById('eval-legend'); if(el) el.classList.remove('show'); }
 function _evalRenderSidebar(){
   const sb=document.querySelector('.sidebar'); if(!sb) return;
-  const hasRetail=evalDataOk.retail, hasRoads=evalDataOk.roads, hasResid=evalDataOk.resid;
+  const hasRetail=evalDataOk.retail, hasRoads=evalDataOk.roads, hasResid=evalDataOk.resid, hasAADT=evalDataOk.aadt;
   const bar=(label,v,on)=>`<div class="eval-bar"><span>${label}</span><span class="eval-track"><span style="width:${on?Math.round(Math.max(0,Math.min(1,v))*100):0}%;background:${!on?'#cbd5e1':v>0.6?'#639922':v>0.35?'#BA7517':'#dc2626'}"></span></span></div>`;
   const cards=evalTop.map((g,i)=>{
     const headline=Math.round(g.score*100);
     const nearStr = isFinite(g.nearC) ? (g.nearC/1609.344).toFixed(1)+' mi to nearest clinic' : 'no clinics nearby';
-    const roadStr = hasRoads ? (g.nearRoad<160?'on an arterial':(g.nearRoad/1609.344).toFixed(1)+' mi to arterial') : '';
+    const kfmt=v=>v>=10000?Math.round(v/1000)+'k':v>=1000?(v/1000).toFixed(1)+'k':String(v);
+    const roadStr = g.aadt>0 ? `~${kfmt(g.aadt)} cars/day${g.aadtRoad?' · '+g.aadtRoad:''}`
+                  : (hasRoads ? (g.nearRoad<160?'on an arterial':(g.nearRoad/1609.344).toFixed(1)+' mi to arterial') : '');
     return `<div class="eval-card" onclick="evalFlyTo(${i})">
       <div class="eval-card-head"><span class="eval-rank">${i+1}</span><span class="eval-card-title">Site ${i+1}</span><span class="eval-score">${headline}</span></div>
       <div class="eval-why">${nearStr}${roadStr?' · '+roadStr:''}</div>
       ${bar('Neighborhood demand', g.demandN, true)}
       ${bar('Low competition', g.lowComp, true)}
       ${bar('Retail access', g.retailN, hasRetail)}
-      ${bar('Road access', g.accessN, hasRoads)}
+      ${bar('Road visibility', g.accessN, hasRoads||hasAADT)}
     </div>`;
   }).join('') || '<div class="empty">No developed, buildable spots in this ZIP — it may be largely rural.</div>';
   const chip=(k,label)=>`<span class="eval-chip ${evalShow[k]?'on':''}" onclick="evalToggle('${k}')">${label}</span>`;
@@ -3400,7 +3435,7 @@ function _evalRenderSidebar(){
     </div>
     <div class="eval-toggle-row">${chip('heat','Heatmap')}${chip('hoods','Neighborhoods')}${chip('retail','Retail')}${chip('comp','Competitor range')}</div>
     <div class="eval-cards">${cards}</div>
-    <div class="eval-note">Sites are limited to arterial frontage and retail/commercial areas — subdivision interiors and rural land are excluded — so every pin is a placeable location. Competition counts every clinic within range, including ones just over the ZIP border.</div>
+    <div class="eval-note">Sites are limited to arterial frontage and retail/commercial areas — interiors and rural land excluded. Road visibility is weighted by TxDOT traffic counts (AADT), so a busier frontage scores higher${hasAADT?'':' (traffic data unavailable here — using road class)'}. Competition counts every clinic within range, including ones just over the ZIP border.</div>
     <div class="status-bar" id="status"></div>`;
 }
 function _evalRenderUnavailable(){
@@ -3421,7 +3456,7 @@ function evalToggle(k){ evalShow[k]=!evalShow[k]; _evalRenderLayers(); const sb=
 function evalFlyTo(i){ const g=evalTop[i]; if(g) map.setView([g.la,g.lo], Math.max(map.getZoom(),14), {animate:true}); }
 function clearEvaluate(){
   evalActive=false; _evalClearLayers(); _evalHideLegend();
-  evalData={vets:[], retail:[], resid:[], roads:[]}; evalDataOk={retail:false,roads:false,resid:false};
+  evalData={vets:[], retail:[], resid:[], roads:[], aadt:[]}; evalDataOk={retail:false,roads:false,resid:false,aadt:false};
   evalCells=[]; evalTop=[]; evalCompsCache=[];
   if(selectedZips.size) applyZipSelection();
   else { markers.forEach(m=>setMarkerVisible(m,true)); renderNormalSidebar(); }
