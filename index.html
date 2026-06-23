@@ -438,6 +438,7 @@ body.dev-mode .search-bar{background:var(--amber-light);border-bottom-color:#fde
     <nav class="nav-links">
       <button class="nav-link active" data-section="map" onclick="switchSection('map')">Map</button>
       <button class="nav-link" data-section="opportunity" onclick="switchSection('opportunity')">Opportunity</button>
+      <button class="nav-link" data-section="acquisitions" onclick="switchSection('acquisitions')">Acquisitions</button>
       <button class="nav-link" data-section="properties" onclick="switchSection('properties')">Properties</button>
       <button class="nav-link" data-section="reports" onclick="switchSection('reports')">Reports<span class="soon">soon</span></button>
     </nav>
@@ -2425,7 +2426,12 @@ async function fetchClinics(){
     setStatus(`${inView.length} shown · map service busy, retrying on next move`,true);
   }
   showPill('');
-  if(evalActive){
+  if(acqMode){
+    // Acquisitions mode owns the sidebar — re-rank with the newly-loaded clinics.
+    renderAcquisitions();
+    updateClinicKpis();
+    updateLayerKpis();
+  } else if(evalActive){
     // Evaluate mode owns the sidebar + map layers — fold any newly-loaded clinics
     // into the competition set without disturbing the analysis UI.
     markers.forEach(m=>setMarkerVisible(m,false));
@@ -2465,6 +2471,7 @@ map.on('moveend',()=>{
       updateLayerKpis();
     }
     fetchTraffic(); // refresh AADT points for the new view (no-op unless the layer is on)
+    if(acqMode) renderAcquisitions(); // re-rank acquisition targets for the new view
     // Only reload if we've moved significantly outside the loaded area
     // (i.e. new viewport isn't fully contained within a buffered version of loaded bounds)
     if(loadedBounds){
@@ -2547,6 +2554,7 @@ const SECTION_MSG={
   reports:'Reports are coming in a later phase.'
 };
 function switchSection(s){
+  if(acqMode && s!=='acquisitions') exitAcquisitions();
   document.querySelectorAll('.nav-link').forEach(n=>n.classList.toggle('active',n.dataset.section===s));
   const opp=document.getElementById('opp-panel');
   if(s==='map'){
@@ -2558,11 +2566,69 @@ function switchSection(s){
     openOpportunity();
     return;
   }
+  if(s==='acquisitions'){
+    opp.classList.remove('show');
+    enterAcquisitions();
+    return;
+  }
   // properties / reports — not built yet; revert nav to map
   opp.classList.remove('show');
   document.querySelectorAll('.nav-link').forEach(n=>n.classList.toggle('active',n.dataset.section==='map'));
   vfToast(SECTION_MSG[s]||'Coming soon.');
 }
+
+/* ─── Acquisitions — rank independent (acquirable) clinics as roll-up targets ───
+   v1 scores each independent in view from clinic positions only (no extra data):
+     • roll-up base — Whitespace favors clinics with little PE nearby (be first);
+       Tuck-in favors clinics near existing PE platforms (easy to integrate)
+     • cluster      — more independents nearby = more to roll up
+   Market quality, ratings, and owner-age/succession come as datasets are added. */
+let acqMode=false, acqRollup='whitespace';
+const ACQ_RADIUS_MI=5;
+function _acqRank(){
+  const b=map.getBounds();
+  const inView=clinics.filter(c=>!c.pe && b.contains([c.lat,c.lon]));
+  const R=ACQ_RADIUS_MI*1609.344, bandLat=0.09;
+  const peSet=(peLoaded && typeof PE_COORDS!=='undefined')?PE_COORDS:[];
+  const indAll=clinics.filter(c=>!c.pe);
+  const rows=inView.map(c=>{
+    let peNear=0; for(const p of peSet){ if(Math.abs(p[0]-c.lat)>bandLat) continue; if(hav(c.lat,c.lon,p[0],p[1])<R) peNear++; }
+    let indNear=0; for(const o of indAll){ if(o===c||Math.abs(o.lat-c.lat)>bandLat) continue; if(hav(c.lat,c.lon,o.lat,o.lon)<R) indNear++; }
+    return {c, peNear, indNear};
+  });
+  const maxPe=Math.max(1,...rows.map(r=>r.peNear)), maxInd=Math.max(1,...rows.map(r=>r.indNear));
+  for(const r of rows){
+    const base = acqRollup==='tuckin' ? r.peNear/maxPe : 1-r.peNear/maxPe;
+    r.score = 0.6*base + 0.4*(r.indNear/maxInd);
+  }
+  rows.sort((a,b)=>b.score-a.score);
+  return rows;
+}
+function renderAcquisitions(){
+  const sb=document.querySelector('.sidebar'); if(!sb) return;
+  const rows=_acqRank();
+  const cards=rows.slice(0,40).map(r=>{
+    const i=clinics.indexOf(r.c);
+    return `<div class="card" id="c${i}" onclick="focusClinic(${i})">
+      <div class="card-body">
+        <div class="card-name">${r.c.name}</div>
+        <div class="card-meta"><span class="tag-ind">Independent</span><span class="card-dist" style="font-weight:600;color:#15803d">${Math.round(r.score*100)}</span></div>
+        <div style="font-size:11px;color:#64748b;margin-top:3px">${r.peNear} PE · ${r.indNear} independent within ${ACQ_RADIUS_MI} mi</div>
+      </div>
+    </div>`;
+  }).join('') || '<div class="empty">No independent clinics in view.<br>Pan or search a city to load targets.</div>';
+  const chip=(k,label)=>`<span class="eval-chip ${acqRollup===k?'on':''}" onclick="setAcqRollup('${k}')">${label}</span>`;
+  sb.innerHTML=`
+    <div class="area-header"><span class="area-title">Acquisition Targets</span><span style="font-size:12px;color:#64748b;font-weight:600">${rows.length}</span></div>
+    <div class="eval-verdict">Independent clinics in view, ranked as roll-up targets.</div>
+    <div class="eval-toggle-row">${chip('whitespace','Whitespace')}${chip('tuckin','Tuck-in')}</div>
+    <div class="eval-cards">${cards}</div>
+    <div class="eval-note">Whitespace favors clinics in markets with little PE presence (be first); Tuck-in favors clinics near your existing PE platforms (easy to integrate). Both reward nearby independent clusters. Market quality, ratings &amp; owner-age are coming as more data is added.</div>
+    <div class="status-bar" id="status"></div>`;
+}
+function setAcqRollup(k){ if(acqRollup===k) return; acqRollup=k; renderAcquisitions(); }
+function enterAcquisitions(){ acqMode=true; renderAcquisitions(); }
+function exitAcquisitions(){ acqMode=false; renderNormalSidebar(); }
 
 /* ─── Opportunity scoring ─────────────────────────────────────────────────────
    Scope: a fixed North Texas (DFW) region. Score = weighted blend of three
