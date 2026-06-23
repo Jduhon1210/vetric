@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BillClock — Time Tracker</title>
+<style>
+  :root{
+    --bg0:#0b1020; --bg1:#10172b;
+    --panel:rgba(255,255,255,.04); --panel-solid:#151d33;
+    --line:rgba(255,255,255,.09); --line-strong:rgba(255,255,255,.16);
+    --txt:#eef2fb; --muted:#93a0bd; --faint:#5d6b8a;
+    --accent:#6aa8ff; --accent2:#9d7bff;
+    --green:#34d399; --green-d:#0f3d2e;
+    --red:#fb7185; --amber:#fbbf24;
+    --radius:18px; --radius-sm:11px;
+    --shadow:0 10px 30px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif;
+    color:var(--txt);
+    background:
+      radial-gradient(1100px 600px at 12% -8%, rgba(106,168,255,.16), transparent 60%),
+      radial-gradient(900px 500px at 100% 0%, rgba(157,123,255,.14), transparent 55%),
+      linear-gradient(180deg,var(--bg0),var(--bg1));
+    background-attachment:fixed;
+    min-height:100vh;padding:28px 20px 60px;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:880px;margin:0 auto}
+
+  /* Header */
+  header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:18px;margin-bottom:26px}
+  .brand{display:flex;align-items:center;gap:14px}
+  .logo{width:46px;height:46px;border-radius:13px;
+    background:linear-gradient(135deg,var(--accent),var(--accent2));
+    display:flex;align-items:center;justify-content:center;
+    box-shadow:0 8px 22px rgba(106,168,255,.4)}
+  .logo svg{width:24px;height:24px}
+  h1{font-size:21px;font-weight:750;letter-spacing:-.3px}
+  .sub{font-size:12.5px;color:var(--muted);margin-top:1px}
+  .toolbar{display:flex;gap:9px;flex-wrap:wrap}
+
+  /* Buttons */
+  button{font-family:inherit;font-size:13.5px;font-weight:650;cursor:pointer;border:none;
+    border-radius:11px;padding:10px 15px;color:#fff;display:inline-flex;align-items:center;gap:7px;
+    transition:transform .07s ease, filter .15s ease, background .15s ease, opacity .15s}
+  button:active{transform:translateY(1px) scale(.985)}
+  .btn-start{background:linear-gradient(135deg,#34d399,#10b981)}
+  .btn-stop{background:linear-gradient(135deg,#fb7185,#ef4444)}
+  .btn-accent{background:linear-gradient(135deg,var(--accent),var(--accent2));box-shadow:0 6px 16px rgba(106,168,255,.32)}
+  .btn-ghost{background:var(--panel);color:var(--txt);border:1px solid var(--line-strong)}
+  .btn-ghost:hover{background:rgba(255,255,255,.08)}
+  .btn-conclude{background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#3a2606}
+  button:hover{filter:brightness(1.06)}
+
+  /* Summary */
+  .summary{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:24px}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    padding:18px 18px 16px;backdrop-filter:blur(8px);box-shadow:var(--shadow)}
+  .stat .k{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.9px;font-weight:600}
+  .stat .v{font-size:27px;font-weight:760;margin-top:8px;font-variant-numeric:tabular-nums;letter-spacing:-.5px}
+  .stat .v small{font-size:14px;color:var(--muted);font-weight:600;margin-left:3px}
+  .stat.hl .v{background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+
+  /* Add row */
+  .add-card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    padding:12px;margin-bottom:22px;display:flex;gap:10px;flex-wrap:wrap;backdrop-filter:blur(8px)}
+  .add-card input{flex:1;min-width:180px;background:rgba(0,0,0,.22);border:1px solid var(--line-strong);
+    border-radius:var(--radius-sm);color:var(--txt);padding:12px 15px;font-size:14.5px;font-family:inherit}
+  .add-card input::placeholder{color:var(--faint)}
+  input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(106,168,255,.18)}
+
+  /* Timer list */
+  .timers{display:flex;flex-direction:column;gap:13px}
+  .timer{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    padding:18px 20px;display:grid;grid-template-columns:auto 1fr auto auto;align-items:center;gap:18px;
+    backdrop-filter:blur(8px);box-shadow:var(--shadow);transition:border-color .2s, box-shadow .2s, opacity .2s}
+  .timer.running{border-color:rgba(52,211,153,.55);box-shadow:0 0 0 1px rgba(52,211,153,.35) inset, var(--shadow)}
+  .timer.concluded{opacity:.72;border-color:rgba(251,191,36,.4)}
+  .dot{width:11px;height:11px;border-radius:50%;background:var(--faint);transition:.2s}
+  .timer.running .dot{background:var(--green);box-shadow:0 0 0 4px rgba(52,211,153,.18);animation:pulse 1.5s infinite}
+  .timer.concluded .dot{background:var(--amber);box-shadow:0 0 0 4px rgba(251,191,36,.16);animation:none}
+  @keyframes pulse{0%,100%{box-shadow:0 0 0 4px rgba(52,211,153,.18)}50%{box-shadow:0 0 0 7px rgba(52,211,153,.05)}}
+  .t-name{font-size:16.5px;font-weight:700;letter-spacing:-.2px}
+  .t-meta{font-size:12px;color:var(--muted);margin-top:3px;display:flex;align-items:center;gap:8px}
+  .badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;
+    padding:3px 9px;border-radius:999px;letter-spacing:.3px}
+  .badge.bill{background:rgba(251,191,36,.16);color:var(--amber)}
+  .badge.round{background:rgba(106,168,255,.14);color:var(--accent)}
+  .t-time{font-size:30px;font-weight:740;font-variant-numeric:tabular-nums;letter-spacing:.5px;text-align:right;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .timer.concluded .t-time{color:var(--muted)}
+  .t-actions{display:flex;gap:7px;align-items:center}
+  .icon-btn{background:transparent;color:var(--faint);padding:9px;font-size:15px;line-height:1;border-radius:9px}
+  .icon-btn:hover{color:var(--red);background:rgba(255,255,255,.06)}
+
+  .empty{text-align:center;color:var(--muted);padding:64px 20px;font-size:15px;
+    background:var(--panel);border:1px dashed var(--line-strong);border-radius:var(--radius)}
+  .empty .big{font-size:34px;margin-bottom:12px;opacity:.7}
+
+  footer{margin-top:30px;text-align:center;color:var(--faint);font-size:12px}
+
+  @media(max-width:680px){
+    .summary{grid-template-columns:1fr 1fr}
+    .stat:first-child{grid-column:1/-1}
+    .timer{grid-template-columns:auto 1fr;row-gap:14px}
+    .t-time{grid-column:2;text-align:left;font-size:26px}
+    .t-actions{grid-column:1/-1;flex-wrap:wrap}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <div class="logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="13" r="8"/><path d="M12 13V9"/><path d="M9 2h6"/><path d="M12 13l3 2"/>
+        </svg>
+      </div>
+      <div>
+        <h1>BillClock</h1>
+        <div class="sub">Track billable time across companies</div>
+      </div>
+    </div>
+    <div class="toolbar">
+      <button class="btn-start" onclick="startAll()">▶ Start all</button>
+      <button class="btn-stop" onclick="stopAll()">⏸ Stop all</button>
+      <button class="btn-ghost" onclick="exportCSV()">⤓ Export</button>
+    </div>
+  </header>
+
+  <div class="summary">
+    <div class="stat"><div class="k">Time tracked</div><div class="v" id="sumTime">0:00:00</div></div>
+    <div class="stat hl"><div class="k">Billable hours</div><div class="v" id="sumHours">0<small>hrs</small></div></div>
+    <div class="stat"><div class="k">Running</div><div class="v" id="sumActive">0</div></div>
+  </div>
+
+  <div class="add-card">
+    <input id="newName" placeholder="Company / client name…" onkeydown="if(event.key==='Enter')addTimer()">
+    <button class="btn-accent" onclick="addTimer()">+ Add company</button>
+  </div>
+
+  <div class="timers" id="timers"></div>
+
+  <footer>Saved in your browser · Timers keep running even if you close the tab · Conclude rounds up to the next whole hour</footer>
+</div>
+
+<script>
+const KEY = 'billclock.v2';
+let timers = load();
+
+function load(){ try{ return JSON.parse(localStorage.getItem(KEY)) || []; }catch(e){ return []; } }
+function save(){ localStorage.setItem(KEY, JSON.stringify(timers)); }
+function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+
+function addTimer(){
+  const el = document.getElementById('newName');
+  const name = el.value.trim();
+  if(!name){ el.focus(); return; }
+  timers.push({ id: uid(), name, elapsed: 0, startedAt: null, concluded: false, billedHours: 0 });
+  el.value = '';
+  save(); render();
+}
+
+function toggle(id){
+  const t = timers.find(x=>x.id===id); if(!t || t.concluded) return;
+  if(t.startedAt){ t.elapsed += Date.now() - t.startedAt; t.startedAt = null; }
+  else { t.startedAt = Date.now(); }
+  save(); render();
+}
+
+function startAll(){
+  const now = Date.now();
+  timers.forEach(t=>{ if(!t.startedAt && !t.concluded) t.startedAt = now; });
+  save(); render();
+}
+function stopAll(){
+  const now = Date.now();
+  timers.forEach(t=>{ if(t.startedAt){ t.elapsed += now - t.startedAt; t.startedAt = null; } });
+  save(); render();
+}
+
+// Conclude: stop the timer and lock the time rounded UP to the next whole hour.
+function conclude(id){
+  const t = timers.find(x=>x.id===id); if(!t) return;
+  if(t.startedAt){ t.elapsed += Date.now() - t.startedAt; t.startedAt = null; }
+  t.billedHours = billableHours(t);
+  t.concluded = true;
+  save(); render();
+}
+function reopen(id){
+  const t = timers.find(x=>x.id===id); if(!t) return;
+  t.concluded = false; t.billedHours = 0;
+  save(); render();
+}
+
+function resetTimer(id){
+  const t = timers.find(x=>x.id===id); if(!t) return;
+  if(!confirm('Reset "'+t.name+'" back to 0:00:00?')) return;
+  t.elapsed = 0; t.concluded = false; t.billedHours = 0;
+  t.startedAt = t.startedAt ? Date.now() : null;
+  save(); render();
+}
+function delTimer(id){
+  const t = timers.find(x=>x.id===id);
+  if(t && !confirm('Delete "'+t.name+'"?')) return;
+  timers = timers.filter(x=>x.id!==id);
+  save(); render();
+}
+
+function currentMs(t){ return t.elapsed + (t.startedAt ? Date.now() - t.startedAt : 0); }
+function billableHours(t){ const ms = currentMs(t); return ms > 0 ? Math.ceil(ms/3600000) : 0; }
+function fmt(ms){
+  const s = Math.floor(ms/1000);
+  const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = s%60;
+  return h + ':' + String(m).padStart(2,'0') + ':' + String(sec).padStart(2,'0');
+}
+function esc(s){ return s.replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+function render(){
+  const box = document.getElementById('timers');
+  if(timers.length === 0){
+    box.innerHTML = '<div class="empty"><div class="big">⏱️</div>No companies yet.<br>Add one above to start tracking time.</div>';
+  } else {
+    box.innerHTML = timers.map(t=>{
+      const running = !!t.startedAt;
+      const rounds = billableHours(t);
+      let meta;
+      if(t.concluded){
+        meta = `<span class="badge bill">✓ Billed ${t.billedHours} ${t.billedHours===1?'hr':'hrs'}</span>`;
+      } else if(rounds > 0){
+        meta = `<span class="badge round">rounds to ${rounds} ${rounds===1?'hr':'hrs'}</span>`;
+      } else {
+        meta = `<span style="color:var(--faint)">not started</span>`;
+      }
+      const mainBtn = t.concluded
+        ? `<button class="btn-ghost" onclick="reopen('${t.id}')">↺ Reopen</button>`
+        : `<button class="${running?'btn-stop':'btn-start'}" onclick="toggle('${t.id}')">${running?'⏸ Stop':'▶ Start'}</button>
+           <button class="btn-conclude" onclick="conclude('${t.id}')">✓ Conclude</button>`;
+      return `<div class="timer ${running?'running':''} ${t.concluded?'concluded':''}">
+        <div class="dot"></div>
+        <div>
+          <div class="t-name">${esc(t.name)}</div>
+          <div class="t-meta">${meta}</div>
+        </div>
+        <div class="t-time" data-time="${t.id}">${fmt(currentMs(t))}</div>
+        <div class="t-actions">
+          ${mainBtn}
+          <button class="icon-btn" title="Reset" onclick="resetTimer('${t.id}')">↺</button>
+          <button class="icon-btn" title="Delete" onclick="delTimer('${t.id}')">✕</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+  updateSummary();
+}
+
+function tick(){
+  let dirty = false;
+  timers.forEach(t=>{
+    if(!t.startedAt) return;
+    dirty = true;
+    const te = document.querySelector(`[data-time="${t.id}"]`);
+    if(te) te.textContent = fmt(currentMs(t));
+  });
+  if(dirty) updateSummary();
+}
+
+let lastHours = -1, lastActive = -1;
+function updateSummary(){
+  let totalMs = 0, totalHours = 0, active = 0;
+  timers.forEach(t=>{ totalMs += currentMs(t); totalHours += billableHours(t); if(t.startedAt) active++; });
+  document.getElementById('sumTime').textContent = fmt(totalMs);
+  // only touch innerHTML when value changes (avoids reflow churn each tick)
+  if(totalHours !== lastHours){ document.getElementById('sumHours').innerHTML = totalHours + '<small>hrs</small>'; lastHours = totalHours; }
+  if(active !== lastActive){ document.getElementById('sumActive').textContent = active; lastActive = active; }
+}
+
+function exportCSV(){
+  const rows = [['Company','Time tracked','Billable hours','Status']];
+  timers.forEach(t=>{
+    const hrs = t.concluded ? t.billedHours : billableHours(t);
+    rows.push([t.name, fmt(currentMs(t)), hrs, t.concluded ? 'Concluded' : (t.startedAt ? 'Running' : 'Paused')]);
+  });
+  const csv = rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv'}));
+  a.download = 'billclock-' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
+}
+
+render();
+setInterval(tick, 1000);
+</script>
+</body>
+</html>
