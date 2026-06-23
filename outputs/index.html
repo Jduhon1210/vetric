@@ -303,6 +303,32 @@ body.dev-mode .search-bar{background:var(--amber-light);border-bottom-color:#fde
 .area-title{font-size:12.5px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);}
 .clear-area-btn{font-size:12px;font-weight:500;padding:4px 10px;background:var(--red-light);color:var(--red);border:1px solid var(--red-border);border-radius:var(--radius);cursor:pointer;font-family:inherit;transition:background .15s;}
 .clear-area-btn:hover{background:#fee2e2;}
+.eval-btn{display:block;width:100%;margin:10px 0 2px;padding:9px 12px;background:var(--navy);color:#fff;border:none;border-radius:var(--radius);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;letter-spacing:.01em;transition:background .15s;}
+.eval-btn:hover{background:#162d63;}
+.eval-verdict{font-size:12.5px;color:#475569;line-height:1.5;padding:10px 14px;}
+.eval-verdict .eval-strong{color:var(--text);font-weight:600;}
+.eval-warn{display:block;margin-top:5px;color:#b45309;font-size:11.5px;}
+.eval-slider{padding:8px 14px 4px;}
+.eval-slider-row{display:flex;justify-content:space-between;font-size:12px;color:#64748b;margin-bottom:5px;}
+.eval-slider-row span:last-child{font-weight:600;color:var(--text);}
+.eval-slider input{width:100%;}
+.eval-cards{padding:6px 12px;overflow-y:auto;flex:1;}
+.eval-card{border:1px solid var(--border2);border-radius:var(--radius-lg);padding:10px 12px;margin-bottom:9px;cursor:pointer;transition:box-shadow .15s,border-color .15s;}
+.eval-card:hover{box-shadow:var(--shadow);border-color:#cbd5e1;}
+.eval-card-head{display:flex;align-items:center;gap:8px;margin-bottom:6px;}
+.eval-rank{width:20px;height:20px;border-radius:50%;background:var(--navy);color:#fff;font-size:12px;font-weight:600;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.eval-card-title{font-size:13px;font-weight:600;}
+.eval-score{margin-left:auto;font-size:14px;font-weight:700;color:#15803d;}
+.eval-why{font-size:11px;color:#64748b;margin-bottom:8px;}
+.eval-bar{display:flex;align-items:center;gap:7px;margin-bottom:4px;}
+.eval-bar>span:first-child{font-size:10.5px;color:#64748b;width:82px;flex-shrink:0;}
+.eval-track{flex:1;height:5px;background:#eef2f6;border-radius:3px;overflow:hidden;}
+.eval-track>span{display:block;height:5px;border-radius:3px;}
+.eval-note{display:flex;gap:7px;font-size:11px;color:#1e40af;background:#eff6ff;border-radius:var(--radius);padding:9px 11px;margin:4px 12px 10px;line-height:1.45;}
+.eval-pin{width:26px;height:26px;border-radius:50%;background:var(--navy);color:#fff;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;}
+.eval-toggle-row{display:flex;gap:6px;padding:0 12px 8px;flex-wrap:wrap;}
+.eval-chip{font-size:11px;border:1px solid var(--border2);border-radius:20px;padding:3px 10px;cursor:pointer;color:#64748b;background:#fff;user-select:none;}
+.eval-chip.on{background:var(--navy);color:#fff;border-color:var(--navy);}
 .filter-tabs{display:flex;padding:10px 16px;gap:6px;border-bottom:1px solid var(--border);flex-shrink:0;}
 .ftab{font-size:12px;font-weight:500;padding:5px 12px;border-radius:20px;border:1px solid var(--border2);background:var(--bg);color:var(--muted);cursor:pointer;transition:all .15s;letter-spacing:.01em;}
 .ftab:hover{border-color:var(--navy);color:var(--navy);}
@@ -1517,9 +1543,10 @@ function renderZipSelectionSidebar(zips, shownClinics, peClinics){
   sb.innerHTML = `
     <div class="area-header">
       <span class="area-title">ZIP Selection${zips.length > 1 ? ' ('+zips.length+')' : ''}</span>
-      <button class="clear-area-btn" onclick="clearZipSelection()">Clear</button>
+      <button class="clear-area-btn" onclick="clearZipSelection()">Clear Selection</button>
     </div>
     <div class="area-stats">${shownClinics} clinic${shownClinics!==1?'s':''} · ${peClinics} PE · ${indep} indep</div>
+    ${zips.length===1 ? `<div style="padding:0 14px;"><button class="eval-btn" onclick="openEvaluate()">Evaluate placement →</button></div>` : ''}
     <div class="zip-sel-hint">Shift-click a ZIP to add it</div>
     <div class="zip-sel-header">
       <span>ZIP</span><span>Income</span><span>Dog HH</span><span></span>
@@ -2311,7 +2338,12 @@ async function fetchClinics(){
     setStatus(`${inView.length} shown · map service busy, retrying on next move`,true);
   }
   showPill('');
-  if(!drawnArea && selectedZips.size){
+  if(evalActive){
+    // Evaluate mode owns the sidebar + map layers — fold any newly-loaded clinics
+    // into the competition set without disturbing the analysis UI.
+    markers.forEach(m=>setMarkerVisible(m,false));
+    _evalComputeAndRender();
+  } else if(!drawnArea && selectedZips.size){
     // A fetch may have added clinics outside the selected ZIP(s) — their markers
     // default to visible — so re-scope markers, KPIs, and the list to the selection.
     applyZipSelection();
@@ -2325,13 +2357,9 @@ let loadedBounds = null;
 let fetchSeq = 0; // monotonic token — guards against overlapping async fetches
 let lastIndependents = []; // cache of last successfully-loaded independents (Overpass fallback)
 
-// Clear zip highlight on map click
-map.on('click', (e) => {
-  // If clicking the bare map (not a ZIP polygon or clinic), clear ZIP selection
-  if(!drawnArea && selectedZips.size && !e.originalEvent._vfZipClick){
-    clearZipSelection();
-  }
-});
+// A bare-map click intentionally does NOT clear a ZIP selection — accidental
+// off-clicks were wiping it. Clear via the "Clear Selection" button in the sidebar
+// (or click another ZIP to replace the current selection).
 
 map.on('move',()=>{
   // A ZIP selection is pan-invariant — its scoped KPIs/list don't change as the
@@ -2754,9 +2782,6 @@ function oppSelect(zip){
   setTimeout(() => { if(overlay.classList.contains('show')) finish(); }, 700);
 }
 
-// Guard: don't let the bare-map click handler clear a selection that was just
-// set programmatically from the Opportunity tab (no real user map click).
-
 function marketPickerNote(){ vfToast('Market presets are coming soon — search or pan to move around Texas for now.'); }
 
 /* ─── Polygon intersection math (Sutherland-Hodgman) ─────────────────────────
@@ -2991,6 +3016,200 @@ function updateLayerKpis(){
       } else { dEl.textContent='—'; dEl.classList.add('pending'); dFoot.textContent='No ZIPs in view'; }
     } else { dEl.textContent='Off'; dEl.classList.add('pending'); dFoot.textContent='Turn on the pet density layer'; }
   }
+}
+
+/* ─── Evaluate placement — suitability heatmap within a selected ZIP ───────────
+   Border-aware: competition is a gravity score over EVERY clinic within the
+   catchment radius, including ones just over the ZIP line — so a small ZIP
+   ringed by clinics scores honestly instead of looking wide-open. A grid of
+   candidate points inside the polygon is scored on demand (ZIP-level), low
+   competition (gravity), and retail access (OSM shops). Degrades gracefully:
+   if Overpass is unreachable, retail is skipped and competition uses the
+   statewide PE set + already-loaded independents. */
+let evalActive=false, evalZip=null, evalFeat=null, evalRadiusMi=3, evalDemand=0.5;
+let evalShow={heat:true, comp:false, retail:false}; // comp = range rings, retail = shop dots (opt-in); competitor dots always show
+let evalLayers={heat:null, comp:null, retail:null, pins:null};
+let evalExtraVets=[], evalRetail=[], evalCells=[], evalTop=[], evalRecalcTimer=null;
+const EVAL_W={demand:0.30, comp:0.45, retail:0.25};
+
+function _evalBBox(feat){
+  let minLa=90,maxLa=-90,minLo=180,maxLo=-180;
+  const polys=feat.geometry.type==='Polygon'?[feat.geometry.coordinates]:feat.geometry.coordinates;
+  for(const poly of polys) for(const ring of poly) for(const pt of ring){
+    const lo=pt[0], la=pt[1];
+    if(la<minLa)minLa=la; if(la>maxLa)maxLa=la; if(lo<minLo)minLo=lo; if(lo>maxLo)maxLo=lo;
+  }
+  return {minLa,maxLa,minLo,maxLo};
+}
+function _evalZipDemand(zip){
+  const inc = incomeData[zip]!=null?incomeData[zip]:(typeof oppIncomeSnap!=='undefined'&&oppIncomeSnap[zip]!=null?oppIncomeSnap[zip]:null);
+  const dog = dogData[zip]?dogData[zip].est:(typeof oppDogSnap!=='undefined'&&oppDogSnap[zip]!=null?oppDogSnap[zip]:null);
+  let d=0,n=0;
+  if(inc!=null){ d+=Math.max(0,Math.min(1,(inc-30000)/90000)); n++; }
+  if(dog!=null){ d+=Math.max(0,Math.min(1,dog/6000)); n++; }
+  return n? d/n : 0.5;
+}
+// In-memory competitor set within the buffered bbox — PE (statewide) + loaded
+// independents + any vets found via Overpass. No network; cheap, recompute-safe.
+function _evalCompetitors(feat, radiusMi){
+  const bb=_evalBBox(feat);
+  const midLa=(bb.minLa+bb.maxLa)/2;
+  const bufLa=radiusMi/69, bufLo=radiusMi/(69*Math.cos(midLa*Math.PI/180));
+  const s=bb.minLa-bufLa,n=bb.maxLa+bufLa,w=bb.minLo-bufLo,e=bb.maxLo+bufLo;
+  const deleted=getDeleted(), byKey=new Map();
+  const add=(la,lo,pe)=>{ if(la<s||la>n||lo<w||lo>e) return; const k=`${Math.round(la*1000)}_${Math.round(lo*1000)}`; if(deleted[k]) return; if(!byKey.has(k)) byKey.set(k,{lat:la,lon:lo,pe:!!pe}); };
+  if(peLoaded && typeof PE_COORDS!=='undefined') for(const c of PE_COORDS) add(c[0],c[1],true);
+  for(const c of clinics) add(c.lat,c.lon,c.pe);
+  for(const v of evalExtraVets) add(v.lat,v.lon,v.pe);
+  return [...byKey.values()];
+}
+// One-time best-effort Overpass: adds independent vets + retail in the buffer.
+async function _evalFetchOverpass(feat){
+  evalExtraVets=[]; evalRetail=[];
+  const bb=_evalBBox(feat);
+  const midLa=(bb.minLa+bb.maxLa)/2;
+  const bufLa=evalRadiusMi/69, bufLo=evalRadiusMi/(69*Math.cos(midLa*Math.PI/180));
+  const s=bb.minLa-bufLa,n=bb.maxLa+bufLa,w=bb.minLo-bufLo,e=bb.maxLo+bufLo;
+  const q=`[out:json][timeout:25];(node["amenity"="veterinary"](${s},${w},${n},${e});way["amenity"="veterinary"](${s},${w},${n},${e});node["shop"](${s},${w},${n},${e});way["shop"](${s},${w},${n},${e}););out center 600;`;
+  for(const mirror of ['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter']){
+    try{
+      const res=await fetch(mirror,{method:'POST',body:'data='+encodeURIComponent(q)});
+      if(!res.ok) throw new Error('overpass');
+      const data=await res.json();
+      const vets=[], retail=[];
+      for(const el of data.elements){
+        const la=el.lat||(el.center&&el.center.lat), lo=el.lon||(el.center&&el.center.lon);
+        if(!la||!lo) continue;
+        const t=el.tags||{};
+        if(t.amenity==='veterinary') vets.push({lat:la,lon:lo,pe:false});
+        else if(t.shop) retail.push({lat:la,lon:lo,name:t.name||t.shop});
+      }
+      evalExtraVets=vets; evalRetail=retail;
+      return;
+    }catch(e){ /* try next mirror */ }
+  }
+}
+async function openEvaluate(){
+  if(selectedZips.size!==1){ vfToast('Select a single ZIP to evaluate placement.'); return; }
+  const zip=[...selectedZips.keys()][0];
+  evalActive=true; evalZip=zip; evalFeat=selectedZips.get(zip).feat;
+  const sb=document.querySelector('.sidebar');
+  if(sb) sb.innerHTML='<div class="opp-loading">Analyzing ZIP '+zip+' — competition, demand, retail access…</div>';
+  markers.forEach(m=>setMarkerVisible(m,false)); // competitors drawn by the eval layer
+  evalDemand=_evalZipDemand(zip);
+  await _evalFetchOverpass(evalFeat);
+  if(!evalActive) return; // user bailed during fetch
+  _evalComputeAndRender();
+}
+function _evalComputeAndRender(){
+  const feat=evalFeat, bb=_evalBBox(feat);
+  const R=evalRadiusMi*1609.344, RETAIL_R=1609.344;
+  const competitors=_evalCompetitors(feat, evalRadiusMi);
+  const cellsAcross=22;
+  const stepLa=(bb.maxLa-bb.minLa)/cellsAcross, stepLo=(bb.maxLo-bb.minLo)/cellsAcross;
+  const grid=[];
+  for(let la=bb.minLa+stepLa/2; la<bb.maxLa; la+=stepLa)
+    for(let lo=bb.minLo+stepLo/2; lo<bb.maxLo; lo+=stepLo){
+      if(!pointInGeoJSON(la,lo,feat)) continue;
+      let comp=0, nearest=Infinity;
+      for(const c of competitors){ const d=hav(la,lo,c.lat,c.lon); if(d<nearest)nearest=d; if(d<R) comp+=(c.pe?1.6:1.0)*(1-d/R); }
+      let ret=0; for(const r of evalRetail){ const d=hav(la,lo,r.lat,r.lon); if(d<RETAIL_R) ret+=(1-d/RETAIL_R); }
+      grid.push({la,lo,comp,ret,nearest,stepLa,stepLo});
+    }
+  const maxComp=Math.max(1e-6,...grid.map(g=>g.comp));
+  const maxRet=Math.max(1e-6,...grid.map(g=>g.ret));
+  const retailOk=evalRetail.length>0;
+  for(const g of grid){
+    g.lowComp=1-g.comp/maxComp;
+    g.retailN=retailOk?g.ret/maxRet:0.5;
+    g.score=EVAL_W.demand*evalDemand + EVAL_W.comp*g.lowComp + EVAL_W.retail*g.retailN;
+  }
+  evalCells=grid;
+  const sorted=[...grid].sort((a,b)=>b.score-a.score);
+  const minSep=Math.max(bb.maxLa-bb.minLa, bb.maxLo-bb.minLo)*0.22;
+  const top=[];
+  for(const g of sorted){ if(top.every(t=>Math.hypot(t.la-g.la,t.lo-g.lo)>minSep)){ top.push(g); if(top.length===3) break; } }
+  evalTop=top;
+  evalCompetitorsCache=competitors;
+  _evalRenderLayers();
+  _evalRenderSidebar();
+}
+let evalCompetitorsCache=[];
+function _evalClearLayers(){ for(const k in evalLayers){ if(evalLayers[k]){ map.removeLayer(evalLayers[k]); evalLayers[k]=null; } } }
+function _evalColor(s){ const t=Math.max(0,Math.min(1,(s-0.35)/0.45)); return t>0.66?'#639922':t>0.33?'#EF9F27':'#E24B4A'; }
+function _evalRenderLayers(){
+  _evalClearLayers();
+  if(evalShow.heat){
+    const heat=L.layerGroup();
+    for(const g of evalCells)
+      L.rectangle([[g.la-g.stepLa/2,g.lo-g.stepLo/2],[g.la+g.stepLa/2,g.lo+g.stepLo/2]],
+        {stroke:false,fillColor:_evalColor(g.score),fillOpacity:0.5,interactive:false}).addTo(heat);
+    heat.addTo(map); if(heat.bringToBack) heat.bringToBack(); evalLayers.heat=heat;
+  }
+  {
+    // Competitor dots always show during analysis; the range rings are opt-in.
+    const comp=L.layerGroup(), R=evalRadiusMi*1609.344;
+    if(evalShow.comp) for(const c of evalCompetitorsCache)
+      L.circle([c.lat,c.lon],{radius:R,stroke:true,color:'#A32D2D',weight:1,dashArray:'4 4',opacity:0.25,fill:false,interactive:false}).addTo(comp);
+    for(const c of evalCompetitorsCache)
+      L.circleMarker([c.lat,c.lon],{radius:4,color:'#fff',weight:1.5,fillColor:c.pe?'#b91c1c':'#dc2626',fillOpacity:1,interactive:false}).addTo(comp);
+    comp.addTo(map); evalLayers.comp=comp;
+  }
+  if(evalShow.retail && evalRetail.length){
+    const ret=L.layerGroup();
+    for(const r of evalRetail) L.circleMarker([r.lat,r.lon],{radius:3,color:'#1d4ed8',weight:1,fillColor:'#3b82f6',fillOpacity:0.85,interactive:false}).addTo(ret);
+    ret.addTo(map); evalLayers.retail=ret;
+  }
+  const pins=L.layerGroup();
+  evalTop.forEach((g,i)=>{
+    L.marker([g.la,g.lo],{icon:L.divIcon({className:'',html:`<div class="eval-pin">${i+1}</div>`,iconSize:[26,26],iconAnchor:[13,13]})}).addTo(pins);
+  });
+  pins.addTo(map); evalLayers.pins=pins;
+}
+function _evalRenderSidebar(){
+  const sb=document.querySelector('.sidebar'); if(!sb) return;
+  const retailOk=evalRetail.length>0;
+  const bar=(label,v,color)=>`<div class="eval-bar"><span>${label}</span><span class="eval-track"><span style="width:${Math.round(Math.max(0,Math.min(1,v))*100)}%;background:${color}"></span></span></div>`;
+  const cards=evalTop.map((g,i)=>{
+    const headline=Math.round(g.score*100);
+    const nearMi=(g.nearest/1609.344).toFixed(1);
+    return `<div class="eval-card" onclick="evalFlyTo(${i})">
+      <div class="eval-card-head"><span class="eval-rank">${i+1}</span><span class="eval-card-title">Site ${i+1}</span><span class="eval-score">${headline}</span></div>
+      <div class="eval-why">${nearMi} mi to nearest clinic${retailOk?' · retail nearby':''}</div>
+      ${bar('Demand', evalDemand, '#639922')}
+      ${bar('Low competition', g.lowComp, g.lowComp>0.6?'#639922':'#BA7517')}
+      ${bar('Retail access', g.retailN, retailOk?'#639922':'#94a3b8')}
+    </div>`;
+  }).join('') || '<div class="empty">No buildable spots scored in this ZIP.</div>';
+  const chip=(k,label)=>`<span class="eval-chip ${evalShow[k]?'on':''}" onclick="evalToggle('${k}')">${label}</span>`;
+  sb.innerHTML=`
+    <div class="area-header">
+      <span class="area-title">Placement analysis · ${evalZip}</span>
+      <button class="clear-area-btn" onclick="clearEvaluate()">Clear analysis</button>
+    </div>
+    <div class="eval-verdict"><span class="eval-strong">${evalTop.length} viable site${evalTop.length!==1?'s':''}.</span> Best spots sit away from the clinics within range.${retailOk?'':'<span class="eval-warn">Retail data unavailable (offline/rate-limited) — score uses demand + competition only.</span>'}</div>
+    <div class="eval-slider">
+      <div class="eval-slider-row"><span>Competitor range</span><span id="eval-range-val">${evalRadiusMi.toFixed(1)} mi</span></div>
+      <input type="range" min="1" max="6" step="0.5" value="${evalRadiusMi}" oninput="onEvalRadius(this.value)"/>
+    </div>
+    <div class="eval-toggle-row">${chip('heat','Heatmap')}${chip('comp','Competitor range')}${chip('retail','Retail')}</div>
+    <div class="eval-cards">${cards}</div>
+    <div class="eval-note">Competition counts every clinic within range — including those just over the ZIP border — so a small ringed ZIP scores honestly.</div>
+    <div class="status-bar" id="status"></div>`;
+}
+function onEvalRadius(v){
+  evalRadiusMi=+v;
+  const el=document.getElementById('eval-range-val'); if(el) el.textContent=evalRadiusMi.toFixed(1)+' mi';
+  clearTimeout(evalRecalcTimer);
+  evalRecalcTimer=setTimeout(()=>{ if(evalActive) _evalComputeAndRender(); }, 220);
+}
+function evalToggle(k){ evalShow[k]=!evalShow[k]; _evalRenderLayers(); const sb=document.querySelector('.sidebar'); const c=sb&&sb.querySelector(`.eval-chip[onclick*="'${k}'"]`); if(c) c.classList.toggle('on', evalShow[k]); }
+function evalFlyTo(i){ const g=evalTop[i]; if(g) map.setView([g.la,g.lo], Math.max(map.getZoom(),14), {animate:true}); }
+function clearEvaluate(){
+  evalActive=false; _evalClearLayers();
+  evalExtraVets=[]; evalRetail=[]; evalCells=[]; evalTop=[]; evalCompetitorsCache=[];
+  if(selectedZips.size) applyZipSelection();
+  else { markers.forEach(m=>setMarkerVisible(m,true)); renderNormalSidebar(); }
 }
 </script>
 </body>
