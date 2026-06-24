@@ -934,9 +934,11 @@ function setMarkerVisible(m, visible){
 }
 
 // Loaded pins persist across pans instead of vanishing when they leave the view.
-// We accumulate up to MAX_CLINICS; past that, the farthest from the current map
-// center are evicted (keeps memory + marker count bounded on long panning sessions).
-const MAX_CLINICS = 1500;
+// Markers are drawn individually (no clustering), so this cap bounds how many exist at
+// once for performance. Raised from 1500 to give plenty of headroom — eviction rarely
+// triggers in normal use. Only past the cap are the farthest from the current map center
+// dropped, so pins near where you're looking always stay put.
+const MAX_CLINICS = 2500;
 function mergeClinics(existing, fresh, center){
   const byKey = new Map();
   for(const c of existing) byKey.set(clinicKey(c), c);
@@ -2390,7 +2392,14 @@ async function fetchClinics(){
   const myReq = ++fetchSeq; // claim this as the latest request
   const zoom=map.getZoom();
   const zm=document.getElementById('zoom-msg');
-  if(zoom<MIN_ZOOM){zm.style.display='block';clearMarkers();clinics=[];renderList();setStatus('Zoom in to search this area');return;}
+  if(zoom<MIN_ZOOM){
+    // Don't wipe loaded pins when zooming out — only NEW fetching is gated by zoom.
+    // Keep what's already loaded (clustered) and just prompt to zoom in for more; show
+    // the big overlay only when nothing is loaded yet.
+    zm.style.display = clinics.length ? 'none' : 'block';
+    setStatus(clinics.length ? 'Zoom in to load clinics for a new area' : 'Zoom in to see clinics');
+    return;
+  }
   zm.style.display='none';
   const b=map.getBounds();
   const {lat,lng}=map.getCenter();
