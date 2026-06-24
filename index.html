@@ -2813,6 +2813,30 @@ async function ensureConstructionData(){
   });
 }
 
+// All independent clinics across the DFW region. PE clinics are statewide+complete
+// (PE_COORDS), but independents were only ever loaded for the current map view — so
+// Opportunity under-counted them everywhere except where you'd already panned. This
+// fetches every vet clinic in the region once and keeps the ones NOT classified as PE.
+let oppRegionIndependents = []; // [{lat,lon}]
+async function ensureRegionIndependents(){
+  if(oppRegionIndependents.length) return;
+  const s=DFW_MIN_LAT, w=DFW_MIN_LON, n=DFW_MAX_LAT, e=DFW_MAX_LON;
+  const q=`[out:json][timeout:40];(node["amenity"="veterinary"](${s},${w},${n},${e});way["amenity"="veterinary"](${s},${w},${n},${e}););out center;`;
+  const data=await _overpass(q);
+  if(!data) return; // leave empty → buildOppBaseInputs falls back to the loaded clinics[]
+  const deleted=getDeleted(), overrides=getOverrides(), out=[];
+  for(const el of data.elements){
+    const la=el.lat||(el.center&&el.center.lat), lo=el.lon||(el.center&&el.center.lon);
+    if(!la||!lo) continue;
+    const key=`${Math.round(la*1000)}_${Math.round(lo*1000)}`;
+    if(deleted[key]) continue;
+    const name=(el.tags&&(el.tags.name||el.tags.operator))||'';
+    if(checkPE(name, la, lo, key, overrides)) continue; // PE — already counted via PE_COORDS
+    out.push({lat:la, lon:lo});
+  }
+  oppRegionIndependents=out;
+}
+
 // Ensure income + pet + growth data are loaded, then compute base inputs per ZIP
 async function openOpportunity(){
   const wrap=document.getElementById('opp-list-wrap');
@@ -2852,6 +2876,9 @@ async function openOpportunity(){
     try{ await ensureConstructionData(); }catch(e){}
     oppConstructionSnap = {...constructionData};
 
+    // All DFW-region independents (PE is statewide; independents were viewport-only)
+    try{ await ensureRegionIndependents(); }catch(e){}
+
     // Turn OFF all choropleths so landing on a ZIP shows the plain base map.
     if(growthLayer){ document.getElementById('toggle-growth').checked=false; await toggleGrowthLayer(false); }
     if(dogLayer){ document.getElementById('toggle-pets').checked=false; await toggleDogLayer(false); }
@@ -2876,6 +2903,8 @@ function buildOppBaseInputs(){
   const dogSrc = oppDogSnap;
   const growthSrc = Object.keys(oppGrowthSnap).length ? oppGrowthSnap : growthData;
   const consSrc = Object.keys(oppConstructionSnap).length ? oppConstructionSnap : constructionData;
+  // Complete regional independents, with a fallback to whatever clinics[] holds.
+  const indSrc = oppRegionIndependents.length ? oppRegionIndependents : clinics.filter(c=>!c.pe);
 
   // Cheap bbox + centroid straight from GeoJSON coords (no Leaflet objects)
   function rawBBox(f){
@@ -2918,8 +2947,7 @@ function buildOppBaseInputs(){
         if(pointInGeoJSON(plat,plon,f)) peCount++;
       }
     }
-    for(const cl of clinics){
-      if(cl.pe) continue;
+    for(const cl of indSrc){
       if(cl.lat<bb.minLat||cl.lat>bb.maxLat||cl.lon<bb.minLon||cl.lon>bb.maxLon) continue;
       if(pointInGeoJSON(cl.lat,cl.lon,f)) indCount++;
     }
