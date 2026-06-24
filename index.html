@@ -504,8 +504,7 @@ body.dev-mode .search-bar{background:var(--amber-light);border-bottom-color:#fde
           <div class="set-row"><div class="set-name">Retail · roads · neighborhoods <span class="set-badge live">live</span></div><div class="set-src">OpenStreetMap via Overpass — shops, commercial &amp; residential land use, and arterial roads. Used by the Evaluate site analysis.</div></div>
 
           <div class="set-h">How the scores are computed</div>
-          <div class="set-li"><b>Opportunity score</b> — each of five factors (income, pet demand, underservice, population growth, new construction) is scaled 0–100 across all North Texas ZIPs, blended by your weight sliders, and ranked.</div>
-          <div class="set-li"><b>Underservice</b> — pet households per existing clinic (PE clinics weighted heavier), not raw clinic count. A market is "open" only when demand outpaces supply, so a small ZIP doesn't look uncontested just because it has few clinics.</div>
+          <div class="set-li"><b>Opportunity score</b> — four weighted factors (income, pet demand, low competition, population growth) are each scaled 0–100 across all North Texas ZIPs, blended by your sliders, and ranked. Two refinements are computed internally rather than exposed as dials: low competition is measured demand-relative (pet households per clinic, PE weighted heavier), so a small ZIP isn't "open" just because its raw clinic count is low; and population growth blends ACS population change with new-home construction (share of homes built 2010+).</div>
           <div class="set-li"><b>Competition (border-aware)</b> — every clinic within the catchment radius counts, including ones just across a ZIP line, weighted by distance. Corporate/PE clinics count more than independents (you set the multiplier).</div>
           <div class="set-li"><b>Evaluate placement</b> — scores a fine grid inside a ZIP. The core is demand + low competition, lifted by road visibility (TxDOT traffic on the frontage road) and nearby retail. Subdivision interiors and rural land are excluded — only arterial frontage and commercial areas are scored, so a pin is always a placeable site.</div>
           <div class="set-li"><b>Acquisitions</b> — independent clinics are ranked as roll-up targets: Whitespace (little PE nearby, be first) or Tuck-in (near your existing PE platforms), rewarding nearby independent clusters.</div>
@@ -738,29 +737,24 @@ body.dev-mode .search-bar{background:var(--amber-light);border-bottom-color:#fde
           <button class="opp-preset" onclick="oppPreset('growth')">High-growth</button>
         </div>
         <div class="weight-row">
-          <div class="weight-head"><span class="weight-name">Income</span><span class="weight-val" id="w-income-val">20%</span></div>
+          <div class="weight-head"><span class="weight-name">Income</span><span class="weight-val" id="w-income-val">25%</span></div>
           <div class="weight-desc">Higher median household income scores higher</div>
-          <input type="range" class="opp-slider" id="w-income" min="0" max="100" value="20" oninput="onWeightChange()"/>
+          <input type="range" class="opp-slider" id="w-income" min="0" max="100" value="25" oninput="onWeightChange()"/>
         </div>
         <div class="weight-row">
-          <div class="weight-head"><span class="weight-name">Pet demand</span><span class="weight-val" id="w-demand-val">20%</span></div>
+          <div class="weight-head"><span class="weight-name">Pet demand</span><span class="weight-val" id="w-demand-val">25%</span></div>
           <div class="weight-desc">More dog-owning households scores higher</div>
-          <input type="range" class="opp-slider" id="w-demand" min="0" max="100" value="20" oninput="onWeightChange()"/>
+          <input type="range" class="opp-slider" id="w-demand" min="0" max="100" value="25" oninput="onWeightChange()"/>
         </div>
         <div class="weight-row">
-          <div class="weight-head"><span class="weight-name">Underservice</span><span class="weight-val" id="w-comp-val">20%</span></div>
-          <div class="weight-desc">More pet households per existing clinic scores higher — demand the market can't yet serve (vs. raw clinic count)</div>
-          <input type="range" class="opp-slider" id="w-comp" min="0" max="100" value="20" oninput="onWeightChange()"/>
+          <div class="weight-head"><span class="weight-name">Low competition</span><span class="weight-val" id="w-comp-val">25%</span></div>
+          <div class="weight-desc">Fewer clinics relative to local pet demand scores higher — underserved markets (demand-adjusted internally, not raw count)</div>
+          <input type="range" class="opp-slider" id="w-comp" min="0" max="100" value="25" oninput="onWeightChange()"/>
         </div>
         <div class="weight-row">
-          <div class="weight-head"><span class="weight-name">Population growth</span><span class="weight-val" id="w-growth-val">20%</span></div>
-          <div class="weight-desc">Faster-growing ZIPs score higher (where demand is heading)</div>
-          <input type="range" class="opp-slider" id="w-growth" min="0" max="100" value="20" oninput="onWeightChange()"/>
-        </div>
-        <div class="weight-row">
-          <div class="weight-head"><span class="weight-name">New construction</span><span class="weight-val" id="w-cons-val">20%</span></div>
-          <div class="weight-desc">Higher share of recently-built homes scores higher (new rooftops = future demand)</div>
-          <input type="range" class="opp-slider" id="w-cons" min="0" max="100" value="20" oninput="onWeightChange()"/>
+          <div class="weight-head"><span class="weight-name">Population growth</span><span class="weight-val" id="w-growth-val">25%</span></div>
+          <div class="weight-desc">Faster-growing ZIPs score higher — population change plus new-home construction (where demand is heading)</div>
+          <input type="range" class="opp-slider" id="w-growth" min="0" max="100" value="25" oninput="onWeightChange()"/>
         </div>
         <div class="opp-divider"></div>
         <div class="weight-row">
@@ -2745,14 +2739,12 @@ function getOppWeights(){
   const wd=+document.getElementById('w-demand').value;
   const wc=+document.getElementById('w-comp').value;
   const wg=+document.getElementById('w-growth').value;
-  const wn=+document.getElementById('w-cons').value;
-  const sum=wi+wd+wc+wg+wn || 1;
+  const sum=wi+wd+wc+wg || 1;
   return {
     income: wi/sum,
     demand: wd/sum,
     comp:   wc/sum,
     growth: wg/sum,
-    cons:   wn/sum,
     peMult: (+document.getElementById('w-pe').value)/10 // 1.0×–4.0×
   };
 }
@@ -2762,29 +2754,26 @@ function onWeightChange(){
   const wd=+document.getElementById('w-demand').value;
   const wc=+document.getElementById('w-comp').value;
   const wg=+document.getElementById('w-growth').value;
-  const wn=+document.getElementById('w-cons').value;
-  const sum=wi+wd+wc+wg+wn || 1;
+  const sum=wi+wd+wc+wg || 1;
   document.getElementById('w-income-val').textContent=Math.round(wi/sum*100)+'%';
   document.getElementById('w-demand-val').textContent=Math.round(wd/sum*100)+'%';
   document.getElementById('w-comp-val').textContent=Math.round(wc/sum*100)+'%';
   document.getElementById('w-growth-val').textContent=Math.round(wg/sum*100)+'%';
-  document.getElementById('w-cons-val').textContent=Math.round(wn/sum*100)+'%';
   document.getElementById('w-pe-val').textContent=((+document.getElementById('w-pe').value)/10).toFixed(1)+'×';
   rescoreAndRender();
 }
 
 function oppPreset(kind){
-  const set=(i,d,c,g,n)=>{
+  const set=(i,d,c,g)=>{
     document.getElementById('w-income').value=i;
     document.getElementById('w-demand').value=d;
     document.getElementById('w-comp').value=c;
     document.getElementById('w-growth').value=g;
-    document.getElementById('w-cons').value=n;
   };
-  if(kind==='balanced')    set(20,20,20,20,20);
-  if(kind==='underserved') set(15,15,40,15,15);
-  if(kind==='cashflow')    set(35,25,20,10,10);
-  if(kind==='growth')      set(15,15,15,25,30);
+  if(kind==='balanced')    set(25,25,25,25);
+  if(kind==='underserved') set(20,20,40,20);
+  if(kind==='cashflow')    set(40,25,20,15);
+  if(kind==='growth')      set(20,20,20,40);
   onWeightChange();
 }
 
@@ -2987,12 +2976,17 @@ function rescoreAndRender(){
   oppScored=oppBaseRows.map(r=>{
     const fIncome = r.inc!=null ? (r.inc-incMM.mn)/incMM.rng*100 : 0;
     const fDemand = r.dog!=null ? (r.dog-dogMM.mn)/dogMM.rng*100 : 0;
-    const fGrowth = r.grow!=null ? (r.grow-growMM.mn)/growMM.rng*100 : 0;
-    const fCons   = r.cons!=null ? (r.cons-consMM.mn)/consMM.rng*100 : 0;
+    // Growth factor = population change blended with new-home construction (both
+    // forward signals). Construction is computed internally, not a separate dial.
+    const gN = r.grow!=null ? (r.grow-growMM.mn)/growMM.rng*100 : null;
+    const cN = r.cons!=null ? (r.cons-consMM.mn)/consMM.rng*100 : null;
+    const fGrowth = (gN!=null && cN!=null) ? 0.6*gN+0.4*cN : (gN!=null ? gN : (cN!=null ? cN : 0));
     const u=_under(r);
-    const fComp = u!=null ? (u-underMM.mn)/underMM.rng*100 : 0; // underservice — higher is better
-    const score = fIncome*w.income + fDemand*w.demand + fComp*w.comp + fGrowth*w.growth + fCons*w.cons;
-    return { ...r, fIncome, fDemand, fComp, fGrowth, fCons, score };
+    // Competition factor is computed as underservice internally — demand-relative,
+    // so a small ZIP no longer looks open just because it has a low raw clinic count.
+    const fComp = u!=null ? (u-underMM.mn)/underMM.rng*100 : 0;
+    const score = fIncome*w.income + fDemand*w.demand + fComp*w.comp + fGrowth*w.growth;
+    return { ...r, fIncome, fDemand, fComp, fGrowth, score };
   }).sort((a,b)=>b.score-a.score);
 
   renderOppList();
@@ -3017,9 +3011,8 @@ function renderOppList(){
           <div class="opp-fbar"><i style="width:${r.fDemand.toFixed(0)}%;background:#4338ca"></i></div>
           <div class="opp-fbar"><i style="width:${r.fComp.toFixed(0)}%;background:#b45309"></i></div>
           <div class="opp-fbar"><i style="width:${(r.fGrowth||0).toFixed(0)}%;background:#0d9488"></i></div>
-          <div class="opp-fbar"><i style="width:${(r.fCons||0).toFixed(0)}%;background:#7c3aed"></i></div>
         </div>
-        <div class="opp-flabel"><span>Income</span><span>Demand</span><span>Underserved</span><span>Growth</span><span>New build</span></div>
+        <div class="opp-flabel"><span>Income</span><span>Demand</span><span>Low comp</span><span>Growth</span></div>
       </div>
       <div class="opp-score" style="background:${col}">${Math.round(r.score)}</div>
     </div>`;
