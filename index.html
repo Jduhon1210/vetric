@@ -2875,13 +2875,22 @@ async function ensureConstructionData(){
 // (PE_COORDS), but independents were only ever loaded for the current map view — so
 // Opportunity under-counted them everywhere except where you'd already panned. This
 // fetches every vet clinic in the region once and keeps the ones NOT classified as PE.
-let oppRegionIndependents = []; // [{lat,lon}]
+let oppRegionIndependents = []; // [{lat,lon}] — region-wide OSM independents (PE excluded)
+function _oppIndKey(k){ return 'vf_oppind_'+(k||oppRegion.key); }
 async function ensureRegionIndependents(){
   if(oppRegionIndependents.length) return;
-  const s=oppRegion.s, w=oppRegion.w, n=oppRegion.n, e=oppRegion.e;
-  const q=`[out:json][timeout:40];(node["amenity"="veterinary"](${s},${w},${n},${e});way["amenity"="veterinary"](${s},${w},${n},${e}););out center;`;
+  // Use a cached result instantly so the list never shows a false "no competition"
+  // while the (slow, sometimes-flaky) Overpass call runs — then refresh in the background.
+  try{ const j=localStorage.getItem(_oppIndKey()); const a=j&&JSON.parse(j);
+    if(Array.isArray(a)&&a.length){ oppRegionIndependents=a; _refreshRegionIndependents(); return; } }catch(e){}
+  await _refreshRegionIndependents(); // no cache → wait for the live fetch
+}
+async function _refreshRegionIndependents(){
+  const rk=oppRegion.key, s=oppRegion.s, w=oppRegion.w, n=oppRegion.n, e=oppRegion.e;
+  // nwr = node+way+relation; also catch healthcare=veterinary tagging
+  const q=`[out:json][timeout:40];(nwr["amenity"="veterinary"](${s},${w},${n},${e});nwr["healthcare"="veterinary"](${s},${w},${n},${e}););out center;`;
   const data=await _overpass(q);
-  if(!data) return; // leave empty → buildOppBaseInputs falls back to the loaded clinics[]
+  if(!data) return; // keep cache (or stay empty → buildOppBaseInputs unions with clinics[])
   const deleted=getDeleted(), overrides=getOverrides(), out=[];
   for(const el of data.elements){
     const la=el.lat||(el.center&&el.center.lat), lo=el.lon||(el.center&&el.center.lon);
@@ -2892,7 +2901,9 @@ async function ensureRegionIndependents(){
     if(checkPE(name, la, lo, key, overrides)) continue; // PE — already counted via PE_COORDS
     out.push({lat:la, lon:lo});
   }
-  oppRegionIndependents=out;
+  if(!out.length) return;
+  if(oppRegion.key===rk) oppRegionIndependents=out; // ignore if the user switched regions mid-fetch
+  try{ localStorage.setItem(_oppIndKey(rk), JSON.stringify(out)); }catch(e){}
 }
 
 // Ensure income + pet + growth data are loaded, then compute base inputs per ZIP
@@ -2961,8 +2972,13 @@ function buildOppBaseInputs(){
   const dogSrc = oppDogSnap;
   const growthSrc = Object.keys(oppGrowthSnap).length ? oppGrowthSnap : growthData;
   const consSrc = Object.keys(oppConstructionSnap).length ? oppConstructionSnap : constructionData;
-  // Complete regional independents, with a fallback to whatever clinics[] holds.
-  const indSrc = oppRegionIndependents.length ? oppRegionIndependents : clinics.filter(c=>!c.pe);
+  // Union the region-wide OSM independents with anything already loaded on the map
+  // (deduped by ~110m cell) so a ZIP's count is never less than what you'd see by
+  // navigating to it — this is what fixes the misleading "no competition" reading.
+  const _seen=new Set(), indSrc=[];
+  const _addInd=(la,lo)=>{ if(la==null||lo==null) return; const k=Math.round(la*1000)+'_'+Math.round(lo*1000); if(!_seen.has(k)){ _seen.add(k); indSrc.push({lat:la,lon:lo}); } };
+  for(const c of oppRegionIndependents) _addInd(c.lat,c.lon);
+  for(const c of clinics){ if(!c.pe) _addInd(c.lat,c.lon); }
 
   // Cheap bbox + centroid straight from GeoJSON coords (no Leaflet objects)
   function rawBBox(f){
