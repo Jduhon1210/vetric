@@ -1330,6 +1330,7 @@ function renderAreaSidebar(){
       <button class="clear-area-btn" onclick="clearArea()">Clear Area</button>
     </div>
     <div class="area-stats">${totalInArea} clinics · ${peInArea} PE-owned · ${indepInArea} independent</div>
+    <div style="padding:0 14px;"><button class="eval-btn" onclick="openEvaluateArea()">Evaluate this area →</button></div>
     <div class="filter-tabs">
       <button class="ftab on" id="ftab-all" onclick="setFilter('all')">All</button>
       <button class="ftab" id="ftab-indep" onclick="setFilter('indep')">Independent</button>
@@ -3429,7 +3430,7 @@ function updateLayerKpis(){
    Rural mask: a candidate with no residential/commercial/retail within ~1mi is
    dropped. Degrades gracefully — any layer Overpass can't return is dropped and
    its weight redistributed; competition always works (statewide PE set). */
-let evalActive=false, evalZip=null, evalFeat=null, evalRadiusMi=3, evalZipAffluence=0.5, evalSat=null;
+let evalActive=false, evalZip=null, evalFeat=null, evalRadiusMi=3, evalZipAffluence=0.5, evalSat=null, evalAreaMode=false, evalAreaZips=null;
 let evalShow={heat:true, comp:true, retail:false, hoods:false}; // competitor range rings on by default — they show why border ZIPs are contested
 let evalLayers={heat:null, comp:null, retail:null, hoods:null, pins:null};
 let evalData={vets:[], retail:[], resid:[], roads:[], aadt:[]};
@@ -3594,10 +3595,66 @@ async function _evalFetchContext(feat, setStage){
     }
   }catch(e){}
 }
+// ── Evaluate a free-drawn area (not just a ZIP) ──────────────────────────────
+// Runs the same placement engine on the drawn polygon, but looks up demographics
+// PER CELL — each grid cell uses its containing ZIP's income/pet index — so demand
+// varies across the area instead of a single ZIP-wide value.
+function _drawnAreaToFeature(){
+  if(!drawnArea) return null;
+  let ring;
+  if(drawnArea.type==='rect'){
+    const b=drawnArea.bounds, s=b.getSouth(),n=b.getNorth(),w=b.getWest(),e=b.getEast();
+    ring=[[w,s],[e,s],[e,n],[w,n],[w,s]];
+  } else {
+    ring=(drawnArea.points||[]).map(p=>[p.lng,p.lat]);
+    if(ring.length>2){ const a=ring[0], z=ring[ring.length-1]; if(a[0]!==z[0]||a[1]!==z[1]) ring.push([a[0],a[1]]); }
+  }
+  if(!ring || ring.length<4) return null;
+  return {type:'Feature', properties:{}, geometry:{type:'Polygon', coordinates:[ring]}};
+}
+async function _ensureEvalDemographics(){
+  const have = Object.keys(incomeData).length || (typeof oppIncomeSnap!=='undefined' && Object.keys(oppIncomeSnap).length);
+  if(!have){ try{ await fetchIncomeBatch([]); }catch(e){} } // all-TX income, cached, no choropleth paint
+}
+async function _buildAreaZips(feat){
+  const geo=await loadZipGeometry(); const bb=_evalBBox(feat); const out=[];
+  for(const f of geo.features){
+    const zb=_evalBBox(f);
+    if(zb.maxLa<bb.minLa||zb.minLa>bb.maxLa||zb.maxLo<bb.minLo||zb.minLo>bb.maxLo) continue; // bbox prefilter
+    out.push({feat:f, bb:zb, affl:_evalZipAffluence(f.properties.zip)});
+  }
+  return out;
+}
+function _cellAffl(la,lo){
+  if(!evalAreaMode || !evalAreaZips) return evalZipAffluence; // ZIP mode: one value
+  for(const az of evalAreaZips){
+    if(la<az.bb.minLa||la>az.bb.maxLa||lo<az.bb.minLo||lo>az.bb.maxLo) continue;
+    if(pointInGeoJSON(la,lo,az.feat)) return az.affl;
+  }
+  return evalZipAffluence; // cell not inside any data ZIP — neutral fallback
+}
+async function openEvaluateArea(){
+  if(!drawnArea){ vfToast('Draw an area first.'); return; }
+  const feat=_drawnAreaToFeature();
+  if(!feat){ vfToast('Could not read the drawn area — try redrawing it.'); return; }
+  evalActive=true; evalAreaMode=true; evalAreaZips=null; evalZip=null; evalFeat=feat; evalZipAffluence=0.5;
+  const sb=document.querySelector('.sidebar');
+  const setStage=msg=>{ if(sb && evalActive) sb.innerHTML='<div class="opp-loading">Analyzing drawn area — '+msg+'</div>'; };
+  setStage('loading demographics…');
+  markers.forEach(m=>setMarkerVisible(m,false));
+  try{ await _ensureEvalDemographics(); }catch(e){}
+  if(!evalActive) return;
+  try{ evalAreaZips=await _buildAreaZips(feat); }catch(e){ evalAreaZips=null; }
+  if(!evalActive) return;
+  await _evalFetchContext(feat, setStage);
+  if(!evalActive) return;
+  setStage('scoring candidate sites…');
+  setTimeout(()=>{ if(evalActive) _evalComputeAndRender(); }, 30);
+}
 async function openEvaluate(){
   if(selectedZips.size!==1){ vfToast('Select a single ZIP to evaluate placement.'); return; }
   const zip=[...selectedZips.keys()][0];
-  evalActive=true; evalZip=zip; evalFeat=selectedZips.get(zip).feat;
+  evalActive=true; evalAreaMode=false; evalAreaZips=null; evalZip=zip; evalFeat=selectedZips.get(zip).feat;
   const sb=document.querySelector('.sidebar');
   const setStage=msg=>{ if(sb && evalActive) sb.innerHTML='<div class="opp-loading">Analyzing ZIP '+zip+' — '+msg+'</div>'; };
   setStage('starting…');
@@ -3653,14 +3710,15 @@ function _evalComputeAndRender(){
       let ret=0; for(const r of evalData.retail){ if(Math.abs(r.lat-la)>bRet) continue; const d=hav(la,lo,r.lat,r.lon); if(d<RET_R) ret+=(r.area?0.6:1)*_grav(d,RET_R); }
       // competition (border-aware gravity); scan all comps for the true nearest readout
       let comp=0, nearC=Infinity, nearPE=Infinity; for(const c of comps){ const d=hav(la,lo,c.lat,c.lon); if(d<nearC)nearC=d; if(d<R){ comp+=(c.pe?1.6:1)*_grav(d,R); if(c.pe && d<nearPE) nearPE=d; } }
-      grid.push({la,lo,dem,ret,comp,nearC,nearPE,nearRoad,nearCls,aadt,aadtRoad,stepLa,stepLo});
+      const affl=_cellAffl(la,lo); // per-cell ZIP demographics in area mode; constant in ZIP mode
+      grid.push({la,lo,dem,ret,comp,nearC,nearPE,affl,nearRoad,nearCls,aadt,aadtRoad,stepLa,stepLo});
     }
   evalCompsCache=comps;
   if(!grid.length){ evalCells=[]; evalTop=[]; _evalRenderLayers(); _evalRenderSidebar(); return; }
   const maxOf=f=>Math.max(1e-6,...grid.map(f));
   const maxDem=maxOf(g=>g.dem), maxRet=maxOf(g=>g.ret), maxComp=maxOf(g=>g.comp);
   for(const g of grid){
-    g.demandN = hasResid ? 0.55*(g.dem/maxDem)+0.45*evalZipAffluence : evalZipAffluence;
+    g.demandN = hasResid ? 0.55*(g.dem/maxDem)+0.45*g.affl : g.affl;
     g.retailN = hasRetail ? g.ret/maxRet : 0.5;
     // Road VISIBILITY: traffic volume on the frontage road (AADT) when a count is
     // near, else road class as a proxy. The drive-by / new-client revenue signal —
@@ -3792,7 +3850,7 @@ function _evalRenderSidebar(){
   const warn = missing.length ? `<span class="eval-warn">${missing.join(' + ')} data unavailable (offline/rate-limited) — those factors were dropped and weights rebalanced.</span>` : '';
   sb.innerHTML=`
     <div class="area-header">
-      <span class="area-title">Placement analysis · ${evalZip}</span>
+      <span class="area-title">Placement analysis · ${evalZip||'drawn area'}</span>
       <button class="clear-area-btn" onclick="clearEvaluate()">Clear analysis</button>
     </div>
     ${evalSat?`<div class="eval-grade" style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="font-weight:800;font-size:18px;color:${evalSat.grade.c};border:2px solid ${evalSat.grade.c};border-radius:8px;padding:2px 10px">${evalSat.grade.l}</span><span style="font-weight:700;color:${evalSat.grade.c}">${evalSat.grade.t}</span></div><div class="eval-verdict">${evalSat.capCeil<0.30?'<span class="eval-strong">No strong placement in this ZIP — market is saturated.</span> ':''}Best winnable score ${Math.round(evalSat.capCeil*100)}/100 · median share ${evalSat.medShare.toFixed(2)} · ${evalSat.peInRange} PE + ${evalSat.indInRange} independent in range · ${evalSat.pctInCatch}% of buildable land inside a competitor catchment.${warn}</div>`:`<div class="eval-verdict"><span class="eval-strong">${evalTop.length} viable site${evalTop.length!==1?'s':''}.</span> ${evalCells.length} commercially-siteable cells scored; subdivision interiors &amp; rural land excluded.${warn}</div>`}
@@ -3808,7 +3866,7 @@ function _evalRenderSidebar(){
 function _evalRenderUnavailable(){
   const sb=document.querySelector('.sidebar'); if(!sb) return;
   sb.innerHTML=`
-    <div class="area-header"><span class="area-title">Placement analysis · ${evalZip}</span><button class="clear-area-btn" onclick="clearEvaluate()">Clear analysis</button></div>
+    <div class="area-header"><span class="area-title">Placement analysis · ${evalZip||'drawn area'}</span><button class="clear-area-btn" onclick="clearEvaluate()">Clear analysis</button></div>
     <div class="eval-verdict"><span class="eval-warn" style="display:block">Couldn't load road &amp; retail data — OpenStreetMap (Overpass) is busy or rate-limited. Without it the tool can't tell commercial corridors from neighborhoods, so it won't guess.</span></div>
     <div style="padding:4px 14px;"><button class="eval-btn" onclick="openEvaluate()">Retry analysis →</button></div>
     <div class="status-bar" id="status"></div>`;
@@ -3822,10 +3880,13 @@ function onEvalRadius(v){
 function evalToggle(k){ evalShow[k]=!evalShow[k]; _evalRenderLayers(); const sb=document.querySelector('.sidebar'); const c=sb&&sb.querySelector(`.eval-chip[onclick*="'${k}'"]`); if(c) c.classList.toggle('on', evalShow[k]); }
 function evalFlyTo(i){ const g=evalTop[i]; if(g) map.setView([g.la,g.lo], Math.max(map.getZoom(),14), {animate:true}); }
 function clearEvaluate(){
-  evalActive=false; _evalClearLayers(); _evalHideLegend();
+  const wasArea=evalAreaMode;
+  evalActive=false; evalAreaMode=false; evalAreaZips=null; evalSat=null;
+  _evalClearLayers(); _evalHideLegend();
   evalData={vets:[], retail:[], resid:[], roads:[], aadt:[]}; evalDataOk={retail:false,roads:false,resid:false,aadt:false};
   evalCells=[]; evalTop=[]; evalCompsCache=[];
   if(selectedZips.size) applyZipSelection();
+  else if(wasArea && drawnArea){ markers.forEach(m=>setMarkerVisible(m,true)); captureAreaClinics(); } // back to the drawn-area view
   else { markers.forEach(m=>setMarkerVisible(m,true)); renderNormalSidebar(); }
 }
 </script>
