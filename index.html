@@ -1048,8 +1048,9 @@ function renderList(){
       : 'No clinics in current view.<br>Pan or zoom to find clinics.';
     l.innerHTML='<div class="empty">'+msg+'</div>';return;
   }
+  const _idx=new Map(); clinics.forEach((c,i)=>_idx.set(c,i)); // O(n) lookup, not indexOf-per-row
   l.innerHTML=visible.map(c=>{
-    const i = clinics.indexOf(c);
+    const i = _idx.get(c);
     return `<div class="card" id="c${i}" onclick="focusClinic(${i})">
       <div style="flex-shrink:0;margin-top:2px">${miniPin(pinColor(c))}</div>
       <div class="card-body">
@@ -2417,42 +2418,32 @@ async function fetchClinics(){
     }
   }
 
-  // SOURCE 2: OpenStreetMap via Overpass — adds independent clinics
-  // Overpass rate-limits hard during rapid zoom/pan. Track whether it actually
-  // succeeded so a failed call doesn't wipe independents or mark the area loaded.
+  // SOURCE 2: OpenStreetMap via Overpass — adds independent clinics. Uses the shared
+  // robust _overpass client (multi-mirror, per-attempt timeout, 429/504 backoff) so a
+  // slow/rate-limited mirror can't freeze the map or silently drop all independents.
+  // _clinicAbort cancels any superseded in-flight fetch so rapid panning stops wasting
+  // server slots. nwr + healthcare match catches more clinics than node/way amenity alone.
   let overpassOk = false;
-  const mirrors = [
-    'https://overpass-api.de/api/interpreter',
-    'https://overpass.kumi.systems/api/interpreter'
-  ];
-  const q=`[out:json][timeout:20];(node["amenity"="veterinary"](${s},${w},${n},${e});way["amenity"="veterinary"](${s},${w},${n},${e}););out center tags;`;
-  for(let attempt=0; attempt<mirrors.length && !overpassOk; attempt++){
-    try{
-      const res=await fetch(mirrors[attempt],{method:'POST',body:'data='+encodeURIComponent(q)});
-      if(myReq!==fetchSeq) return; // superseded by newer fetch
-      if(!res.ok) throw new Error('Overpass '+res.status);
-      const data=await res.json();
-      if(myReq!==fetchSeq) return;
-      for(const el of data.elements){
-        const clat=el.lat||el.center?.lat,clon=el.lon||el.center?.lon;
-        if(!clat||!clon) continue;
-        const t=el.tags||{};
-        const clinicName=t.name||t.operator||'Veterinary Clinic';
-        const ck=`${Math.round(clat*1000)}_${Math.round(clon*1000)}`;
-        if(deleted[ck]) continue;
-        const dupe=local.some(c=>Math.abs(c.lat-clat)<0.003&&Math.abs(c.lon-clon)<0.004);
-        if(dupe) continue;
-        const pe=checkPE(clinicName,clat,clon,ck,overrides);
-        const parts=[t['addr:housenumber'],t['addr:street'],t['addr:city'],t['addr:state']].filter(Boolean);
-        const nm=overrides[ck]?.name||clinicName;
-        local.push({name:nm,website:t.website||t['contact:website']||'',addr:parts.join(' '),pe,peChecked:peLoaded,lat:clat,lon:clon,dist:hav(lat,lng,clat,clon)});
-      }
-      overpassOk = true;
-    }catch(err){
-      if(myReq!==fetchSeq) return;
-      // brief backoff before trying the next mirror
-      await new Promise(r=>setTimeout(r,400));
-      if(myReq!==fetchSeq) return;
+  if(_clinicAbort) _clinicAbort.abort();
+  _clinicAbort = new AbortController();
+  const q=`[out:json][timeout:20];(nwr["amenity"="veterinary"](${s},${w},${n},${e});nwr["healthcare"="veterinary"](${s},${w},${n},${e}););out center tags;`;
+  const data = await _overpass(q, {timeout:16000, signal:_clinicAbort.signal});
+  if(myReq!==fetchSeq) return; // superseded by newer fetch
+  if(data){
+    overpassOk = true;
+    for(const el of data.elements){
+      const clat=el.lat||el.center?.lat,clon=el.lon||el.center?.lon;
+      if(!clat||!clon) continue;
+      const t=el.tags||{};
+      const clinicName=t.name||t.operator||'Veterinary Clinic';
+      const ck=`${Math.round(clat*1000)}_${Math.round(clon*1000)}`;
+      if(deleted[ck]) continue;
+      const dupe=local.some(c=>Math.abs(c.lat-clat)<0.003&&Math.abs(c.lon-clon)<0.004);
+      if(dupe) continue;
+      const pe=checkPE(clinicName,clat,clon,ck,overrides);
+      const parts=[t['addr:housenumber'],t['addr:street'],t['addr:city'],t['addr:state']].filter(Boolean);
+      const nm=overrides[ck]?.name||clinicName;
+      local.push({name:nm,website:t.website||t['contact:website']||'',addr:parts.join(' '),pe,peChecked:peLoaded,lat:clat,lon:clon,dist:hav(lat,lng,clat,clon)});
     }
   }
 
@@ -2555,18 +2546,25 @@ async function fetchClinics(){
 
 let loadedBounds = null;
 let fetchSeq = 0; // monotonic token — guards against overlapping async fetches
+let _clinicAbort = null; // aborts a superseded in-flight viewport Overpass fetch
 let lastIndependents = []; // cache of last successfully-loaded independents (Overpass fallback)
 
 // A bare-map click intentionally does NOT clear a ZIP selection — accidental
 // off-clicks were wiping it. Clear via the "Clear Selection" button in the sidebar
 // (or click another ZIP to replace the current selection).
 
+let _moveRAF=0;
 map.on('move',()=>{
   // A ZIP selection is pan-invariant — its scoped KPIs/list don't change as the
   // map moves, so skip the per-clinic recompute while one is active.
   if(selectedZips.size) return;
-  if(clinics.length) renderList();
-  if(!drawnArea) updateClinicKpis();
+  if(_moveRAF) return; // coalesce the bursty 'move' events into one update per frame
+  _moveRAF=requestAnimationFrame(()=>{
+    _moveRAF=0;
+    if(selectedZips.size) return;
+    if(clinics.length) renderList();
+    if(!drawnArea) updateClinicKpis();
+  });
 });
 map.on('moveend',()=>{
   clearTimeout(fetchTimer);
@@ -2882,14 +2880,14 @@ async function ensureRegionIndependents(){
   // Use a cached result instantly so the list never shows a false "no competition"
   // while the (slow, sometimes-flaky) Overpass call runs — then refresh in the background.
   try{ const j=localStorage.getItem(_oppIndKey()); const a=j&&JSON.parse(j);
-    if(Array.isArray(a)&&a.length){ oppRegionIndependents=a; _refreshRegionIndependents(); return; } }catch(e){}
+    if(Array.isArray(a)&&a.length){ oppRegionIndependents=a; _refreshRegionIndependents().catch(()=>{}); return; } }catch(e){}
   await _refreshRegionIndependents(); // no cache → wait for the live fetch
 }
 async function _refreshRegionIndependents(){
   const rk=oppRegion.key, s=oppRegion.s, w=oppRegion.w, n=oppRegion.n, e=oppRegion.e;
   // nwr = node+way+relation; also catch healthcare=veterinary tagging
   const q=`[out:json][timeout:40];(nwr["amenity"="veterinary"](${s},${w},${n},${e});nwr["healthcare"="veterinary"](${s},${w},${n},${e}););out center;`;
-  const data=await _overpass(q);
+  const data=await _overpass(q, {timeout:30000});
   if(!data) return; // keep cache (or stay empty → buildOppBaseInputs unions with clinics[])
   const deleted=getDeleted(), overrides=getOverrides(), out=[];
   for(const el of data.elements){
@@ -3486,15 +3484,53 @@ function _evalCompetitors(feat, radiusMi){
   for(const v of evalData.vets) add(v.lat,v.lon,false);
   return [...byKey.values()];
 }
-async function _overpass(query){
-  for(const m of ['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter']){
-    try{
-      const ctrl=new AbortController(), to=setTimeout(()=>ctrl.abort(),25000); // don't hang the UI if Overpass stalls
-      const res=await fetch(m,{method:'POST',body:'data='+encodeURIComponent(query),signal:ctrl.signal});
-      clearTimeout(to);
-      if(!res.ok) throw 0;
-      return await res.json();
-    }catch(e){}
+// CORS-verified, full-planet Overpass mirrors, in priority order. private.coffee
+// first (no rate limit, no anti-scraper filter); overpass-api.de LAST because it now
+// 406-bounces header-light browser requests (and fetch() can't set User-Agent).
+const OVERPASS_MIRRORS = [
+  'https://overpass.private.coffee/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
+  'https://overpass.openstreetmap.fr/api/interpreter',
+  'https://overpass-api.de/api/interpreter'
+];
+// Robust Overpass client. Sequential fallback across the mirrors with a per-attempt
+// timeout (a hung mirror can no longer freeze the UI), one backoff retry on 429/504,
+// and guards against non-JSON / "200 but query timed out" bodies. opts: {timeout, signal}.
+// Returns parsed JSON (guaranteed .elements array) or null. Never throws.
+async function _overpass(query, opts){
+  opts = opts || {};
+  const timeoutMs = opts.timeout || 25000;
+  const ext = opts.signal || null; // external abort (supersession) — stops the whole chain
+  for(const url of OVERPASS_MIRRORS){
+    if(ext && ext.aborted) return null;
+    for(let attempt=0; attempt<2; attempt++){
+      const ac=new AbortController();
+      const to=setTimeout(()=>ac.abort(), timeoutMs);
+      const onExt=()=>ac.abort();
+      if(ext){ if(ext.aborted) ac.abort(); else ext.addEventListener('abort', onExt); }
+      try{
+        const res=await fetch(url,{method:'POST',body:'data='+encodeURIComponent(query),headers:{'Accept':'application/json'},signal:ac.signal});
+        if(res.status===429 || res.status===504){ // rate-limited / overloaded
+          if(attempt===0){
+            const ra=parseInt(res.headers.get('Retry-After')||'',10);
+            const wait=Number.isFinite(ra)?Math.min(ra*1000,5000):(600*(attempt+1))+Math.random()*400;
+            await new Promise(r=>setTimeout(r,wait));
+            continue; // one in-place retry on this mirror
+          }
+          break; // give up on this mirror → next
+        }
+        if(!res.ok) break; // 406/4xx/5xx → next mirror
+        const json=await res.json();
+        if(!json || !Array.isArray(json.elements)) break; // runtime-error body → next mirror
+        return json;
+      }catch(e){
+        if(ext && ext.aborted) return null; // superseded mid-flight — stop entirely
+        break; // network / CORS / timeout-abort → next mirror
+      }finally{
+        clearTimeout(to);
+        if(ext) ext.removeEventListener('abort', onExt);
+      }
+    }
   }
   return null;
 }
