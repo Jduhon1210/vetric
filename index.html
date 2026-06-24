@@ -433,12 +433,15 @@ body.dev-mode .search-bar{background:var(--amber-light);border-bottom-color:#fde
 .region-map{padding:16px;overflow:auto;}
 .region-map svg{width:100%;height:auto;display:block;}
 .region-foot{padding:0 18px 16px;font-size:12px;color:var(--muted);text-align:center;}
-.rp-cell{fill:#eef2f7;stroke:#fff;stroke-width:2;cursor:pointer;transition:fill .12s ease;}
-.rp-cell:hover{fill:#d6e0ee;}
-.rp-cell.active{fill:var(--navy);}
-.rp-outline{fill:none;stroke:#94a3b8;stroke-width:1.5;stroke-linejoin:round;}
-.rp-label{font-size:11px;font-weight:600;fill:#334155;font-family:inherit;paint-order:stroke;stroke:#fff;stroke-width:2.5px;stroke-linejoin:round;}
-.rp-label.active{fill:#fff;stroke:var(--navy);}
+.rp-state{fill:#f1f5f9;stroke:#cbd5e1;stroke-width:1.5;stroke-linejoin:round;}
+.rp-mk{cursor:pointer;}
+.rp-halo{fill:var(--navy);opacity:.10;transition:opacity .12s ease,r .12s ease;}
+.rp-mk:hover .rp-halo{opacity:.20;}
+.rp-mk.active .rp-halo{opacity:.22;}
+.rp-dot{fill:#64748b;stroke:#fff;stroke-width:2;transition:fill .12s ease;}
+.rp-mk:hover .rp-dot,.rp-mk.active .rp-dot{fill:var(--navy);}
+.rp-label{font-size:12.5px;font-weight:600;fill:#334155;font-family:inherit;paint-order:stroke;stroke:#fff;stroke-width:3px;stroke-linejoin:round;}
+.rp-mk:hover .rp-label,.rp-mk.active .rp-label{fill:var(--navy);}
 .hdr-icon-btn{background:none;border:none;color:var(--muted);cursor:pointer;padding:6px;border-radius:8px;display:flex;align-items:center;justify-content:center;}
 .hdr-icon-btn:hover{background:var(--bg2);color:var(--text);}
 .settings-overlay{position:fixed;inset:0;background:rgba(15,23,42,.45);backdrop-filter:blur(2px);z-index:2000;display:none;align-items:center;justify-content:center;padding:24px;}
@@ -547,7 +550,7 @@ body.dev-mode .search-bar{background:var(--amber-light);border-bottom-color:#fde
   <div class="region-modal">
     <div class="region-head"><span>Choose a region to score</span><button class="settings-close" onclick="closeRegionPicker()" aria-label="Close">✕</button></div>
     <div class="region-map" id="region-map"></div>
-    <div class="region-foot">Texas' 10 largest metros — click one to rank its ZIPs.</div>
+    <div class="region-foot">Texas' 5 largest metros — click one to rank its ZIPs.</div>
   </div>
 </div>
 <div class="search-bar">
@@ -823,7 +826,6 @@ body.dev-mode .search-bar{background:var(--amber-light);border-bottom-color:#fde
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/d3-delaunay@6/dist/d3-delaunay.min.js"></script>
 <!-- PE data loads async — map works immediately without it -->
 <script src="pe-data.js" defer></script>
 <script>
@@ -2745,19 +2747,15 @@ function exitAcquisitions(){ acqMode=false; renderNormalSidebar(); }
 const DFW_BOUNDS = L.latLngBounds([32.55, -97.55], [33.45, -96.55]); // North Texas region
 const DFW_MIN_LAT=32.55, DFW_MAX_LAT=33.45, DFW_MIN_LON=-97.55, DFW_MAX_LON=-96.55;
 
-// Opportunity scoring regions — the 10 largest Texas metros. Each is a bounding box
-// (s/n/w/e) plus a centroid (lat/lon) used to place its pin on the pick-a-region map.
+// Opportunity scoring regions — the 5 largest Texas metros. Each is a bounding box
+// (s/n/w/e) plus a centroid (lat/lon) used to place its marker on the pick-a-region map.
+// lblAbove: draw the label above the dot (avoids collisions with a nearby metro below).
 const OPP_REGIONS = [
   {key:'dfw',        name:'Dallas–Fort Worth', s:32.55, n:33.45, w:-97.55, e:-96.55, lat:33.00, lon:-97.05},
   {key:'houston',    name:'Houston',           s:29.30, n:30.20, w:-95.90, e:-94.90, lat:29.76, lon:-95.37},
+  {key:'austin',     name:'Austin',            s:30.00, n:30.70, w:-98.10, e:-97.40, lat:30.27, lon:-97.74, lblAbove:true},
   {key:'sanantonio', name:'San Antonio',       s:29.10, n:29.85, w:-98.90, e:-98.10, lat:29.45, lon:-98.50},
-  {key:'austin',     name:'Austin',            s:30.00, n:30.70, w:-98.10, e:-97.40, lat:30.27, lon:-97.74},
-  {key:'rgv',        name:'McAllen (RGV)',     s:26.00, n:26.45, w:-98.60, e:-97.90, lat:26.20, lon:-98.23},
-  {key:'elpaso',     name:'El Paso',           s:31.55, n:32.00, w:-106.70, e:-106.10, lat:31.78, lon:-106.42},
-  {key:'killeen',    name:'Killeen–Temple',    s:30.90, n:31.30, w:-97.85, e:-97.20, lat:31.10, lon:-97.55},
-  {key:'corpus',     name:'Corpus Christi',    s:27.55, n:28.05, w:-97.65, e:-97.10, lat:27.80, lon:-97.40},
-  {key:'brownsville',name:'Brownsville',       s:25.85, n:26.25, w:-97.70, e:-97.20, lat:26.05, lon:-97.48},
-  {key:'beaumont',   name:'Beaumont',          s:29.80, n:30.25, w:-94.40, e:-93.70, lat:30.05, lon:-94.10},
+  {key:'rgv',        name:'McAllen (RGV)',     s:26.00, n:26.45, w:-98.60, e:-97.90, lat:26.20, lon:-98.23, lblAbove:true},
 ];
 let oppRegion = OPP_REGIONS[0]; // default DFW
 
@@ -2766,44 +2764,18 @@ const TX_OUTLINE = [[-103.04,36.50],[-100.00,36.50],[-100.00,34.75],[-99.20,34.4
 function _txProj(lon,lat){ const LON0=-106.9,LON1=-93.1,LAT0=25.4,LAT1=36.8,W=460,H=440; return [ (lon-LON0)/(LON1-LON0)*W, (LAT1-lat)/(LAT1-LAT0)*H ]; }
 function renderRegionPicker(){
   const W=460, H=440;
-  const outline=TX_OUTLINE.map(([lo,la])=>_txProj(lo,la));
-  const outlineStr=outline.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ');
-  // ray-cast point-in-Texas test (projected ring) — keeps labels inside the silhouette
-  const inTexas=(x,y)=>{ let o=false; for(let i=0,j=outline.length-1;i<outline.length;j=i++){ const xi=outline[i][0],yi=outline[i][1],xj=outline[j][0],yj=outline[j][1]; if(((yi>y)!==(yj>y)) && (x<(xj-xi)*(y-yi)/(yj-yi)+xi)) o=!o; } return o; };
-  let cells='', labels='';
-  const D = window.d3 && d3.Delaunay;
-  if(D){
-    // Voronoi territory for each metro, tiling the state; clipped to Texas in SVG.
-    const pts=OPP_REGIONS.map(r=>_txProj(r.lon,r.lat));
-    const vor=d3.Delaunay.from(pts).voronoi([0,0,W,H]);
-    // the two Rio Grande Valley metros are cramped at the south tip — stack their labels vertically
-    const rgvSeed=_txProj(-98.23,26.20), brnSeed=_txProj(-97.48,26.05), rgvMidX=(rgvSeed[0]+brnSeed[0])/2;
-    OPP_REGIONS.forEach((r,i)=>{
-      const cell=vor.cellPolygon(i); if(!cell) return;
-      const pts2=cell.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ');
-      const act=r.key===oppRegion.key?' active':'';
-      cells+=`<polygon class="rp-cell${act}" points="${pts2}" onclick="selectOppRegion('${r.key}')"></polygon>`;
-      // label at the cell centroid, but pulled toward the metro itself until it lands inside Texas
-      let cx=0,cy=0; cell.forEach(p=>{cx+=p[0];cy+=p[1];}); cx/=cell.length; cy/=cell.length;
-      const seed=_txProj(r.lon,r.lat); let lx=cx, ly=cy, t=0;
-      while(t<1.0001 && !inTexas(lx,ly)){ t+=0.15; lx=cx+(seed[0]-cx)*t; ly=cy+(seed[1]-cy)*t; }
-      if(!inTexas(lx,ly)){ lx=seed[0]; ly=seed[1]; }
-      if(r.key==='rgv'){ lx=rgvMidX; ly=rgvSeed[1]-11; }            // upper of the stacked pair
-      else if(r.key==='brownsville'){ lx=rgvMidX; ly=brnSeed[1]+8; } // lower of the stacked pair
-      lx=Math.max(46,Math.min(W-46,lx)); // keep long labels off the edge
-      labels+=`<text class="rp-label${act}" x="${lx.toFixed(0)}" y="${(ly+3).toFixed(0)}" text-anchor="middle">${r.name}</text>`;
-    });
-  } else {
-    // graceful fallback: dots (if the Voronoi lib didn't load)
-    OPP_REGIONS.forEach(r=>{ const [x,y]=_txProj(r.lon,r.lat); const left=r.lon<-100;
-      cells+=`<circle class="rp-cell${r.key===oppRegion.key?' active':''}" cx="${x.toFixed(0)}" cy="${y.toFixed(0)}" r="6" onclick="selectOppRegion('${r.key}')"></circle>`;
-      labels+=`<text class="rp-label" x="${(left?x-9:x+9).toFixed(0)}" y="${(y+4).toFixed(0)}" text-anchor="${left?'end':'start'}">${r.name}</text>`; });
-  }
+  const outlineStr=TX_OUTLINE.map(([lo,la])=>{const[x,y]=_txProj(lo,la);return x.toFixed(1)+','+y.toFixed(1);}).join(' ');
+  // a clean Texas silhouette with one selectable marker per metro (no full tiling)
+  const markers=OPP_REGIONS.map(r=>{
+    const [x,y]=_txProj(r.lon,r.lat), act=r.key===oppRegion.key?' active':'';
+    const ly=(r.lblAbove?y-15:y+24);
+    return `<g class="rp-mk${act}" onclick="selectOppRegion('${r.key}')">`+
+      `<circle class="rp-halo" cx="${x.toFixed(0)}" cy="${y.toFixed(0)}" r="20"></circle>`+
+      `<circle class="rp-dot" cx="${x.toFixed(0)}" cy="${y.toFixed(0)}" r="7"></circle>`+
+      `<text class="rp-label" x="${x.toFixed(0)}" y="${ly.toFixed(0)}" text-anchor="middle">${r.name}</text></g>`;
+  }).join('');
   document.getElementById('region-map').innerHTML=
-    `<svg viewBox="0 0 ${W} ${H}"><defs><clipPath id="tx-clip"><polygon points="${outlineStr}"></polygon></clipPath></defs>`+
-    `<g clip-path="url(#tx-clip)">${cells}</g>`+
-    `<polygon class="rp-outline" points="${outlineStr}"></polygon>`+
-    `<g pointer-events="none">${labels}</g></svg>`;
+    `<svg viewBox="0 0 ${W} ${H}"><polygon class="rp-state" points="${outlineStr}"></polygon>${markers}</svg>`;
 }
 function openRegionPicker(){ renderRegionPicker(); document.getElementById('region-overlay').classList.add('show'); }
 function closeRegionPicker(){ document.getElementById('region-overlay').classList.remove('show'); }
