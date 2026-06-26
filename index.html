@@ -3783,11 +3783,19 @@ function _evalZipAffluence(zip){
 // + vets found via Overpass. No network; cheap, recompute-safe on slider drag.
 function _evalCompetitors(feat, radiusMi){
   const {s,n,w,e}=_evalBuffer(feat, radiusMi);
-  const deleted=getDeleted(), byKey=new Map();
+  const deleted=getDeleted(), overrides=getOverrides(), byKey=new Map();
   const add=(la,lo,pe)=>{ if(la<s||la>n||lo<w||lo>e) return; const k=`${Math.round(la*1000)}_${Math.round(lo*1000)}`; if(deleted[k]) return; if(!byKey.has(k)) byKey.set(k,{lat:la,lon:lo,pe:!!pe}); };
   if(peLoaded && typeof PE_COORDS!=='undefined') for(const c of PE_COORDS) add(c[0],c[1],true);
-  for(const c of clinics) add(c.lat,c.lon,c.pe);
-  for(const v of evalData.vets) add(v.lat,v.lon,false);
+  // SINGLE independent source: VET_CLINICS (Google Places, complete & not viewport-limited),
+  // PE-typed via checkPE. Do NOT also fold in evalData.vets (Overpass) — that double-counted
+  // the same clinics at slightly different coords (dedup is only ~110m) and inflated `comp`,
+  // crushing capture share. Legacy path (clinics[] ∪ Overpass) kept only as the fallback.
+  if(USE_VET_CLINICS && typeof VET_CLINICS!=='undefined' && VET_CLINICS.length){
+    for(const v of VET_CLINICS){ const pe=checkPE(v.name,v.lat,v.lon,null,overrides); add(v.lat,v.lon,!!pe); }
+  } else {
+    for(const c of clinics) add(c.lat,c.lon,c.pe);
+    for(const v of evalData.vets) add(v.lat,v.lon,false);
+  }
   return [...byKey.values()];
 }
 // CORS-verified, full-planet Overpass mirrors, in priority order. private.coffee
@@ -4199,7 +4207,14 @@ function _evalComputeAndRender(){
   const feat=evalFeat, bb=_evalBBox(feat);
   const R=evalRadiusMi*1609.344;
   const RET_R=1609.344, DEM_R=4000, ACC_R=900, DEVGATE=1700; // metres
-  const A_OWN=1.0, GAMMA=1.0, PE_NEAR_HARD=700; // Huff capture-model constants (own-site attractiveness, contest exponent, hard PE-proximity cap)
+  // Huff capture-model constants. A_OWN (own-site attractiveness) is recalibrated for COMPLETE
+  // competition (Google Places via VET_CLINICS) — was 1.0 when competitors came from sparse
+  // Overpass; against full data that crushed every cell's share (growth exurbs landed ~0.25,
+  // dense suburbs ~0.10 → whole map red). Base 2.5 @ the 3mi default puts growth exurbs at a
+  // fair fight (~0.46) and dense suburbs honestly hard (~0.22), empty land still = 1.0.
+  // ×(radius/3)² makes it radius-INVARIANT: comp grows with catchment AREA (∝R²), so A_OWN
+  // scales the same way — fixes the long-standing 6mi over-penalty (was a known limitation).
+  const A_OWN=2.5*Math.pow(evalRadiusMi/3,2), GAMMA=1.0, PE_NEAR_HARD=700;
   const comps=_evalCompetitors(feat, evalRadiusMi);
   const hasRetail=evalDataOk.retail, hasRoads=evalDataOk.roads, hasResid=evalDataOk.resid, hasAADT=evalDataOk.aadt;
   // Without road OR retail data we can't tell commercial corridors from
@@ -4284,7 +4299,8 @@ function _evalComputeAndRender(){
     // ABSOLUTE Huff capture share — the fraction of local demand this site could WIN given the
     // distance-decayed, PE-weighted (1.6x) competitor pressure already summed in g.comp.
     // NO maxComp: a uniformly saturated ZIP scores uniformly low and means the same in 75077 as
-    // in an empty exurb. comp=0 -> 1.0, comp=1 -> 0.5, comp=5 (a PE ring) -> 0.167.
+    // in an empty exurb. With A_OWN=2.5 @3mi: comp=0 -> 1.0, comp=2.5 -> 0.5, comp=8.7 (a dense
+    // suburb median) -> 0.22, comp=15 (PE-ringed) -> 0.14.
     g.share = A_OWN/(A_OWN + g.comp);
     if(g.nearPE < PE_NEAR_HARD) g.share = Math.min(g.share, 0.20); // unwinnable sitting on top of a PE incumbent
     g.lowComp = g.share; // alias: the "Low competition" bar now shows absolute winnable share
