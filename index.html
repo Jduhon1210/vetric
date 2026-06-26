@@ -4,6 +4,17 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Vetric — Veterinary Market Intelligence</title>
+<!-- Warm up connections to the render-blocking CDNs/fonts and the map tiles before they're requested -->
+<link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link rel="dns-prefetch" href="https://a.tile.openstreetmap.org"/>
+<link rel="dns-prefetch" href="https://b.tile.openstreetmap.org"/>
+<link rel="dns-prefetch" href="https://c.tile.openstreetmap.org"/>
+<!-- Warm the always-hit data origins so the first pan / scoring action skips a cold TLS handshake -->
+<link rel="preconnect" href="https://api.census.gov" crossorigin/>
+<link rel="preconnect" href="https://overpass.private.coffee" crossorigin/>
+<link rel="dns-prefetch" href="https://nominatim.openstreetmap.org"/>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet"/>
 <style>
@@ -314,7 +325,11 @@ body.dev-mode .search-bar{background:var(--amber-light);border-bottom-color:#fde
 .eval-slider-row{display:flex;justify-content:space-between;font-size:12px;color:#64748b;margin-bottom:5px;}
 .eval-slider-row span:last-child{font-weight:600;color:var(--text);}
 .eval-slider input{width:100%;}
-.eval-cards{padding:6px 12px;overflow-y:auto;flex:1;}
+.eval-cards{padding:6px 12px;}
+.eval-scroll{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;}
+.eval-scroll::-webkit-scrollbar{width:9px;}
+.eval-scroll::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:5px;border:2px solid var(--surface);}
+.eval-scroll::-webkit-scrollbar-thumb:hover{background:#94a3b8;}
 .eval-card{border:1px solid var(--border2);border-radius:var(--radius-lg);padding:10px 12px;margin-bottom:9px;cursor:pointer;transition:box-shadow .15s,border-color .15s;}
 .eval-card:hover{box-shadow:var(--shadow);border-color:#cbd5e1;}
 .eval-card-head{display:flex;align-items:center;gap:8px;margin-bottom:6px;}
@@ -472,9 +487,111 @@ body.dev-mode .search-bar{background:var(--amber-light);border-bottom-color:#fde
 .set-li{font-size:13px;color:#475569;line-height:1.6;margin:0 0 7px;padding-left:15px;position:relative;}
 .set-li:before{content:'';position:absolute;left:2px;top:8px;width:5px;height:5px;border-radius:50%;background:var(--navy);}
 .set-li b{color:var(--text);font-weight:600;}
+/* ── Login screen ─────────────────────────────────────────────────────────── */
+#login-screen{position:fixed;inset:0;z-index:10000;display:flex;background:var(--surface);font-family:'Inter',system-ui,sans-serif;}
+#login-screen.hidden{display:none;}
+.lg-brand{flex:1.05;position:relative;background:linear-gradient(150deg,#1e3a8a 0%,#1e3068 55%,#172554 100%);color:#fff;padding:54px 56px;display:flex;flex-direction:column;justify-content:space-between;overflow:hidden;}
+.lg-brand::after{content:"";position:absolute;inset:0;background-image:radial-gradient(circle at 1px 1px,rgba(255,255,255,.06) 1px,transparent 0);background-size:24px 24px;pointer-events:none;}
+.lg-brand-top{display:flex;align-items:center;gap:13px;position:relative;z-index:1;}
+.lg-logo{width:46px;height:46px;border-radius:13px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;}
+.lg-logo svg{width:27px;height:27px;}
+.lg-wordmark{font-size:23px;font-weight:800;letter-spacing:-.01em;}
+.lg-wordmark span{color:#93c5fd;}
+.lg-hero{position:relative;z-index:1;max-width:450px;}
+.lg-hero h1{font-size:33px;line-height:1.15;font-weight:800;letter-spacing:-.02em;margin:0 0 16px;}
+.lg-hero p{font-size:15px;line-height:1.6;color:#c7d2fe;margin:0 0 30px;}
+.lg-feats{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:14px;}
+.lg-feats li{display:flex;align-items:flex-start;gap:12px;font-size:14px;color:#e0e7ff;}
+.lg-feats svg{flex-shrink:0;margin-top:1px;color:#93c5fd;}
+.lg-foot{position:relative;z-index:1;font-size:12px;color:#8fa1cc;}
+.lg-form-wrap{flex:1;display:flex;align-items:center;justify-content:center;padding:40px;}
+.lg-card{width:100%;max-width:372px;}
+.lg-card h2{font-size:24px;font-weight:800;color:var(--text);letter-spacing:-.01em;margin:0 0 6px;}
+.lg-card .lg-sub{font-size:14px;color:var(--muted);margin:0 0 28px;}
+.lg-field{margin-bottom:16px;}
+.lg-field label{display:block;font-size:12.5px;font-weight:600;color:var(--text2);margin-bottom:6px;}
+.lg-field input{width:100%;padding:11px 13px;border:1px solid var(--border2);border-radius:var(--radius);font-size:14px;font-family:inherit;color:var(--text);background:var(--surface);transition:border-color .15s,box-shadow .15s;}
+.lg-field input::placeholder{color:var(--subtle);}
+.lg-field input:focus{outline:none;border-color:var(--navy);box-shadow:0 0 0 3px rgba(30,58,138,.12);}
+.lg-err{font-size:12.5px;color:var(--red);margin:-6px 0 12px;min-height:15px;}
+.lg-row{display:flex;align-items:center;justify-content:space-between;margin:2px 0 22px;}
+.lg-check{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--text2);cursor:pointer;user-select:none;}
+.lg-check input{width:15px;height:15px;accent-color:var(--navy);}
+.lg-link{font-size:13px;color:var(--navy);text-decoration:none;font-weight:600;}
+.lg-link:hover{text-decoration:underline;}
+.lg-btn{width:100%;padding:12px;background:var(--navy);color:#fff;border:none;border-radius:var(--radius);font-size:14.5px;font-weight:700;font-family:inherit;cursor:pointer;transition:background .15s,transform .05s;}
+.lg-btn:hover{background:var(--navy-dark);}
+.lg-btn:active{transform:translateY(1px);}
+.lg-divider{display:flex;align-items:center;gap:12px;margin:22px 0;color:var(--subtle);font-size:12px;}
+.lg-divider::before,.lg-divider::after{content:"";flex:1;height:1px;background:var(--border);}
+.lg-alt{text-align:center;font-size:13px;color:var(--muted);}
+.lg-alt a{color:var(--navy);font-weight:600;text-decoration:none;}
+.lg-alt a:hover{text-decoration:underline;}
+.lg-note{margin-top:24px;font-size:11px;color:var(--subtle);text-align:center;line-height:1.5;}
+@media(max-width:880px){.lg-brand{display:none;}}
+/* ── App loading screen (bridges sign-in → fully-ready app) ─────────────────── */
+#app-loader{position:fixed;inset:0;z-index:9000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;background:var(--bg);transition:opacity .4s ease;}
+#app-loader.hidden{opacity:0;pointer-events:none;}
+.al-logo{width:56px;height:56px;border-radius:16px;background:linear-gradient(150deg,#1e3a8a,#1e3068);display:flex;align-items:center;justify-content:center;box-shadow:0 8px 24px rgba(30,58,138,.22);animation:al-pulse 1.8s ease-in-out infinite;}
+.al-logo svg{width:33px;height:33px;}
+@keyframes al-pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
+.al-spin{width:26px;height:26px;border:3px solid var(--border);border-top-color:var(--navy);border-radius:50%;animation:al-rot .8s linear infinite;}
+@keyframes al-rot{to{transform:rotate(360deg)}}
+.al-text{font-size:13px;color:var(--muted);font-weight:500;letter-spacing:.01em;}
 </style>
 </head>
 <body>
+<div id="login-screen">
+  <div class="lg-brand">
+    <div class="lg-brand-top">
+      <div class="lg-logo"><svg viewBox="0 0 24 24" fill="none">
+        <rect x="3" y="14" width="3.4" height="7" rx="1.2" fill="#fff" opacity="0.55"/>
+        <rect x="8.3" y="10" width="3.4" height="11" rx="1.2" fill="#fff" opacity="0.75"/>
+        <rect x="13.6" y="6" width="3.4" height="15" rx="1.2" fill="#fff"/>
+        <path d="M2.5 9.5h3l1.6-4 2.2 7 1.8-3.5 1.4 2h7.5" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" opacity="0.95"/>
+      </svg></div>
+      <div class="lg-wordmark">Vet<span>ric</span></div>
+    </div>
+    <div class="lg-hero">
+      <h1>Texas veterinary market intelligence.</h1>
+      <p>Find where to open or acquire your next clinic — competition, demographics, growth, and zoning-aware site scoring, all on one map.</p>
+      <ul class="lg-feats">
+        <li><svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Every clinic mapped — PE-owned &amp; independent</li>
+        <li><svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Opportunity scoring across North Texas ZIPs</li>
+        <li><svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Zoning-aware site evaluation down to the parcel</li>
+      </ul>
+    </div>
+    <div class="lg-foot">© 2026 Vetric · Veterinary Market Intelligence</div>
+  </div>
+  <div class="lg-form-wrap">
+    <form class="lg-card" onsubmit="return vetricSignIn(event)" autocomplete="on">
+      <h2>Welcome back</h2>
+      <p class="lg-sub">Sign in to your Vetric workspace</p>
+      <div class="lg-field"><label for="lg-email">Email</label><input id="lg-email" type="email" autocomplete="username" placeholder="you@company.com" required></div>
+      <div class="lg-field"><label for="lg-pass">Password</label><input id="lg-pass" type="password" autocomplete="current-password" placeholder="••••••••" required></div>
+      <div class="lg-err" id="lg-err"></div>
+      <div class="lg-row">
+        <label class="lg-check"><input type="checkbox" id="lg-remember" checked> Remember me</label>
+        <a class="lg-link" href="#" onclick="return false">Forgot password?</a>
+      </div>
+      <button class="lg-btn" type="submit">Sign in</button>
+      <div class="lg-divider">or</div>
+      <div class="lg-alt">Don't have access yet? <a href="#" onclick="return false">Request a demo</a></div>
+      <div class="lg-note">Demo build — sign-in is a front-end gate, not yet backed by an authentication server.</div>
+    </form>
+  </div>
+</div>
+<script>try{if(localStorage.getItem('vf_authed')==='1'){document.getElementById('login-screen').classList.add('hidden');}}catch(e){}</script>
+<div id="app-loader">
+  <div class="al-logo"><svg viewBox="0 0 24 24" fill="none">
+    <rect x="3" y="14" width="3.4" height="7" rx="1.2" fill="#fff" opacity="0.55"/>
+    <rect x="8.3" y="10" width="3.4" height="11" rx="1.2" fill="#fff" opacity="0.75"/>
+    <rect x="13.6" y="6" width="3.4" height="15" rx="1.2" fill="#fff"/>
+    <path d="M2.5 9.5h3l1.6-4 2.2 7 1.8-3.5 1.4 2h7.5" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" opacity="0.95"/>
+  </svg></div>
+  <div class="al-spin"></div>
+  <div class="al-text">Setting up your workspace…</div>
+</div>
 <header>
   <div class="hdr-left">
     <div class="logo"><svg viewBox="0 0 24 24" fill="none">
@@ -498,7 +615,7 @@ body.dev-mode .search-bar{background:var(--amber-light);border-bottom-color:#fde
     <button class="hdr-icon-btn" onclick="openSettings()" title="Settings" aria-label="Settings">
       <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
     </button>
-    <div class="avatar" title="Jonathan Duhon">JD</div>
+    <div class="avatar" title="Sign out" style="cursor:pointer" onclick="vetricSignOut()">JD</div>
   </div>
 </header>
 <div class="settings-overlay" id="settings-overlay" onclick="if(event.target===this)closeSettings()">
@@ -686,14 +803,18 @@ body.dev-mode .search-bar{background:var(--amber-light);border-bottom-color:#fde
       </div>
       <div class="layer-status" id="traffic-status">Off</div>
     </div>
-    <div class="layer-item" style="opacity:.5">
+    <div class="layer-item">
       <div class="layer-row">
         <div>
           <div class="layer-name">Clinic Density</div>
-          <div class="layer-desc">Coming soon</div>
+          <div class="layer-desc">Heatmap of where vet clinics cluster (PE + independent) — hot = saturated market. Overlays on top of the other layers, so you can spot high-demand areas with few clinics. Independent coverage is fullest in North Texas.</div>
         </div>
-        <label class="toggle"><input type="checkbox" disabled/><span class="toggle-slider"></span></label>
+        <label class="toggle" style="margin-left:12px">
+          <input type="checkbox" id="toggle-clinics" onchange="toggleClinicDensityLayer(this.checked)"/>
+          <span class="toggle-slider"></span>
+        </label>
       </div>
+      <div class="layer-status" id="clinics-status">Off</div>
     </div>
   </div>
   <div class="income-legend" id="income-legend">
@@ -728,6 +849,11 @@ body.dev-mode .search-bar{background:var(--amber-light);border-bottom-color:#fde
       <div class="legend-scale-item"><div class="legend-scale-color" style="background:#f87171"></div> Shrinking</div>
       <div class="legend-scale-item"><div class="legend-scale-color" style="background:#e2e8f0"></div> No data</div>
     </div>
+  </div>
+  <div class="dog-legend" id="clinics-legend">
+    <div class="legend-title">Clinic Density</div>
+    <div style="height:10px;border-radius:5px;margin:4px 0 6px;background:linear-gradient(90deg,#fef3c7,#fde68a,#fb923c,#dc2626,#7f1d1d);"></div>
+    <div style="display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted);"><span>Sparse</span><span>Saturated</span></div>
   </div>
   <div class="dev-hint" id="dev-hint">Click anywhere on the map to add a clinic</div>
   <div class="traffic-legend" id="traffic-legend">
@@ -807,7 +933,6 @@ body.dev-mode .search-bar{background:var(--amber-light);border-bottom-color:#fde
     <div class="legend">
       <div class="leg-item"><div class="leg-dot" style="background:var(--navy)"></div>Independent</div>
       <div class="leg-item"><div class="leg-dot" style="background:var(--red)"></div>PE owned</div>
-      <div class="leg-item"><div class="leg-dot" style="background:var(--amber)"></div>PE loading...</div>
     </div>
     <div class="zip-info-panel" id="zip-info-panel">
       <div class="zip-info-zip" id="zip-info-zip">ZIP —</div>
@@ -826,10 +951,54 @@ body.dev-mode .search-bar{background:var(--amber-light);border-bottom-color:#fde
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.heat/0.2.0/leaflet-heat.js"></script>
 <!-- PE data loads async — map works immediately without it -->
+<script>
+// ── Login gate (front-end only — no auth server yet) ────────────────────────
+function _vfInitials(email){
+  const u=(email||'').replace(/@.*/,'');
+  const parts=u.split(/[.\-_+]/).filter(Boolean);
+  const ini=(parts.length>1?parts[0][0]+parts[1][0]:u.slice(0,2)).toUpperCase();
+  return ini||'VM';
+}
+function vetricSignIn(e){
+  if(e&&e.preventDefault) e.preventDefault();
+  const email=(document.getElementById('lg-email').value||'').trim();
+  const pass=document.getElementById('lg-pass').value||'';
+  const err=document.getElementById('lg-err');
+  if(!email||!pass){ if(err) err.textContent='Enter your email and password.'; return false; }
+  if(err) err.textContent='';
+  try{
+    const remember=document.getElementById('lg-remember');
+    if(!remember||remember.checked) localStorage.setItem('vf_authed','1');
+    localStorage.setItem('vf_user_email', email);
+  }catch(_){}
+  const av=document.querySelector('.avatar'); if(av){ av.textContent=_vfInitials(email); av.title=email+' · click to sign out'; }
+  const ls=document.getElementById('login-screen'); if(ls) ls.classList.add('hidden');
+  // bridge to the app behind a brief loading screen until tiles + PE data are ready
+  if(typeof _vfRevealApp==='function') _vfRevealApp();
+  return false;
+}
+function vetricSignOut(){
+  try{ localStorage.removeItem('vf_authed'); }catch(_){}
+  const p=document.getElementById('lg-pass'); if(p) p.value='';
+  const ls=document.getElementById('login-screen'); if(ls) ls.classList.remove('hidden');
+}
+// On load: if already signed in, reflect the user's initials in the avatar
+(function(){ try{
+  if(localStorage.getItem('vf_authed')==='1'){
+    const em=localStorage.getItem('vf_user_email');
+    const av=document.querySelector('.avatar');
+    if(em && av){ av.textContent=_vfInitials(em); av.title=em+' · click to sign out'; }
+  }
+}catch(_){}})();
+</script>
 <script src="pe-data.js" defer></script>
+<script src="vet-clinics.js" defer></script>
 <script>
 const NAVY='#1e3a8a', RED='#dc2626', AMBER='#f59e0b';
+// Set to true to revert to Overpass for independent clinics (one-line rollback)
+const USE_VET_CLINICS = true;
 const MIN_ZOOM=10;
 
 // PE data — populated by pe-data.js once it loads
@@ -840,6 +1009,7 @@ var peLoaded = false;
 // Called by pe-data.js once it's done
 function onPEReady() {
   peLoaded = true;
+  try{ if(typeof _peReadyResolve!=='undefined' && _peReadyResolve){ _peReadyResolve(); _peReadyResolve=null; } }catch(_){}
   document.getElementById('hdr-status').textContent = 'PE data: ' + Object.keys(PE_NAMES).length.toLocaleString() + ' TX clinics';
   setTimeout(() => document.getElementById('hdr-status').textContent = '', 4000);
   // If clinics were already fetched before PE data arrived, those PE pins were
@@ -892,7 +1062,35 @@ function checkPE(name, lat, lon, key, overrides) {
 // gotchas). 1.0 = the SVG is ~3× the viewport per axis; bigger smooths fast pans
 // but renders more off-screen choropleth polygons, so this balances the two.
 const map = L.map('map',{minZoom:4, boxZoom:false, renderer: L.svg({padding:1})}).setView([31.0,-99.0],7);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap',maxZoom:19}).addTo(map);
+const baseTiles=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap',maxZoom:19}).addTo(map);
+
+// ── App-ready signal → drives the post-login loading screen ──────────────────
+// Hide the loader only once the things the user actually waits for are in: the base
+// map tiles painted AND the PE clinic dataset parsed. Each has a safety cap so a slow
+// tile/CDN can never strand the loader.
+let _peReadyResolve; const _peReadyP = (typeof peLoaded!=='undefined'&&peLoaded) ? Promise.resolve() : new Promise(r=>_peReadyResolve=r);
+let _tilesReadyResolve; const _tilesReadyP = new Promise(r=>_tilesReadyResolve=r);
+baseTiles.once('load', ()=>{ if(_tilesReadyResolve){ _tilesReadyResolve(); _tilesReadyResolve=null; } });
+setTimeout(()=>{ if(_tilesReadyResolve){ _tilesReadyResolve(); _tilesReadyResolve=null; } }, 3500);
+function _vfRevealApp(){
+  const loader=document.getElementById('app-loader'); if(!loader || loader.classList.contains('hidden')) { try{ if(window.map&&map.invalidateSize) map.invalidateSize(); }catch(_){}; _vfWarmCaches(); return; }
+  const start=performance.now();
+  Promise.race([ Promise.all([_peReadyP,_tilesReadyP]), new Promise(r=>setTimeout(r,4500)) ]).then(()=>{
+    const wait=Math.max(0, 380-(performance.now()-start)); // brief minimum so the loader never just flashes
+    setTimeout(()=>{ loader.classList.add('hidden'); try{ if(window.map&&map.invalidateSize) map.invalidateSize(); }catch(_){}; _vfWarmCaches(); }, wait);
+  });
+}
+// Warm the two heaviest UNIVERSAL datasets during browser idle once the app is shown: the ZIP
+// geometry (tx-zips.json ~2MB, needed by every choropleth/evaluate/opportunity) and all-TX income.
+// Both are idempotent singletons / force-cached, so this just makes the first such interaction instant.
+let _vfWarmed=false;
+function _vfWarmCaches(){
+  if(_vfWarmed) return; _vfWarmed=true;
+  const warm=()=>{ try{ if(typeof loadZipGeometry==='function') loadZipGeometry().catch(()=>{}); }catch(_){} try{ if(typeof fetchIncomeBatch==='function') fetchIncomeBatch([]).catch(()=>{}); }catch(_){} };
+  (window.requestIdleCallback||(f=>setTimeout(f,1500)))(warm,{timeout:4000});
+}
+// Already signed in (returning user)? The early inline script hid the login; bridge straight to the loader → app.
+try{ if(localStorage.getItem('vf_authed')==='1') _vfRevealApp(); }catch(_){}
 
 const clusterGroup = L.layerGroup();
 map.addLayer(clusterGroup);
@@ -905,7 +1103,10 @@ function pinSVG(color){
 function miniPin(color){
   return `<svg width="14" height="19" viewBox="0 0 28 38"><path d="M14 1.5C7.1 1.5 1.5 7.1 1.5 14C1.5 24.5 14 36.5 14 36.5C14 36.5 26.5 24.5 26.5 14C26.5 7.1 20.9 1.5 14 1.5Z" fill="${color}" stroke="white" stroke-width="1.5"/><circle cx="14" cy="14" r="5.5" fill="white" opacity="0.92"/></svg>`;
 }
-function makeIcon(color){ return L.divIcon({html:pinSVG(color),iconSize:[28,38],iconAnchor:[14,38],popupAnchor:[0,-40],className:''}); }
+// divIcons are immutable and shareable across markers — memoize one per color instead of
+// rebuilding the SVG string for every pin on every commit (up to MAX_CLINICS pins).
+const _iconCache={};
+function makeIcon(color){ return _iconCache[color] || (_iconCache[color]=L.divIcon({html:pinSVG(color),iconSize:[28,38],iconAnchor:[14,38],popupAnchor:[0,-40],className:''})); }
 function pinColor(c){ return c.pe ? RED : (c.peChecked ? NAVY : AMBER); }
 function clinicKey(c){ return `${Math.round(c.lat*1000)}_${Math.round(c.lon*1000)}`; }
 
@@ -1057,7 +1258,7 @@ function renderList(){
       <div style="flex-shrink:0;margin-top:2px">${miniPin(pinColor(c))}</div>
       <div class="card-body">
         <div class="card-name">${c.name}</div>
-        <div class="card-meta">${cardTag(c)}<span class="card-dist">${mi(c.dist)} mi</span></div>
+        <div class="card-meta">${cardTag(c)}${c.pe?`<span class="card-dist" style="font-size:11px;color:#666">${c.pe.owner}</span>`:''}</div>
       </div>
     </div>`;
   }).join('');
@@ -1364,7 +1565,6 @@ function renderNormalSidebar(){
     <div class="legend">
       <div class="leg-item"><div class="leg-dot" style="background:var(--navy)"></div>Independent</div>
       <div class="leg-item"><div class="leg-dot" style="background:var(--red)"></div>PE owned</div>
-      <div class="leg-item"><div class="leg-dot" style="background:var(--amber)"></div>PE loading...</div>
     </div>
     <div class="zip-info-panel" id="zip-info-panel">
       <div class="zip-info-zip" id="zip-info-zip">ZIP —</div>
@@ -1531,7 +1731,7 @@ function ensurePEClinicsForSelectedZips(){
       // Add a marker for it so it shows on the map
       const idx = clinics.length-1;
       const m = L.marker([plat,plon],{icon:makeIcon(pinColor(c))})
-        .bindPopup(buildPopup(c),{maxWidth:260})
+        .bindPopup(()=>buildPopup(c),{maxWidth:260})
         .on('click',()=>{
           if(activeIdx!==null){const p=document.getElementById('c'+activeIdx);if(p)p.className='card';}
           activeIdx=idx;const el=document.getElementById('c'+idx);
@@ -2057,6 +2257,53 @@ async function toggleGrowthLayer(on){
   }
 }
 
+/* ─── Clinic Density heatmap ──────────────────────────────────────────────────
+   Density is POINT data (where clinics cluster), NOT a per-ZIP attribute, so it's a
+   kernel-density heatmap (leaflet.heat) — hot = clinics concentrated — instead of a
+   choropleth that would impose arbitrary ZIP boundaries. Points: PE (PE_COORDS, complete
+   statewide) + independents (oppRegionIndependents ∪ on-map clinics[], deduped).
+   COMBINABLE OVERLAY: a translucent heat that sits ON TOP of the income/pets/growth
+   choropleths (read "high demand + few clinics" in one view), so it is NOT part of the
+   single-fill mutual-exclusion rule. Independent coverage is fullest in North Texas;
+   elsewhere it's PE + whatever's been panned. Region independents fold in via a NON-blocking
+   refine. The demographic choropleths bringToBack(), so the heat stays on top of them.
+──────────────────────────────────────────────────────────────────────────────*/
+let clinicHeatLayer = null;
+function _clinicHeatPoints(){
+  const pts=[];
+  if(typeof PE_COORDS!=='undefined') for(const c of PE_COORDS) pts.push([c[0],c[1],1]);
+  const seen=new Set();
+  const add=(la,lo)=>{ if(la==null||lo==null) return; const k=Math.round(la*1000)+'_'+Math.round(lo*1000); if(seen.has(k)) return; seen.add(k); pts.push([la,lo,1]); };
+  for(const c of oppRegionIndependents) add(c.lat,c.lon);
+  for(const c of clinics){ if(!c.pe) add(c.lat,c.lon); }
+  return pts;
+}
+async function toggleClinicDensityLayer(on){
+  const status=document.getElementById('clinics-status');
+  const legend=document.getElementById('clinics-legend');
+  if(!on){
+    if(clinicHeatLayer){ map.removeLayer(clinicHeatLayer); clinicHeatLayer=null; }
+    legend.classList.remove('show'); status.textContent='Off';
+    return;
+  }
+  if(typeof L.heatLayer!=='function'){ status.textContent='Heatmap library unavailable'; document.getElementById('toggle-clinics').checked=false; return; }
+  try{
+    const pts=_clinicHeatPoints();
+    if(clinicHeatLayer) map.removeLayer(clinicHeatLayer);
+    // translucent warm ramp: sparse → amber, dense → deep red (saturated). max≈6 overlapping = full red.
+    clinicHeatLayer = L.heatLayer(pts, { radius:26, blur:20, max:6, minOpacity:0.30,
+      gradient:{0.2:'#fde68a', 0.45:'#fb923c', 0.7:'#dc2626', 1.0:'#7f1d1d'} }).addTo(map);
+    legend.classList.add('show');
+    status.textContent=`${pts.length.toLocaleString()} clinics mapped`;
+    // Fold in the full region independents (Overpass) WITHOUT blocking the paint.
+    ensureRegionIndependents().then(()=>{ if(clinicHeatLayer){ const p=_clinicHeatPoints(); clinicHeatLayer.setLatLngs(p); status.textContent=`${p.length.toLocaleString()} clinics mapped`; } }).catch(()=>{});
+  }catch(err){
+    status.textContent='Error: '+err.message;
+    document.getElementById('toggle-clinics').checked=false;
+    console.error('Clinic heat layer:', err);
+  }
+}
+
 /*  Dev mode  */
 let devMode = false;
 
@@ -2428,32 +2675,46 @@ async function fetchClinics(){
     }
   }
 
-  // SOURCE 2: OpenStreetMap via Overpass — adds independent clinics. Uses the shared
-  // robust _overpass client (multi-mirror, per-attempt timeout, 429/504 backoff) so a
-  // slow/rate-limited mirror can't freeze the map or silently drop all independents.
-  // _clinicAbort cancels any superseded in-flight fetch so rapid panning stops wasting
-  // server slots. nwr + healthcare match catches more clinics than node/way amenity alone.
+  // SOURCE 2: Independent clinics — from VET_CLINICS (Google Places static dataset) when
+  // available, falling back to Overpass. VET_CLINICS is viewport-filtered in-memory so
+  // there's no network call and no Overpass dependency for the map view.
   let overpassOk = false;
-  if(_clinicAbort) _clinicAbort.abort();
-  _clinicAbort = new AbortController();
-  const q=`[out:json][timeout:20];(nwr["amenity"="veterinary"](${s},${w},${n},${e});nwr["healthcare"="veterinary"](${s},${w},${n},${e}););out center tags;`;
-  const data = await _overpass(q, {timeout:16000, signal:_clinicAbort.signal});
-  if(myReq!==fetchSeq) return; // superseded by newer fetch
-  if(data){
-    overpassOk = true;
-    for(const el of data.elements){
-      const clat=el.lat||el.center?.lat,clon=el.lon||el.center?.lon;
-      if(!clat||!clon) continue;
-      const t=el.tags||{};
-      const clinicName=t.name||t.operator||'Veterinary Clinic';
+  if(USE_VET_CLINICS && typeof VET_CLINICS !== 'undefined' && VET_CLINICS.length){
+    overpassOk = true; // treat static dataset as always-ok (no network failure possible)
+    for(const vc of VET_CLINICS){
+      const clat=vc.lat, clon=vc.lon;
+      if(clat<s||clat>n||clon<w||clon>e) continue;
       const ck=`${Math.round(clat*1000)}_${Math.round(clon*1000)}`;
       if(deleted[ck]) continue;
       const dupe=local.some(c=>Math.abs(c.lat-clat)<0.003&&Math.abs(c.lon-clon)<0.004);
       if(dupe) continue;
-      const pe=checkPE(clinicName,clat,clon,ck,overrides);
-      const parts=[t['addr:housenumber'],t['addr:street'],t['addr:city'],t['addr:state']].filter(Boolean);
-      const nm=overrides[ck]?.name||clinicName;
-      local.push({name:nm,website:t.website||t['contact:website']||'',addr:parts.join(' '),pe,peChecked:peLoaded,lat:clat,lon:clon,dist:hav(lat,lng,clat,clon)});
+      const pe=checkPE(vc.name,clat,clon,ck,overrides);
+      const nm=overrides[ck]?.name||vc.name||'Veterinary Clinic';
+      local.push({name:nm,website:'',addr:'',pe,peChecked:peLoaded,lat:clat,lon:clon,dist:hav(lat,lng,clat,clon)});
+    }
+  } else {
+    // Overpass fallback (used outside DFW or if vet-clinics.js not loaded)
+    if(_clinicAbort) _clinicAbort.abort();
+    _clinicAbort = new AbortController();
+    const q=`[out:json][timeout:20];(nwr["amenity"="veterinary"](${s},${w},${n},${e});nwr["healthcare"="veterinary"](${s},${w},${n},${e}););out center tags;`;
+    const data = await _overpass(q, {timeout:16000, signal:_clinicAbort.signal});
+    if(myReq!==fetchSeq) return; // superseded by newer fetch
+    if(data){
+      overpassOk = true;
+      for(const el of data.elements){
+        const clat=el.lat||el.center?.lat,clon=el.lon||el.center?.lon;
+        if(!clat||!clon) continue;
+        const t=el.tags||{};
+        const clinicName=t.name||t.operator||'Veterinary Clinic';
+        const ck=`${Math.round(clat*1000)}_${Math.round(clon*1000)}`;
+        if(deleted[ck]) continue;
+        const dupe=local.some(c=>Math.abs(c.lat-clat)<0.003&&Math.abs(c.lon-clon)<0.004);
+        if(dupe) continue;
+        const pe=checkPE(clinicName,clat,clon,ck,overrides);
+        const parts=[t['addr:housenumber'],t['addr:street'],t['addr:city'],t['addr:state']].filter(Boolean);
+        const nm=overrides[ck]?.name||clinicName;
+        local.push({name:nm,website:t.website||t['contact:website']||'',addr:parts.join(' '),pe,peChecked:peLoaded,lat:clat,lon:clon,dist:hav(lat,lng,clat,clon)});
+      }
     }
   }
 
@@ -2503,7 +2764,7 @@ async function fetchClinics(){
   const batch=[];
   markers=clinics.map((c,i)=>{
     const m=L.marker([c.lat,c.lon],{icon:makeIcon(pinColor(c))})
-      .bindPopup(buildPopup(c),{maxWidth:260})
+      .bindPopup(()=>buildPopup(c),{maxWidth:260})
       .on('click',()=>{
         if(activeIdx!==null){const p=document.getElementById('c'+activeIdx);if(p)p.className='card';}
         activeIdx=i;const el=document.getElementById('c'+i);
@@ -2887,8 +3148,20 @@ let oppRegionIndependents = []; // [{lat,lon}] — region-wide OSM independents 
 function _oppIndKey(k){ return 'vf_oppind_'+(k||oppRegion.key); }
 async function ensureRegionIndependents(){
   if(oppRegionIndependents.length) return;
-  // Use a cached result instantly so the list never shows a false "no competition"
-  // while the (slow, sometimes-flaky) Overpass call runs — then refresh in the background.
+  // Use VET_CLINICS static dataset when available — instant, no Overpass needed.
+  if(USE_VET_CLINICS && typeof VET_CLINICS !== 'undefined' && VET_CLINICS.length){
+    const s=oppRegion.s, w=oppRegion.w, n=oppRegion.n, e=oppRegion.e;
+    const deleted=getDeleted(), overrides=getOverrides(), out=[];
+    for(const vc of VET_CLINICS){
+      if(vc.lat<s||vc.lat>n||vc.lon<w||vc.lon>e) continue;
+      const key=`${Math.round(vc.lat*1000)}_${Math.round(vc.lon*1000)}`;
+      if(deleted[key]) continue;
+      if(checkPE(vc.name, vc.lat, vc.lon, key, overrides)) continue;
+      out.push({lat:vc.lat, lon:vc.lon});
+    }
+    if(out.length){ oppRegionIndependents=out; return; }
+  }
+  // Overpass fallback (outside DFW or vet-clinics.js not loaded)
   try{ const j=localStorage.getItem(_oppIndKey()); const a=j&&JSON.parse(j);
     if(Array.isArray(a)&&a.length){ oppRegionIndependents=a; _refreshRegionIndependents().catch(()=>{}); return; } }catch(e){}
   await _refreshRegionIndependents(); // no cache → wait for the live fetch
@@ -2924,6 +3197,21 @@ async function openOpportunity(){
   wrap.innerHTML='<div class="opp-loading">Loading market data for '+oppRegion.name+'…</div>';
 
   try{
+    // PARALLELIZE the network: the income/pets/growth toggles below run sequentially (their
+    // mutual-exclusion teardown is interleaved), but their Census fetches are independent.
+    // Warm all of them — plus the ZIP geometry — concurrently up front (force-cache), so each
+    // sequential toggle's fetch returns instantly from cache instead of paying serial latency.
+    // No data is changed; this only collapses 4 serial round-trips into 1 parallel batch.
+    const _K='3429f2401376a586a8f6ffc02bb5678ee32fbf44';
+    const _cw=u=>fetch(u,{cache:'force-cache'}).then(r=>r&&r.text()).catch(()=>{});
+    await Promise.all([
+      loadZipGeometry().catch(()=>{}),
+      _cw(`https://api.census.gov/data/2022/acs/acs5?get=B19013_001E&for=zip%20code%20tabulation%20area:*&key=${_K}`),
+      _cw(`https://api.census.gov/data/2022/acs/acs5?get=B11001_001E,B25003_001E,B25003_002E,B25024_001E,B25024_002E&for=zip%20code%20tabulation%20area:*&key=${_K}`),
+      _cw(`https://api.census.gov/data/${GROWTH_YEAR_NEW}/acs/acs5?get=B01003_001E&for=zip%20code%20tabulation%20area:*&key=${_K}`),
+      _cw(`https://api.census.gov/data/${GROWTH_YEAR_OLD}/acs/acs5?get=B01003_001E&for=zip%20code%20tabulation%20area:*&key=${_K}`)
+    ]);
+
     // Load income first, snapshot it (toggling others later would clear incomeData)
     if(!Object.keys(incomeData).length){
       document.getElementById('toggle-income').checked=true;
@@ -2953,7 +3241,11 @@ async function openOpportunity(){
     try{ await ensureConstructionData(); }catch(e){}
     oppConstructionSnap = {...constructionData};
 
-    // All DFW-region independents (PE is statewide; independents were viewport-only)
+    // All DFW-region independents (PE is statewide; independents were viewport-only).
+    // Independents are REAL competition and ONLY come from Overpass, so we WAIT for them —
+    // an accurate competition count matters more than shaving load time, and scoring without
+    // them would under-count competition on a cold first load. Returning users are instant via
+    // the localStorage cache inside ensureRegionIndependents; only the cold first load waits.
     try{ await ensureRegionIndependents(); }catch(e){}
 
     // Turn OFF all choropleths so landing on a ZIP shows the plain base map.
@@ -3431,13 +3723,17 @@ function updateLayerKpis(){
    dropped. Degrades gracefully — any layer Overpass can't return is dropped and
    its weight redistributed; competition always works (statewide PE set). */
 let evalActive=false, evalZip=null, evalFeat=null, evalRadiusMi=3, evalZipAffluence=0.5, evalSat=null, evalAreaMode=false, evalAreaZips=null;
-let evalShow={heat:true, comp:true, retail:false, hoods:false}; // competitor range rings on by default — they show why border ZIPs are contested
-let evalLayers={heat:null, comp:null, retail:null, hoods:null, pins:null};
-let evalData={vets:[], retail:[], resid:[], roads:[], aadt:[]};
-let evalDataOk={retail:false, roads:false, resid:false, aadt:false};
+let evalShow={heat:true, comp:true, retail:false, hoods:false, zoning:false}; // competitor range rings on by default — they show why border ZIPs are contested
+let evalLayers={heat:null, comp:null, retail:null, hoods:null, zoning:null, pins:null};
+let evalData={vets:[], retail:[], resid:[], roads:[], aadt:[], zoning:[], osmLU:[], parcels:[]};
+let evalDataOk={retail:false, roads:false, resid:false, aadt:false, zoning:false, parcels:false};
+let evalZoning=true;        // zoning FILTER on by default — drop residential/civic cells (user-toggleable)
+let evalZoneCities=[];      // names of municipalities whose zoning covered this area
+let evalParcelCounties=[];  // county CADs whose parcels covered the gaps
+let evalZoneStat=null;      // {excluded, cities, counties, usedOSM, on} — sidebar readout
 let evalCells=[], evalTop=[], evalCompsCache=[], evalRecalcTimer=null;
 const EVAL_W={demand:0.30, comp:0.30, retail:0.22, access:0.18};
-const EVAL_TOP_N=5;
+const EVAL_TOP_N=3;
 const _grav=(d,R)=>d<R?1-d/R:0;
 // point→segment distance in metres (equirectangular; accurate at clinic-catchment
 // scale). Used so road frontage is measured to the road LINE, not just its sparse
@@ -3546,9 +3842,205 @@ async function _overpass(query, opts){
 }
 // Two best-effort Overpass passes for the buffered area: (A) vets, shops,
 // residential + commercial land use, named places; (B) arterial road geometry.
+/* ─── Zoning / land-use gate ──────────────────────────────────────────────────
+   Primary: authoritative municipal zoning from each DFW city's public ArcGIS REST
+   service (all CORS-enabled, queried client-side by viewport). Fallback: OpenStreetMap
+   landuse polygons wherever no city zoning covers a cell (unincorporated county land —
+   TX counties have NO zoning authority — and the handful of cities not wired here).
+   A cell classified residential/civic is DROPPED from the siteable grid, killing the
+   "it suggested a house in a subdivision" problem.  gate: 'exclude' | 'allow' | 'fallback'.
+──────────────────────────────────────────────────────────────────────────────*/
+const DFW_ZONING_SOURCES = [
+  {city:'Dallas',        url:'https://egis.dallascityhall.com/arcgis/rest/services/Sdc_public/Zoning/MapServer/15', code:'ZONE_DIST',  desc:'LONG_ZONE_DIST'},
+  {city:'Fort Worth',    url:'https://mapit.fortworthtexas.gov/ags/rest/services/Planning_Development/Zoning/MapServer/25', code:'ZONING', desc:'PD_DESCRIPTION', fw:true},
+  {city:'Arlington',     url:'https://gis2.arlingtontx.gov/agsext2/rest/services/Planning/ZoningInfo/MapServer/6', code:'DISTRICT', desc:'ZONINGDESCRIPTION'},
+  {city:'Irving',        url:'https://services3.arcgis.com/OfsJXUlu8pSkbl7B/arcgis/rest/services/Planning_and_Zoning/FeatureServer/5', code:'District', desc:'Description'},
+  {city:'Garland',       url:'https://maps.garlandtx.gov/arcgis/rest/services/Planning/GarlandZoningWebmap/MapServer/0', code:'BASE_ZONE', desc:null},
+  {city:'Plano',         url:'https://maps.planogis.org/arcgiswad/rest/services/OpenData/Zoning/FeatureServer/0', code:'ZN', desc:'IMS_ZONE'},
+  {city:'Frisco',        url:'https://maps.friscotexas.gov/gis/rest/services/Public/External_Planning_and_Zoning/MapServer/32', code:'ZONE_', desc:null},
+  {city:'McKinney',      url:'https://maps.mckinneytexas.org/mckinney/rest/services/OpenData/Planning_Zoning/MapServer/4', code:'ZoningType', desc:null},
+  {city:'Denton',        url:'https://services.arcgis.com/9dTWrhPzuDPnUVXr/arcgis/rest/services/Current_zoning/FeatureServer/0', code:'ZONING', desc:null},
+  {city:'Carrollton',    url:'https://maps.cityofcarrollton.com/arcserver/rest/services/SDE_Datasets/Planning/FeatureServer/1', code:'Zoning', desc:null},
+  {city:'Richardson',    url:'https://services.arcgis.com/lQySeXwbBg53XWDi/ArcGIS/rest/services/zoning_districts/FeatureServer/0', code:'ZoningCode', desc:'ZoningDescription'},
+  {city:'Allen',         url:'https://gismaps.cityofallen.org/arcgis/rest/services/Current_Zoning/MapServer/0', code:'Zoning', desc:null},
+  {city:'Grand Prairie', url:'https://gis.gptx.org/srv105/rest/services/Maps/Information/MapServer/55', code:'ZONE_CLASS', desc:'ZONE_DESC'},
+  {city:'Lewisville',    url:'https://services2.arcgis.com/kXGqZY4GIOcEYxoF/arcgis/rest/services/Zoning_Feature_view/FeatureServer/0', code:'ZONING_CLASS', desc:'Zoning_Desc'},
+  {city:'Mansfield',     url:'https://services8.arcgis.com/tUwpuhPn5EkXI11P/arcgis/rest/services/Basemap/FeatureServer/0', code:'DISTRICT', desc:null},
+  {city:'Flower Mound',  url:'https://gismaps.flower-mound.com/wafmp/rest/services/Basemap/Zoning_MS/MapServer/0', code:'ZONE_CODE', desc:null}
+];
+function _zoneNorm(c){ if(c==null) return ''; return (''+c).toUpperCase().replace(/[()]/g,' ').replace(/\s+/g,' ').trim(); }
+function _zoneBase(s){ return s.split('/')[0].split(' ')[0].trim(); }
+// Generic classifier — validated against ~700 real distinct codes across all 16 cities
+// (zero residential→'allow' leaks). Description (where a city exposes one) is the most
+// reliable signal, so it's checked first; otherwise we fall to code-prefix rules.
+function _zoneClassGeneric(code, desc){
+  const s=_zoneNorm(code);
+  const d=desc?(''+desc).toUpperCase():'';
+  if(!s && !d) return {gate:'fallback',label:'Unzoned/PD'};
+  if(d){
+    if(/(MIXED.?USE|TOWN CENTER|URBAN CENTER|TRANSIT.?ORIENT)/.test(d)) return {gate:'allow',label:'Mixed-use'};
+    if(/(SINGLE.?FAMILY|MULTI.?FAMILY|TWO.?FAMILY|DUPLEX|TRIPLEX|FOURPLEX|TOWNHOUSE|TOWNHOME|MOBILE HOME|MANUFACTURED HOME|RESIDENT|DWELLING|APARTMENT|CONDOMIN|PATIO HOME|GARDEN HOME|\bHOUSING\b)/.test(d)) return {gate:'exclude',label:'Residential'};
+    if(/(COMMERCIAL|RETAIL|OFFICE|BUSINESS|SHOPPING|HOSPITALITY|\bMOTEL\b|\bHOTEL\b)/.test(d)) return {gate:'allow',label:'Commercial'};
+    if(/(INDUSTRIAL|MANUFACTUR|WAREHOUSE|LOGISTIC|\bFLEX\b)/.test(d)) return {gate:'allow',label:'Industrial'};
+    if(/(AGRICULTUR|\bFARM|\bRANCH)/.test(d)) return {gate:'fallback',label:'Agricultural'};
+    if(/(PARK|OPEN SPACE|RECREATION|FLOODPLAIN|FLOOD PLAIN|CONSERVATION|CEMETERY|RIGHT.?OF.?WAY|\bLAKE\b|\bWATER\b|PUBLIC|CIVIC|INSTITUTION|SCHOOL|UNIVERSITY)/.test(d)) return {gate:'exclude',label:'Open space / civic'};
+  }
+  const b=_zoneBase(s);
+  if(/^(PD|PUD|SUP|S-P|SP)$/.test(b) || /^PD[- ]/.test(s) || /^S-P[- ]/.test(s)){
+    const rest=s.replace(/^(PD|PUD|SUP|S-P|SP)[\s-]*/,'').trim();
+    if(rest && rest!==b && !/^\d+[A-Z]?$/.test(rest)){ const sub=_zoneClassGeneric(rest,''); if(sub.gate!=='fallback') return sub; }
+    return {gate:'fallback',label:'Planned dev'};
+  }
+  if(/^(ETJ|COUNTY)/.test(b)) return {gate:'fallback',label:'Unincorporated/ETJ'};
+  if(/^(WR|UN-|SD|UTA)/.test(b) || b==='S' || b==='SU') return {gate:'fallback',label:'Special district'};
+  if(/^(PARK|OS|OPEN|GREENBELT|GREEN|FP|FLOOD|FH|LAKE|WATER|ROW|R-O-W|FWY|FREEWAY|CEM|CF|CFOS|PR|PFD|REC)$/.test(b) || b==='P') return {gate:'exclude',label:'Open space / civic'};
+  if(/^(AG|AGR|AO|AP)$/.test(b) || b==='A') return {gate:'fallback',label:'Agricultural'};
+  if(/^R-?\d/.test(b)) return {gate:'exclude',label:'Residential'};
+  if(/^R-(MF|TH|SF|SFA|MH|PH|XF|ZL|DU|2F|3F)/.test(b)) return {gate:'exclude',label:'Residential'};
+  if(/^(SF|MF|TH|RM|RS|RD|RR|RG|RH|MH|MHP|DU|2F|3F|4F|NR-|DR-|RCR|RED|PRD|OTR)/.test(b)) return {gate:'exclude',label:'Residential'};
+  if(/^RE(\b|-|\d|$)/.test(b) && !/^REC|^RET/.test(b)) return {gate:'exclude',label:'Residential'};
+  if(b==='R'||b==='RES'||b==='SFA'||b==='SFD'||b==='SFE'||b==='UR'||b==='TE'||b==='ETH') return {gate:'exclude',label:'Residential'};
+  if(/^(GO|LO|MO|NO|PO|OM|OP|OC|RO)/.test(b) || /^O-?\d/.test(b) || b==='O') return {gate:'allow',label:'Office'};
+  if(/^(MU|MIXED|UMU|WMU|NRMU|OTMU|MD|TOD|MTC|OTC|CBD|DDD|DB|VG|DT|DC|DD)/.test(b) || b==='TC'||b==='UC'||b==='TN'||b==='UB'||/^NS-T/.test(b)||/^CB/.test(b)) return {gate:'allow',label:'Mixed-use'};
+  if(/^C-?\d/.test(b) || /^C-[A-Z]/.test(b) || /^(CC|CR|CS|CA|CD|CH|CN|CO|GC|LC|NC|NS|HC|RC|GR|BG|BN|BP|BU|RET|COM|HD|HID|LID|GID|CSS|PCC|RCC|EC|CM|MC|GB|SC)/.test(b) || b==='C') return {gate:'allow',label:'Commercial'};
+  if(/^I-?\d/.test(b) || /^(LI|HI|IH|IM|IP|IN|IC|ML|MP)/.test(b) || /^M-/.test(b) || b==='I'||b==='IR'||b==='M') return {gate:'allow',label:'Industrial'};
+  return {gate:'fallback',label:'Unzoned/PD'};
+}
+// Fort Worth's legacy single-letter codes invert the usual convention (B/C/D = residential,
+// E/F/G = commercial, I/J/K = industrial), so it gets an override before the generic rules.
+function _zoneClassFW(code, desc){
+  const b=_zoneBase(_zoneNorm(code));
+  if(/^A([\s-]?\d|$)/.test(b)) return {gate:'exclude',label:'Residential'};
+  if(/^(B|C|D|UR|MH|R1|R2|ER|FR)$/.test(b)) return {gate:'exclude',label:'Residential'};
+  if(/^(E|F|G)$/.test(b)) return {gate:'allow',label:'Commercial'};
+  if(/^(I|J|K)$/.test(b)) return {gate:'allow',label:'Industrial'};
+  if(/^(AG|AR)$/.test(b)) return {gate:'fallback',label:'Agricultural'};
+  return _zoneClassGeneric(code,desc);
+}
+// Fetch municipal zoning polygons intersecting the eval bbox from every city service in
+// parallel. Best-effort: a city that errors/times-out is skipped (OSM covers it). Returns
+// {polys:[{f,bb,gate,label,city}], cities:[...]}. Never throws.
+async function _fetchCityZoning(zbb, signal){
+  const pad=0.008; // ~0.5mi envelope pad so edge cells are covered
+  const env=`${zbb.minLo-pad},${zbb.minLa-pad},${zbb.maxLo+pad},${zbb.maxLa+pad}`;
+  const polys=[], cities=new Set();
+  await Promise.all(DFW_ZONING_SOURCES.map(async src=>{
+    if(signal && signal.aborted) return;
+    const fields = src.desc ? `${src.code},${src.desc}` : src.code;
+    const params = `where=1%3D1&geometry=${encodeURIComponent(env)}&geometryType=esriGeometryEnvelope&inSR=4326&spatialRel=esriSpatialRelIntersects&outFields=${encodeURIComponent(fields)}&returnGeometry=true&outSR=4326&f=geojson&resultRecordCount=2000`;
+    try{
+      const ctrl=new AbortController(), to=setTimeout(()=>ctrl.abort(),15000);
+      const onAbort=()=>ctrl.abort(); if(signal) signal.addEventListener('abort',onAbort);
+      let res;
+      try{ res=await fetch(src.url+'/query?'+params,{signal:ctrl.signal}); }
+      finally{ clearTimeout(to); if(signal) signal.removeEventListener('abort',onAbort); }
+      if(!res.ok) return;
+      const d=await res.json();
+      if(!d || !Array.isArray(d.features) || !d.features.length) return;
+      let any=false;
+      for(const f of d.features){
+        if(!f.geometry) continue;
+        const p=f.properties||{};
+        const cz=(src.fw?_zoneClassFW:_zoneClassGeneric)(p[src.code], src.desc?p[src.desc]:null);
+        polys.push({f, bb:_evalBBox(f), gate:cz.gate, label:cz.label, city:src.city});
+        any=true;
+      }
+      if(any) cities.add(src.city);
+    }catch(e){ /* skip this city — OSM fallback covers it */ }
+  }));
+  return {polys, cities:[...cities]};
+}
+// Land-use class of a point: authoritative city zoning first, then OSM landuse. null = no
+// coverage at all (the corridor/road gate then decides, as before).
+function _zoneClassAt(la,lo){
+  // Tier 1: authoritative municipal zoning (legal "what can be built")
+  for(const z of evalData.zoning){
+    if(la<z.bb.minLa||la>z.bb.maxLa||lo<z.bb.minLo||lo>z.bb.maxLo) continue;
+    if(pointInGeoJSON(la,lo,z.f)) return z;
+  }
+  // Tier 2: appraisal-district PARCEL land use (actual current use) — fills the gap
+  // outside the 16 zoned cities (exurbs, unincorporated county land). Parcel-accurate.
+  for(const p of evalData.parcels){
+    if(la<p.bb.minLa||la>p.bb.maxLa||lo<p.bb.minLo||lo>p.bb.maxLo) continue;
+    if(pointInGeoJSON(la,lo,p.f)) return p;
+  }
+  // Tier 3: coarse OSM landuse (last resort)
+  for(const p of evalData.osmLU){
+    if(la<p.bb.minLa||la>p.bb.maxLa||lo<p.bb.minLo||lo>p.bb.maxLo) continue;
+    if(pointInGeoJSON(la,lo,p.f)) return p;
+  }
+  return null;
+}
+
+// ── Appraisal-district PARCEL fallback (county CADs) ─────────────────────────
+// Fills the zoning gap for exurbs / unincorporated land the 16 zoned cities don't cover.
+// All three services are CORS-enabled, geoJSON-capable, and expose the Texas STATEWIDE
+// SPTB state-classification code, so one classifier (_parcelClass) works for every county.
+const DFW_PARCEL_SOURCES = [
+  {county:'Collin', url:'https://gismaps.cityofallen.org/arcgis/rest/services/ReferenceData/Collin_County_Appraisal_District_Parcels/MapServer/1', field:'GIS_DBO_AD_Entity_state_cd', page:2000},
+  {county:'Denton', url:'https://gis.dentoncounty.gov/arcgis/rest/services/Parcels/MapServer/0', field:'STATE_CD', page:1000},
+  {county:'Dallas', url:'https://gis.dallascityhall.com/arcgis/rest/services/Basemap/DallasTaxParcels/FeatureServer/0', field:'SPTBCODE', page:2000}
+];
+// SPTB code → gate. A/B single+multi-family, M mobile, O residential-inventory → residential;
+// F1/F2 commercial/industrial → siteable; J utilities + EX/X exempt → civic (drop); C vacant,
+// D/E acreage/rural, G mineral, L personal, S special → ambiguous (defer to the corridor gate).
+function _parcelClass(code){
+  const s=(code||'').toUpperCase().trim();
+  if(!s) return null;                                       // unjoined parcel → no signal
+  if(s.startsWith('EX')||s[0]==='X') return {gate:'exclude',label:'Exempt / civic (parcel)'};
+  const c=s[0];
+  if(c==='A'||c==='B'||c==='M'||c==='O') return {gate:'exclude',label:'Residential (parcel)'};
+  if(c==='F') return {gate:'allow',  label:'Commercial (parcel)'};
+  if(c==='J') return {gate:'exclude',label:'Utility / civic (parcel)'};
+  return {gate:'fallback', label:'Vacant / rural (parcel)'};
+}
+// Best-effort, capped, generalized parcel fetch. The WHERE filter pulls ONLY the parcels that
+// actually decide the gate (A/B/F/M/O/J/EX/X) — skipping the numerous vacant/ag lots — which
+// slashes volume in exurbs. maxAllowableOffset generalizes geometry; per-request timeout + page
+// caps keep it bounded. A source that errors/times-out is skipped; never throws, never blocks.
+async function _fetchParcels(zbb, signal){
+  const pad=0.006;
+  const env=`${zbb.minLo-pad},${zbb.minLa-pad},${zbb.maxLo+pad},${zbb.maxLa+pad}`;
+  const CAP=10000, MAXPAGES=6; // per-source bound (fetch of ~8k measured ~1.6s; stays well inside the 16s budget)
+  const out=[]; const counties=new Set();
+  await Promise.all(DFW_PARCEL_SOURCES.map(async src=>{
+    if(signal && signal.aborted) return;
+    const F=src.field;
+    const where=encodeURIComponent(`${F} LIKE 'A%' OR ${F} LIKE 'B%' OR ${F} LIKE 'F%' OR ${F} LIKE 'M%' OR ${F} LIKE 'O%' OR ${F} LIKE 'J%' OR ${F} LIKE 'X%' OR ${F} LIKE 'EX%'`);
+    let offset=0, pages=0, got=0, any=false;
+    try{
+      while(pages<MAXPAGES && got<CAP){
+        if(signal && signal.aborted) break;
+        const params=`where=${where}&geometry=${encodeURIComponent(env)}&geometryType=esriGeometryEnvelope&inSR=4326&spatialRel=esriSpatialRelIntersects&outFields=${encodeURIComponent(F)}&returnGeometry=true&outSR=4326&maxAllowableOffset=0.0002&geometryPrecision=5&resultRecordCount=${src.page}&resultOffset=${offset}&f=geojson`;
+        const ctrl=new AbortController(), to=setTimeout(()=>ctrl.abort(),11000);
+        const onAbort=()=>ctrl.abort(); if(signal) signal.addEventListener('abort',onAbort);
+        let res;
+        try{ res=await fetch(src.url+'/query?'+params,{signal:ctrl.signal}); }
+        finally{ clearTimeout(to); if(signal) signal.removeEventListener('abort',onAbort); }
+        if(!res.ok) break;
+        const d=await res.json();
+        const feats=(d&&d.features)||[];
+        if(!feats.length) break;
+        for(const f of feats){
+          if(!f.geometry) continue;
+          const cz=_parcelClass(f.properties&&f.properties[F]);
+          if(!cz || cz.gate==='fallback') continue;          // keep only gate-deciding parcels
+          out.push({f, bb:_evalBBox(f), gate:cz.gate, label:cz.label, city:src.county});
+          any=true;
+        }
+        got+=feats.length; offset+=feats.length; pages++;
+        if(feats.length<src.page) break;                     // last page reached
+      }
+      if(any) counties.add(src.county);
+    }catch(e){ /* skip this county — zoning / OSM / corridor still cover it */ }
+  }));
+  return {parcels:out, counties:[...counties]};
+}
+
 async function _evalFetchContext(feat, setStage){
-  evalData={vets:[], retail:[], resid:[], roads:[], aadt:[]};
-  evalDataOk={retail:false, roads:false, resid:false, aadt:false};
+  evalData={vets:[], retail:[], resid:[], roads:[], aadt:[], zoning:[], osmLU:[], parcels:[]};
+  evalDataOk={retail:false, roads:false, resid:false, aadt:false, zoning:false, parcels:false};
+  evalZoneCities=[]; evalParcelCounties=[];
   const {s,n,w,e}=_evalBuffer(feat, Math.max(evalRadiusMi,3));
   const bbox=`(${s},${w},${n},${e})`;
   if(setStage) setStage('fetching clinics, retail & neighborhoods…');
@@ -3593,6 +4085,43 @@ async function _evalFetchContext(feat, setStage){
       for(const f of (d.features||[])){ const c=f.geometry&&f.geometry.coordinates, v=f.properties&&f.properties.LATEST_AADT_QTY; if(c&&v!=null) arr.push({lat:c[1],lon:c[0],v,road:(f.properties.ON_ROAD&&f.properties.ON_ROAD!=='-')?f.properties.ON_ROAD:null}); }
       evalData.aadt=arr; evalDataOk.aadt=arr.length>0;
     }
+  }catch(e){}
+  // ── Municipal zoning (primary) + OSM landuse (fallback) ──────────────────────
+  // Covers the ZIP/area bbox (not the radius buffer — only the scored cells need it).
+  if(!evalActive) return;
+  if(setStage) setStage('loading municipal zoning…');
+  try{
+    // Expand the land-use fetch ~20% beyond the polygon so the SITE BUFFER ring (cells just
+    // outside the boundary) still gets zoning/parcel coverage and can't reintroduce false reds.
+    const _bb=_evalBBox(feat), _exLa=Math.max((_bb.maxLa-_bb.minLa)*0.12,0.009), _exLo=Math.max((_bb.maxLo-_bb.minLo)*0.12,0.009);
+    const zb={minLa:_bb.minLa-_exLa, maxLa:_bb.maxLa+_exLa, minLo:_bb.minLo-_exLo, maxLo:_bb.maxLo+_exLo}, pad=0.008;
+    const lus=`(${zb.minLa-pad},${zb.minLo-pad},${zb.maxLa+pad},${zb.maxLo+pad})`;
+    const qLU=`[out:json][timeout:30];(way["landuse"~"^(residential|commercial|retail|industrial)$"]${lus};);out geom 3000;`;
+    // OSM is only the GAP fallback — never let a slow/down Overpass mirror block the whole
+    // evaluate. Cap it at 14s and proceed with municipal zoning (the primary) regardless.
+    const _ac=new AbortController();
+    const _osm=Promise.race([ _overpass(qLU,{timeout:9000, signal:_ac.signal}), new Promise(r=>setTimeout(()=>{ _ac.abort(); r(null); },14000)) ]);
+    // County-CAD parcels (gap fallback) — own abort + 16s overall budget so a slow CAD never blocks.
+    const _pac=new AbortController();
+    const _parcels=Promise.race([ _fetchParcels(zb, _pac.signal), new Promise(r=>setTimeout(()=>{ _pac.abort(); r({parcels:[],counties:[]}); },16000)) ]);
+    const [cz, dLU, pc] = await Promise.all([ _fetchCityZoning(zb), _osm, _parcels ]);
+    if(!evalActive) return;
+    evalData.zoning = cz.polys;
+    evalZoneCities = cz.cities;
+    evalDataOk.zoning = cz.polys.length>0;
+    evalData.parcels = (pc&&pc.parcels)||[];
+    evalParcelCounties = (pc&&pc.counties)||[];
+    evalDataOk.parcels = evalData.parcels.length>0;
+    const lu=[];
+    if(dLU) for(const el of dLU.elements){
+      const g=el.geometry; if(!g||g.length<3) continue;
+      const k=el.tags&&el.tags.landuse; if(!k) continue;
+      const f={type:'Feature',properties:{},geometry:{type:'Polygon',coordinates:[g.map(p=>[p.lon,p.lat])]}};
+      const gate=k==='residential'?'exclude':'allow';
+      const label=k==='residential'?'Residential (OSM)':k==='industrial'?'Industrial (OSM)':'Commercial (OSM)';
+      lu.push({f, bb:_evalBBox(f), gate, label, city:'OSM'});
+    }
+    evalData.osmLU=lu;
   }catch(e){}
 }
 // ── Evaluate a free-drawn area (not just a ZIP) ──────────────────────────────
@@ -3666,7 +4195,7 @@ async function openEvaluate(){
   setTimeout(()=>{ if(evalActive) _evalComputeAndRender(); }, 30);
 }
 function _evalComputeAndRender(){
-  evalSat=null; // recomputed below once the grid is scored; cleared so early-returns can't show a stale grade
+  evalSat=null; evalZoneStat=null; // recomputed below once the grid is scored; cleared so early-returns can't show a stale grade
   const feat=evalFeat, bb=_evalBBox(feat);
   const R=evalRadiusMi*1609.344;
   const RET_R=1609.344, DEM_R=4000, ACC_R=900, DEVGATE=1700; // metres
@@ -3685,21 +4214,47 @@ function _evalComputeAndRender(){
   const canGate=hasRoads||hasRetail;
   const cellsAcross=36;
   const stepLa=(bb.maxLa-bb.minLa)/cellsAcross, stepLo=(bb.maxLo-bb.minLo)/cellsAcross;
+  // SITE BUFFER: let candidate sites extend a few cells PAST the boundary so the optimum
+  // isn't pinned to the ZIP/area edge — a clinic's demand catchment ignores boundary lines,
+  // so the best spot to serve a ZIP is often just over its border. The grid grows into a ring
+  // around the polygon; a cell is kept if it's inside the polygon OR within bufM of its edge.
+  const bufM=800; // ~0.5mi: a fixed nudge past the boundary, NOT scaled to ZIP size (a big ZIP shouldn't open a huge outside area)
+  const cellM=Math.max(stepLa,stepLo)*111000;
+  const BUF_CELLS=Math.max(1, Math.min(8, Math.ceil(bufM/cellM)));
+  const polySegs=[]; { const _g=feat.geometry, _ps=_g.type==='Polygon'?[_g.coordinates]:_g.coordinates;
+    for(const poly of _ps) for(const ring of poly) for(let i=0;i+1<ring.length;i++) polySegs.push({aLon:ring[i][0],aLat:ring[i][1],bLon:ring[i+1][0],bLat:ring[i+1][1]}); }
   const grid=[];
-  for(let la=bb.minLa+stepLa/2; la<bb.maxLa; la+=stepLa)
-    for(let lo=bb.minLo+stepLo/2; lo<bb.maxLo; lo+=stepLo){
-      if(!pointInGeoJSON(la,lo,feat)) continue;
+  let zEx=0; // cells dropped by the zoning/landuse gate (residential/civic)
+  for(let la=bb.minLa-BUF_CELLS*stepLa+stepLa/2; la<bb.maxLa+BUF_CELLS*stepLa; la+=stepLa)
+    for(let lo=bb.minLo-BUF_CELLS*stepLo+stepLo/2; lo<bb.maxLo+BUF_CELLS*stepLo; lo+=stepLo){
+      if(!pointInGeoJSON(la,lo,feat)){           // outside the polygon → keep only the buffer ring (test ALL boundary segments — they can be long & sparse, so no lat-band prefilter)
+        let dmin=Infinity;
+        for(const s of polySegs){ const d=_segDistM(la,lo,s); if(d<dmin){ dmin=d; if(d<bufM*0.3) break; } }
+        if(dmin>bufM) continue;
+      }
       // nearest arterial via point→segment distance (siting gate + road-access score)
       let nearRoad=Infinity, nearCls=2; for(const s of evalData.roads){ if(Math.abs(s.aLat-la)>bAcc && Math.abs(s.bLat-la)>bAcc) continue; const d=_segDistM(la,lo,s); if(d<nearRoad){ nearRoad=d; nearCls=s.cls||2; if(d<30) break; } }
       // nearest retail / commercial (siting gate)
       let nearRetail=Infinity; for(const r of evalData.retail){ if(Math.abs(r.lat-la)>bRet) continue; const d=hav(la,lo,r.lat,r.lon); if(d<nearRetail){ nearRetail=d; if(d<40) break; } }
-      // SITING GATE: keep only commercially-placeable cells — arterial frontage or
-      // in/next to a retail/commercial area. Drops subdivision interiors and rural
-      // land. Falls back to the broad development mask only if we have no road/retail
-      // data at all (sparse OSM), so the tool still returns something.
+      // ZONING / LAND-USE GATE (authoritative municipal zoning, OSM landuse fallback).
+      // Residential & civic land is dropped outright — this is what stops the tool
+      // recommending a house in a subdivision. Commercial/office/industrial/mixed is
+      // sited directly; agricultural/PD/uncovered land defers to the corridor gate below.
+      let zinfo=null, zgate=null;
+      if(evalZoning){ zinfo=_zoneClassAt(la,lo); if(zinfo) zgate=zinfo.gate; }
+      if(zgate==='exclude'){ zEx++; continue; }
+      // SITING GATE: a cell must be in an ACTUAL COMMERCIAL AREA — one of:
+      //  - GREEN: zoned/parceled/OSM-landuse commercial-office-industrial-mixed (`zgate==='allow'`).
+      //    This comes from the ArcGIS zoning + county-CAD parcels, which load independently of
+      //    Overpass, so it's available even when OSM/retail is down.
+      //  - BLUE: within SITE_COMM of a tagged retail/commercial point (shop POI or commercial
+      //    landuse) in `evalData.retail`.
+      // Arterial / road frontage ALONE is deliberately NOT sufficient — an arterial runs straight
+      // through neighborhoods, which put "sites" on residential road frontage with no blue dot and
+      // no green area. If there's neither signal, the cell is not siteable (we don't guess).
       let siteable;
-      if(canGate) siteable=(hasRoads && nearRoad<SITE_ROAD)||(hasRetail && nearRetail<SITE_COMM);
-      else { let nd=Infinity; for(const r of evalData.resid){ if(Math.abs(r.lat-la)>bGate) continue; const d=hav(la,lo,r.lat,r.lon); if(d<nd)nd=d; } siteable=!haveDev||nd<=DEVGATE; }
+      if(zgate==='allow') siteable=true;                       // GREEN — commercial land
+      else siteable=(hasRetail && nearRetail<SITE_COMM);       // else require BLUE — a real retail/commercial area
       if(!siteable) continue;
       // frontage traffic: busiest AADT station within ~450m = the road this cell fronts
       let aadt=0, aadtRoad=null;
@@ -3711,9 +4266,10 @@ function _evalComputeAndRender(){
       // competition (border-aware gravity); scan all comps for the true nearest readout
       let comp=0, nearC=Infinity, nearPE=Infinity; for(const c of comps){ const d=hav(la,lo,c.lat,c.lon); if(d<nearC)nearC=d; if(d<R){ comp+=(c.pe?1.6:1)*_grav(d,R); if(c.pe && d<nearPE) nearPE=d; } }
       const affl=_cellAffl(la,lo); // per-cell ZIP demographics in area mode; constant in ZIP mode
-      grid.push({la,lo,dem,ret,comp,nearC,nearPE,affl,nearRoad,nearCls,aadt,aadtRoad,stepLa,stepLo});
+      grid.push({la,lo,dem,ret,comp,nearC,nearPE,affl,nearRoad,nearCls,aadt,aadtRoad,stepLa,stepLo,zone:zinfo?zinfo.label:null,zcity:zinfo?zinfo.city:null});
     }
   evalCompsCache=comps;
+  evalZoneStat={excluded:zEx, cities:[...evalZoneCities], counties:[...evalParcelCounties], usedOSM:(evalData.osmLU&&evalData.osmLU.length>0), on:evalZoning && (evalDataOk.zoning || evalDataOk.parcels || (evalData.osmLU&&evalData.osmLU.length>0))};
   if(!grid.length){ evalCells=[]; evalTop=[]; _evalRenderLayers(); _evalRenderSidebar(); return; }
   const maxOf=f=>Math.max(1e-6,...grid.map(f));
   const maxDem=maxOf(g=>g.dem), maxRet=maxOf(g=>g.ret), maxComp=maxOf(g=>g.comp);
@@ -3789,6 +4345,15 @@ function _evalRenderLayers(){
     for(const r of evalData.resid) L.circleMarker([r.lat,r.lon],{radius:r.place?4:2.5,color:'#15803d',weight:1,fillColor:'#22c55e',fillOpacity:0.7,interactive:false}).addTo(hoods);
     hoods.addTo(map); evalLayers.hoods=hoods;
   }
+  if(evalShow.zoning && (evalData.zoning.length || evalData.parcels.length || evalData.osmLU.length)){
+    const zl=L.layerGroup();
+    const col=g=>g==='exclude'?'#dc2626':g==='allow'?'#16a34a':'#9ca3af'; // red=residential/civic, green=siteable, grey=defer
+    const add=(poly,op)=>{ try{ L.geoJSON(poly.f,{style:{stroke:false,fillColor:col(poly.gate),fillOpacity:op,interactive:false}}).addTo(zl); }catch(e){} };
+    for(const p of evalData.osmLU) add(p,0.12);    // OSM landuse underneath (lighter)
+    for(const p of evalData.parcels) add(p,0.18);  // county parcels (mid)
+    for(const z of evalData.zoning) add(z,0.22);   // authoritative city zoning on top
+    zl.addTo(map); if(zl.bringToBack) zl.bringToBack(); evalLayers.zoning=zl;
+  }
   if(evalShow.retail && evalData.retail.length){
     const ret=L.layerGroup();
     for(const r of evalData.retail) L.circleMarker([r.lat,r.lon],{radius:r.area?3.5:2.5,color:'#1d4ed8',weight:1,fillColor:'#3b82f6',fillOpacity:0.85,interactive:false}).addTo(ret);
@@ -3819,6 +4384,10 @@ function _evalRenderLegend(){
   if(evalShow.comp) rows.push(`<div class="eval-leg-row"><span class="eval-sym"><span class="eval-sym-ring"></span></span>Competitor reach (${evalRadiusMi.toFixed(1)} mi)</div>`);
   if(evalShow.hoods) rows.push(`<div class="eval-leg-row"><span class="eval-sym"><span class="eval-sym-hood"></span></span>Neighborhood (demand)</div>`);
   if(evalShow.retail) rows.push(`<div class="eval-leg-row"><span class="eval-sym"><span class="eval-sym-retail"></span></span>Retail / commercial</div>`);
+  if(evalShow.zoning){
+    rows.push(`<div class="eval-leg-row"><span class="eval-sym"><span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:#16a34a;opacity:0.55"></span></span>Zoned siteable (commercial/office/ind.)</div>`);
+    rows.push(`<div class="eval-leg-row"><span class="eval-sym"><span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:#dc2626;opacity:0.55"></span></span>Zoned residential / civic (excluded)</div>`);
+  }
   el.innerHTML=`
     <div class="legend-title">Placement suitability</div>
     ${evalShow.heat?`<div class="legend-grad"></div><div class="legend-grad-lbl"><span>Winnable</span><span>Saturated</span></div>`:''}
@@ -3848,19 +4417,38 @@ function _evalRenderSidebar(){
   const chip=(k,label)=>`<span class="eval-chip ${evalShow[k]?'on':''}" onclick="evalToggle('${k}')">${label}</span>`;
   const missing=[]; if(!hasRetail)missing.push('retail'); if(!hasRoads)missing.push('roads'); if(!hasResid)missing.push('neighborhoods');
   const warn = missing.length ? `<span class="eval-warn">${missing.join(' + ')} data unavailable (offline/rate-limited) — those factors were dropped and weights rebalanced.</span>` : '';
+  // Zoning readout — what the filter did and where the data came from
+  let zoneLine='';
+  if(evalZoneStat && evalZoneStat.on){
+    const c=evalZoneStat.cities;
+    const _ct=evalZoneStat.counties||[];
+    const _parts=[];
+    if(c.length) _parts.push(`${c.join(', ')} zoning`);
+    if(_ct.length) _parts.push(`${_ct.join(', ')} Co. parcels`);
+    if(evalZoneStat.usedOSM) _parts.push('OSM land-use');
+    const src = _parts.length ? _parts.join(' + ') : '—';
+    zoneLine=`<div class="eval-verdict" style="margin-top:6px"><span class="eval-strong">Zoning filter on.</span> ${evalZoneStat.excluded.toLocaleString()} cell${evalZoneStat.excluded!==1?'s':''} dropped as residential/civic. Source: ${src}.</div>`;
+  } else if(evalZoning){
+    zoneLine=`<div class="eval-verdict" style="margin-top:6px">Zoning filter on — no municipal or OSM land-use coverage loaded here; using corridor gate only.</div>`;
+  } else {
+    zoneLine=`<div class="eval-verdict" style="margin-top:6px">Zoning filter <span class="eval-strong">off</span>.</div>`;
+  }
   sb.innerHTML=`
     <div class="area-header">
       <span class="area-title">Placement analysis · ${evalZip||'drawn area'}</span>
       <button class="clear-area-btn" onclick="clearEvaluate()">Clear analysis</button>
     </div>
+    <div class="eval-scroll">
     ${evalSat?`<div class="eval-grade" style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="font-weight:800;font-size:18px;color:${evalSat.grade.c};border:2px solid ${evalSat.grade.c};border-radius:8px;padding:2px 10px">${evalSat.grade.l}</span><span style="font-weight:700;color:${evalSat.grade.c}">${evalSat.grade.t}</span></div><div class="eval-verdict">${evalSat.capCeil<0.30?'<span class="eval-strong">No strong placement in this ZIP — market is saturated.</span> ':''}Best winnable score ${Math.round(evalSat.capCeil*100)}/100 · median share ${evalSat.medShare.toFixed(2)} · ${evalSat.peInRange} PE + ${evalSat.indInRange} independent in range · ${evalSat.pctInCatch}% of buildable land inside a competitor catchment.${warn}</div>`:`<div class="eval-verdict"><span class="eval-strong">${evalTop.length} viable site${evalTop.length!==1?'s':''}.</span> ${evalCells.length} commercially-siteable cells scored; subdivision interiors &amp; rural land excluded.${warn}</div>`}
+    ${zoneLine}
     <div class="eval-slider">
       <div class="eval-slider-row"><span>Competitor range</span><span id="eval-range-val">${evalRadiusMi.toFixed(1)} mi</span></div>
       <input type="range" min="1" max="6" step="0.5" value="${evalRadiusMi}" oninput="onEvalRadius(this.value)"/>
     </div>
-    <div class="eval-toggle-row">${chip('heat','Heatmap')}${chip('hoods','Neighborhoods')}${chip('retail','Retail')}${chip('comp','Competitor range')}</div>
+    <div class="eval-toggle-row">${chip('heat','Heatmap')}${chip('hoods','Neighborhoods')}${chip('retail','Retail')}${chip('comp','Competitor range')}${chip('zoning','Zoning map')}<span class="eval-chip ${evalZoning?'on':''}" onclick="evalToggleZoning()">Zoning filter</span></div>
     <div class="eval-cards">${cards}</div>
-    <div class="eval-note">Sites are limited to arterial frontage and retail/commercial areas — interiors and rural land excluded. Road visibility is weighted by TxDOT traffic counts (AADT), so a busier frontage scores higher${hasAADT?'':' (traffic data unavailable here — using road class)'}. Competition counts every clinic within range, including ones just over the ZIP border.</div>
+    <div class="eval-note">Sites are limited to commercial land — either zoned/parceled commercial, or (where that's unavailable) within a real retail/commercial area; residential, civic and rural parcels are excluded, and arterial frontage alone is not enough. Coverage is layered: municipal zoning in the 16 mapped cities, county appraisal-district parcels (Collin / Denton / Dallas) for the exurbs, and OpenStreetMap land-use elsewhere. Road visibility is weighted by TxDOT traffic counts (AADT), so a busier frontage scores higher${hasAADT?'':' (traffic data unavailable here — using road class)'}. Competition counts every clinic within range, including ones just over the ZIP border. A recommended site can sit just past the boundary (within ~0.5&nbsp;mi) where the market actually peaks — catchments don't stop at the line.</div>
+    </div>
     <div class="status-bar" id="status"></div>`;
 }
 function _evalRenderUnavailable(){
@@ -3878,12 +4466,14 @@ function onEvalRadius(v){
   evalRecalcTimer=setTimeout(()=>{ if(evalActive) _evalComputeAndRender(); }, 220);
 }
 function evalToggle(k){ evalShow[k]=!evalShow[k]; _evalRenderLayers(); const sb=document.querySelector('.sidebar'); const c=sb&&sb.querySelector(`.eval-chip[onclick*="'${k}'"]`); if(c) c.classList.toggle('on', evalShow[k]); }
+// Zoning FILTER toggle — re-gates and rescores the grid (residential cells drop in/out).
+function evalToggleZoning(){ evalZoning=!evalZoning; if(evalActive) _evalComputeAndRender(); }
 function evalFlyTo(i){ const g=evalTop[i]; if(g) map.setView([g.la,g.lo], Math.max(map.getZoom(),14), {animate:true}); }
 function clearEvaluate(){
   const wasArea=evalAreaMode;
-  evalActive=false; evalAreaMode=false; evalAreaZips=null; evalSat=null;
+  evalActive=false; evalAreaMode=false; evalAreaZips=null; evalSat=null; evalZoneStat=null; evalZoneCities=[]; evalParcelCounties=[];
   _evalClearLayers(); _evalHideLegend();
-  evalData={vets:[], retail:[], resid:[], roads:[], aadt:[]}; evalDataOk={retail:false,roads:false,resid:false,aadt:false};
+  evalData={vets:[], retail:[], resid:[], roads:[], aadt:[], zoning:[], osmLU:[], parcels:[]}; evalDataOk={retail:false,roads:false,resid:false,aadt:false,zoning:false,parcels:false};
   evalCells=[]; evalTop=[]; evalCompsCache=[];
   if(selectedZips.size) applyZipSelection();
   else if(wasArea && drawnArea){ markers.forEach(m=>setMarkerVisible(m,true)); captureAreaClinics(); } // back to the drawn-area view
