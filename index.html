@@ -487,6 +487,10 @@ body.dev-mode .search-bar{background:var(--amber-light);border-bottom-color:#fde
 .set-li{font-size:13px;color:#475569;line-height:1.6;margin:0 0 7px;padding-left:15px;position:relative;}
 .set-li:before{content:'';position:absolute;left:2px;top:8px;width:5px;height:5px;border-radius:50%;background:var(--navy);}
 .set-li b{color:var(--text);font-weight:600;}
+.set-opt{display:flex;gap:10px;align-items:flex-start;font-size:13px;color:#334155;line-height:1.5;margin:0 0 10px;cursor:pointer;}
+.set-opt input{margin-top:2px;flex-shrink:0;width:16px;height:16px;cursor:pointer;accent-color:var(--navy);}
+.set-opt b{color:var(--text);font-weight:600;}
+.set-opt-note{display:block;color:#64748b;font-size:12px;margin-top:2px;}
 /* ── Login screen ─────────────────────────────────────────────────────────── */
 #login-screen{position:fixed;inset:0;z-index:10000;display:flex;background:var(--surface);font-family:'Inter',system-ui,sans-serif;}
 #login-screen.hidden{display:none;}
@@ -631,13 +635,16 @@ body.dev-mode .search-bar{background:var(--amber-light);border-bottom-color:#fde
           <div class="set-h">Where the data comes from</div>
           <div class="set-intro">Every layer and score in Vetric is built from these sources. Badges: <span class="set-badge prop">proprietary</span> our own dataset · <span class="set-badge live">live</span> fetched on demand · <span class="set-badge model">modeled</span> estimated, not a direct survey.</div>
           <div class="set-row"><div class="set-name">PE-owned clinics <span class="set-badge prop">proprietary</span></div><div class="set-src">Vetric's maintained list of corporate/private-equity-owned clinics — ~827 clinics, complete statewide for Texas.</div></div>
-          <div class="set-row"><div class="set-name">Independent clinics <span class="set-badge live">live</span></div><div class="set-src">OpenStreetMap via the Overpass API, for the current map view. Community-maintained, so coverage varies by area.</div></div>
+          <div class="set-row"><div class="set-name">Independent clinics <span class="set-badge prop">proprietary</span></div><div class="set-src">Google Places — a complete statewide scan of veterinary clinics, refreshed periodically. Non-clinics (pharmacies, in-store vaccination kiosks, B2B suppliers) and permanently-closed locations are filtered out; mobile/traveling vets are tagged and excluded by default (see Options below).</div></div>
           <div class="set-row"><div class="set-name">Median income</div><div class="set-src">U.S. Census ACS 2022 5-year estimates (variable B19013), per ZIP (ZCTA).</div></div>
           <div class="set-row"><div class="set-name">Pet ownership density <span class="set-badge model">modeled</span></div><div class="set-src">Estimated per ZIP from the Texas statewide dog-ownership rate, adjusted by Census ACS 2022 housing data — not a direct pet survey.</div></div>
           <div class="set-row"><div class="set-name">Population growth</div><div class="set-src">U.S. Census ACS, 2021 vs 2024 5-year vintages on matching 2020-ZCTA boundaries (~3-year window for a valid same-boundary comparison).</div></div>
           <div class="set-row"><div class="set-name">New construction</div><div class="set-src">U.S. Census ACS 2024 5-year (B25034, latest available) — share of a ZIP's homes built 2010 or later. A proxy for new rooftops / future demand.</div></div>
           <div class="set-row"><div class="set-name">Traffic counts (AADT) <span class="set-badge live">live</span></div><div class="set-src">TxDOT open data (ArcGIS) — annual average daily traffic at count stations across Texas.</div></div>
           <div class="set-row"><div class="set-name">Retail · roads · neighborhoods <span class="set-badge live">live</span></div><div class="set-src">OpenStreetMap via Overpass — shops, commercial &amp; residential land use, and arterial roads. Used by the Evaluate site analysis.</div></div>
+
+          <div class="set-h">Options</div>
+          <label class="set-opt"><input type="checkbox" id="opt-mobile" onchange="toggleIncludeMobile(this.checked)"><span><b>Count mobile / traveling vets as competition</b><span class="set-opt-note">Off by default — a mobile vet's listed address is usually a home or PO box, not a clinic location, so it doesn't anchor a real trade area. Turn on to fold them into competition counts everywhere (map, opportunity, evaluate).</span></span></label>
 
           <div class="set-h">How the scores are computed</div>
           <div class="set-li"><b>Opportunity score</b> — four weighted factors (income, pet demand, low competition, population growth) are each scaled 0–100 across all North Texas ZIPs, blended by your sliders, and ranked. Two refinements are computed internally rather than exposed as dials: low competition is measured demand-relative (pet households per clinic, PE weighted heavier), so a small ZIP isn't "open" just because its raw clinic count is low; and population growth blends ACS population change with new-home construction (share of homes built 2010+).</div>
@@ -999,6 +1006,15 @@ function vetricSignOut(){
 const NAVY='#1e3a8a', RED='#dc2626', AMBER='#f59e0b';
 // Set to true to revert to Overpass for independent clinics (one-line rollback)
 const USE_VET_CLINICS = true;
+// Mobile/traveling vets are tagged (mobile:1) in vet-clinics.js — their listed coord is
+// usually a home/PO box, so by DEFAULT they're excluded from competition. A settings
+// toggle (vf_include_mobile) lets the user fold them back in. All three consumers
+// (map fetch, opportunity region, evaluate competitors) read through this one helper.
+function _vfIncludeMobile(){ try{ return localStorage.getItem('vf_include_mobile')==='1'; }catch(_){ return false; } }
+function _activeVetClinics(){
+  if(typeof VET_CLINICS==='undefined' || !VET_CLINICS.length) return [];
+  return _vfIncludeMobile() ? VET_CLINICS : VET_CLINICS.filter(v=>!v.mobile);
+}
 const MIN_ZOOM=10;
 
 // PE data — populated by pe-data.js once it loads
@@ -2681,7 +2697,7 @@ async function fetchClinics(){
   let overpassOk = false;
   if(USE_VET_CLINICS && typeof VET_CLINICS !== 'undefined' && VET_CLINICS.length){
     overpassOk = true; // treat static dataset as always-ok (no network failure possible)
-    for(const vc of VET_CLINICS){
+    for(const vc of _activeVetClinics()){
       const clat=vc.lat, clon=vc.lon;
       if(clat<s||clat>n||clon<w||clon>e) continue;
       const ck=`${Math.round(clat*1000)}_${Math.round(clon*1000)}`;
@@ -3152,7 +3168,7 @@ async function ensureRegionIndependents(){
   if(USE_VET_CLINICS && typeof VET_CLINICS !== 'undefined' && VET_CLINICS.length){
     const s=oppRegion.s, w=oppRegion.w, n=oppRegion.n, e=oppRegion.e;
     const deleted=getDeleted(), overrides=getOverrides(), out=[];
-    for(const vc of VET_CLINICS){
+    for(const vc of _activeVetClinics()){
       if(vc.lat<s||vc.lat>n||vc.lon<w||vc.lon>e) continue;
       const key=`${Math.round(vc.lat*1000)}_${Math.round(vc.lon*1000)}`;
       if(deleted[key]) continue;
@@ -3466,7 +3482,17 @@ function oppSelect(zip){
 function marketPickerNote(){ vfToast('Market presets are coming soon — search or pan to move around Texas for now.'); }
 
 /* ─── Settings modal ─────────────────────────────────────────────────────────*/
-function openSettings(){ document.getElementById('settings-overlay').classList.add('show'); }
+function openSettings(){ const m=document.getElementById('opt-mobile'); if(m) m.checked=_vfIncludeMobile(); document.getElementById('settings-overlay').classList.add('show'); }
+// Toggle whether mobile/traveling vets count as competition. Refreshes every consumer
+// of the competitor set so the change is immediate everywhere.
+function toggleIncludeMobile(on){
+  try{ localStorage.setItem('vf_include_mobile', on?'1':'0'); }catch(_){}
+  oppRegionIndependents=[]; oppBaseRows=[]; oppScored=[];                       // force opportunity to rebuild from the new set
+  if(typeof map!=='undefined' && map.getZoom()>=MIN_ZOOM) fetchClinics(); else refreshPins();  // map pins
+  if(clinicHeatLayer && typeof map!=='undefined' && map.hasLayer(clinicHeatLayer))               // density heatmap
+    ensureRegionIndependents().then(()=>{ if(clinicHeatLayer) clinicHeatLayer.setLatLngs(_clinicHeatPoints()); }).catch(()=>{});
+  if(typeof evalActive!=='undefined' && evalActive && typeof _evalComputeAndRender==='function') _evalComputeAndRender();  // evaluate
+}
 function closeSettings(){ document.getElementById('settings-overlay').classList.remove('show'); }
 function switchSettingsCat(cat){
   document.querySelectorAll('.settings-cat').forEach(b=>b.classList.toggle('active', b.dataset.cat===cat));
@@ -3791,7 +3817,7 @@ function _evalCompetitors(feat, radiusMi){
   // the same clinics at slightly different coords (dedup is only ~110m) and inflated `comp`,
   // crushing capture share. Legacy path (clinics[] ∪ Overpass) kept only as the fallback.
   if(USE_VET_CLINICS && typeof VET_CLINICS!=='undefined' && VET_CLINICS.length){
-    for(const v of VET_CLINICS){ const pe=checkPE(v.name,v.lat,v.lon,null,overrides); add(v.lat,v.lon,!!pe); }
+    for(const v of _activeVetClinics()){ const pe=checkPE(v.name,v.lat,v.lon,null,overrides); add(v.lat,v.lon,!!pe); }
   } else {
     for(const c of clinics) add(c.lat,c.lon,c.pe);
     for(const v of evalData.vets) add(v.lat,v.lon,false);
