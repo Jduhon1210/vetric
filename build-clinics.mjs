@@ -48,10 +48,15 @@ const REGION = REGIONS[(args.region || 'tx').toLowerCase()] || REGIONS.tx;
 const TYPE = 'veterinary_care';
 const MAX_PER_CALL = 20;                  // Nearby Search (New) hard cap, no paging
 const MIN_CELL_DEG = 0.035;               // ~3.9km — stop subdividing below this (a single dense block)
-// We already pull displayName (Google "Pro" field tier), so types/primaryType/
-// businessStatus ride the SAME billing tier — no extra cost — and let us drop
-// non-clinics (pharmacies, kiosks, stores) and permanently-CLOSED businesses.
-const FIELD_MASK = 'places.id,places.displayName,places.location,places.types,places.primaryType,places.businessStatus';
+// Field mask. id/location = Essentials; displayName/types/primaryType/businessStatus = Pro
+// (used to drop non-clinics + closed); rating/userRatingCount/websiteUri/nationalPhoneNumber/
+// regularOpeningHours = Enterprise tier (strength-weighted competition + acquisition/diligence
+// data). The highest tier in the mask sets the per-call price (~Enterprise).
+const FIELD_MASK = [
+  'places.id','places.displayName','places.location',
+  'places.types','places.primaryType','places.businessStatus',
+  'places.rating','places.userRatingCount','places.websiteUri','places.nationalPhoneNumber','places.regularOpeningHours'
+].join(',');
 const RATE_MS = 120;                      // polite delay between calls
 const OUT = 'vet-clinics.js';
 
@@ -60,6 +65,22 @@ const byId = new Map();                   // place_id -> {name, lat, lon}
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const haversineDeg = (s, w, n, e) => Math.hypot(n - s, e - w); // cheap cell diagonal in degrees
+
+// Compact "days open per week" (0-7) from a regularOpeningHours object — far smaller than
+// storing the full schedule, but enough for the 7-day-vs-weekday-only competition signal.
+function openDays(h) {
+  if (!h) return null;
+  if (Array.isArray(h.periods) && h.periods.length) {
+    const days = new Set();
+    for (const p of h.periods) { if (p && p.open && typeof p.open.day === 'number') days.add(p.open.day); }
+    if (days.size) return days.size;
+    if (h.periods.length === 1 && !h.periods[0].close) return 7; // single open period, no close = 24/7
+  }
+  if (Array.isArray(h.weekdayDescriptions)) {
+    return h.weekdayDescriptions.filter(d => !/closed/i.test(d)).length || null;
+  }
+  return null;
+}
 
 async function nearby(centerLat, centerLon, radiusM) {
   calls++;
@@ -99,7 +120,11 @@ async function scanCell(s, w, n, e, depth) {
   for (const p of places) {
     const loc = p.location; if (!loc) continue;
     byId.set(p.id, { name: (p.displayName && p.displayName.text) || '', lat: loc.latitude, lon: loc.longitude,
-                     primaryType: p.primaryType || '', status: p.businessStatus || 'OPERATIONAL' });
+                     primaryType: p.primaryType || '', status: p.businessStatus || 'OPERATIONAL',
+                     rating: (typeof p.rating === 'number') ? p.rating : null,
+                     reviews: (typeof p.userRatingCount === 'number') ? p.userRatingCount : null,
+                     web: p.websiteUri || null, tel: p.nationalPhoneNumber || null,
+                     days: openDays(p.regularOpeningHours) });
   }
   const maxed = places.length >= MAX_PER_CALL;
   const cellDeg = haversineDeg(s, w, n, e);
@@ -140,21 +165,35 @@ function classify(p) {
   return 'clinic';
 }
 
+// Build a compact output row, including only the enrichment fields that are present
+// (keeps the file small — most fields are omitted when Google has no value).
+function outRow(v, mobile) {
+  const o = { name: v.name, lat: v.lat, lon: v.lon };
+  if (mobile) o.mobile = 1;
+  if (typeof v.rating === 'number')  o.rating = Math.round(v.rating * 10) / 10;
+  if (typeof v.reviews === 'number') o.reviews = v.reviews;
+  if (v.web) o.web = v.web;
+  if (v.tel) o.tel = v.tel;
+  if (typeof v.days === 'number') o.days = v.days;
+  return o;
+}
+
 // Shared output stage: classify, drop non-clinics, tag mobile, write vet-clinics.js.
 async function writeClinics(rows) {
   const kept = [], dropped = {};
   for (const v of rows) {
     const cls = classify(v);
-    if (cls === 'clinic')      kept.push({ name: v.name, lat: v.lat, lon: v.lon });
-    else if (cls === 'mobile') kept.push({ name: v.name, lat: v.lat, lon: v.lon, mobile: 1 });
+    if (cls === 'clinic')      kept.push(outRow(v, false));
+    else if (cls === 'mobile') kept.push(outRow(v, true));
     else                       dropped[cls] = (dropped[cls] || 0) + 1;
   }
   kept.sort((p, q) => p.lat - q.lat);
   const mobileN = kept.filter(k => k.mobile).length;
+  const rated = kept.filter(k => typeof k.reviews === 'number').length;
   const dropStr = Object.entries(dropped).sort((a,b)=>b[1]-a[1]).map(([k,n])=>`${k} ${n}`).join(', ') || 'none';
-  console.log(`Kept ${kept.length} clinics (${mobileN} mobile, tagged). Dropped ${rows.length - kept.length}: ${dropStr}.`);
+  console.log(`Kept ${kept.length} clinics (${mobileN} mobile, ${rated} with ratings). Dropped ${rows.length - kept.length}: ${dropStr}.`);
   const fs = await import('node:fs');
-  const header = `// Auto-generated by build-clinics.mjs on ${new Date().toISOString().slice(0,10)} — ${kept.length} TX vet clinics (Google Places, non-clinics filtered).\n// Do not hand-edit; re-run the script to refresh. Format: window.VET_CLINICS=[{name,lat,lon,mobile?}]\n`;
+  const header = `// Auto-generated by build-clinics.mjs on ${new Date().toISOString().slice(0,10)} — ${kept.length} TX vet clinics (Google Places, non-clinics filtered).\n// Do not hand-edit; re-run the script to refresh. Format: window.VET_CLINICS=[{name,lat,lon,mobile?,rating?,reviews?,web?,tel?,days?}]\n`;
   const body = `window.VET_CLINICS=${JSON.stringify(kept)};\nif(typeof onVetClinicsReady==='function')onVetClinicsReady();\n`;
   fs.writeFileSync(OUT, header + body);
   console.log(`Wrote ${OUT} (${(fs.statSync(OUT).size/1024).toFixed(0)} KB).`);
