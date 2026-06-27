@@ -379,6 +379,11 @@ body.dev-mode .search-bar{background:var(--amber-light);border-bottom-color:#fde
 .popup{padding:14px 16px;}
 .popup-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px;}
 .popup-name{font-weight:700;font-size:13.5px;line-height:1.3;flex:1;color:var(--text);}
+.popup-rating{font-size:12.5px;color:#b45309;font-weight:700;margin:5px 0 0;}
+.popup-rating .popup-rev{color:#64748b;font-weight:500;}
+.popup-addr{font-size:11.5px;color:#64748b;margin-top:4px;line-height:1.35;}
+.popup-contact{font-size:12px;margin-top:4px;}
+.popup-contact a{color:var(--navy);text-decoration:none;font-weight:600;}
 .gear-btn{background:none;border:none;cursor:pointer;padding:2px 6px;border-radius:var(--radius);color:var(--subtle);font-size:13px;line-height:1;flex-shrink:0;margin-left:8px;transition:all .15s;font-family:inherit;}
 .gear-btn:hover{background:var(--bg2);color:var(--text);}
 .popup-website{margin-bottom:10px;}
@@ -1178,6 +1183,11 @@ function buildPopup(c) {
         ${c.website.replace(/^https?:\/\/(www\.)?/,'').split('/')[0]}
        </a></div>`
     : `<div class="popup-no-web">No website listed</div>`;
+  const starHTML = (typeof c.rating==='number')
+    ? `<div class="popup-rating">★ ${c.rating.toFixed(1)} <span class="popup-rev">· ${(c.reviews||0).toLocaleString()} reviews${c.days?` · ${c.days} days/wk`:''}</span></div>`
+    : '';
+  const telHTML = c.tel ? `<div class="popup-contact"><a href="tel:${(''+c.tel).replace(/[^0-9+]/g,'')}">${c.tel}</a></div>` : '';
+  const addrHTML = c.addr ? `<div class="popup-addr">${c.addr}</div>` : '';
 
   let peHTML;
   if (!c.peChecked) {
@@ -1196,7 +1206,7 @@ function buildPopup(c) {
       <div class="popup-name">${c.name}</div>
       ${devMode ? `<button class="gear-btn" onclick="toggleSettings('${key}')" title="Edit"></button>` : ''}
     </div>
-    ${webHTML}${peHTML}
+    ${starHTML}${addrHTML}${telHTML}${webHTML}${peHTML}
     <div class="popup-disclaimer">Source: privateequityvet.org — Texas</div>
     ${devMode ? `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);display:flex;gap:6px;">
       <button class="settings-btn save" style="flex:1;font-size:11.5px;padding:5px 8px" onclick="toggleSettings('${key}')">Edit</button>
@@ -2706,7 +2716,7 @@ async function fetchClinics(){
       if(dupe) continue;
       const pe=checkPE(vc.name,clat,clon,ck,overrides);
       const nm=overrides[ck]?.name||vc.name||'Veterinary Clinic';
-      local.push({name:nm,website:'',addr:'',pe,peChecked:peLoaded,lat:clat,lon:clon,dist:hav(lat,lng,clat,clon)});
+      local.push({name:nm,website:vc.web||'',addr:vc.addr||'',rating:vc.rating,reviews:vc.reviews,tel:vc.tel,days:vc.days,pe,peChecked:peLoaded,lat:clat,lon:clon,dist:hav(lat,lng,clat,clon)});
     }
   } else {
     // Overpass fallback (used outside DFW or if vet-clinics.js not loaded)
@@ -2989,9 +2999,12 @@ function _acqRank(){
     return {c, peNear, indNear};
   });
   const maxPe=Math.max(1,...rows.map(r=>r.peNear)), maxInd=Math.max(1,...rows.map(r=>r.indNear));
+  const maxRev=Math.max(1,...rows.map(r=>r.c.reviews||0));
   for(const r of rows){
     const base = acqRollup==='tuckin' ? r.peNear/maxPe : 1-r.peNear/maxPe;
-    r.score = 0.6*base + 0.4*(r.indNear/maxInd);
+    // practice "health" — more Google reviews ≈ busier, more established = better roll-up target (log-scaled)
+    const health = r.c.reviews ? Math.log(1+r.c.reviews)/Math.log(1+maxRev) : 0;
+    r.score = 0.45*base + 0.30*(r.indNear/maxInd) + 0.25*health;
   }
   rows.sort((a,b)=>b.score-a.score);
   return rows;
@@ -3001,11 +3014,13 @@ function renderAcquisitions(){
   const rows=_acqRank();
   const cards=rows.slice(0,40).map(r=>{
     const i=clinics.indexOf(r.c);
+    const rate = (typeof r.c.rating==='number') ? `<span style="color:#b45309;font-weight:700">★ ${r.c.rating.toFixed(1)}</span> · ${(r.c.reviews||0).toLocaleString()} reviews` : '<span style="color:#94a3b8">No rating</span>';
     return `<div class="card" id="c${i}" onclick="focusClinic(${i})">
       <div class="card-body">
         <div class="card-name">${r.c.name}</div>
         <div class="card-meta"><span class="tag-ind">Independent</span><span class="card-dist" style="font-weight:600;color:#15803d">${Math.round(r.score*100)}</span></div>
-        <div style="font-size:11px;color:#64748b;margin-top:3px">${r.peNear} PE · ${r.indNear} independent within ${ACQ_RADIUS_MI} mi</div>
+        <div style="font-size:11px;color:#475569;margin-top:3px">${rate}</div>
+        <div style="font-size:11px;color:#64748b;margin-top:2px">${r.peNear} PE · ${r.indNear} independent within ${ACQ_RADIUS_MI} mi</div>
       </div>
     </div>`;
   }).join('') || '<div class="empty">No independent clinics in view.<br>Pan or search a city to load targets.</div>';
@@ -3015,7 +3030,7 @@ function renderAcquisitions(){
     <div class="eval-verdict">Independent clinics in view, ranked as roll-up targets.</div>
     <div class="eval-toggle-row">${chip('whitespace','Whitespace')}${chip('tuckin','Tuck-in')}</div>
     <div class="eval-cards">${cards}</div>
-    <div class="eval-note">Whitespace favors clinics in markets with little PE presence (be first); Tuck-in favors clinics near your existing PE platforms (easy to integrate). Both reward nearby independent clusters. Market quality, ratings &amp; owner-age are coming as more data is added.</div>
+    <div class="eval-note">Whitespace favors clinics in markets with little PE presence (be first); Tuck-in favors clinics near your existing PE platforms (easy to integrate). Both reward nearby independent clusters, and rank up busier practices (more Google reviews). Owner-age &amp; financials come as more data is added.</div>
     <div class="status-bar" id="status"></div>`;
 }
 function setAcqRollup(k){ if(acqRollup===k) return; acqRollup=k; renderAcquisitions(); }
@@ -3761,6 +3776,10 @@ let evalCells=[], evalTop=[], evalCompsCache=[], evalRecalcTimer=null;
 const EVAL_W={demand:0.30, comp:0.30, retail:0.22, access:0.18};
 const EVAL_TOP_N=3;
 const _grav=(d,R)=>d<R?1-d/R:0;
+// Gentle review-strength weight for a competitor (Huff attractiveness proxy). Centered on the
+// median competitor (→1.0×) so it REDISTRIBUTES weight toward strong incumbents without inflating
+// total competition — keeps the A_OWN calibration intact. ~2000 reviews ≈ 1.8× a ~50-review clinic.
+const _revW=(reviews,med)=>{ if(!reviews||reviews<=0) return 1; return Math.min(2.2, Math.max(0.6, Math.pow(1+reviews,0.18)/Math.pow(1+(med||150),0.18))); };
 // point→segment distance in metres (equirectangular; accurate at clinic-catchment
 // scale). Used so road frontage is measured to the road LINE, not just its sparse
 // vertices — otherwise a tight frontage gate wrongly drops cells beside long straights.
@@ -3810,14 +3829,14 @@ function _evalZipAffluence(zip){
 function _evalCompetitors(feat, radiusMi){
   const {s,n,w,e}=_evalBuffer(feat, radiusMi);
   const deleted=getDeleted(), overrides=getOverrides(), byKey=new Map();
-  const add=(la,lo,pe)=>{ if(la<s||la>n||lo<w||lo>e) return; const k=`${Math.round(la*1000)}_${Math.round(lo*1000)}`; if(deleted[k]) return; if(!byKey.has(k)) byKey.set(k,{lat:la,lon:lo,pe:!!pe}); };
+  const add=(la,lo,pe,reviews)=>{ if(la<s||la>n||lo<w||lo>e) return; const k=`${Math.round(la*1000)}_${Math.round(lo*1000)}`; if(deleted[k]) return; if(!byKey.has(k)) byKey.set(k,{lat:la,lon:lo,pe:!!pe,reviews:(typeof reviews==='number'?reviews:null)}); };
   if(peLoaded && typeof PE_COORDS!=='undefined') for(const c of PE_COORDS) add(c[0],c[1],true);
   // SINGLE independent source: VET_CLINICS (Google Places, complete & not viewport-limited),
   // PE-typed via checkPE. Do NOT also fold in evalData.vets (Overpass) — that double-counted
   // the same clinics at slightly different coords (dedup is only ~110m) and inflated `comp`,
   // crushing capture share. Legacy path (clinics[] ∪ Overpass) kept only as the fallback.
   if(USE_VET_CLINICS && typeof VET_CLINICS!=='undefined' && VET_CLINICS.length){
-    for(const v of _activeVetClinics()){ const pe=checkPE(v.name,v.lat,v.lon,null,overrides); add(v.lat,v.lon,!!pe); }
+    for(const v of _activeVetClinics()){ const pe=checkPE(v.name,v.lat,v.lon,null,overrides); add(v.lat,v.lon,!!pe,v.reviews); }
   } else {
     for(const c of clinics) add(c.lat,c.lon,c.pe);
     for(const v of evalData.vets) add(v.lat,v.lon,false);
@@ -4242,6 +4261,8 @@ function _evalComputeAndRender(){
   // scales the same way — fixes the long-standing 6mi over-penalty (was a known limitation).
   const A_OWN=2.5*Math.pow(evalRadiusMi/3,2), GAMMA=1.0, PE_NEAR_HARD=700;
   const comps=_evalCompetitors(feat, evalRadiusMi);
+  const _cr=comps.map(c=>c.reviews).filter(r=>typeof r==='number'&&r>0).sort((a,b)=>a-b);
+  const compMedRev=_cr.length?_cr[Math.floor(_cr.length/2)]:150; // median competitor review count → review-weight baseline
   const hasRetail=evalDataOk.retail, hasRoads=evalDataOk.roads, hasResid=evalDataOk.resid, hasAADT=evalDataOk.aadt;
   // Without road OR retail data we can't tell commercial corridors from
   // neighborhoods — refuse to paint a heatmap that could blanket houses. Retry.
@@ -4305,7 +4326,7 @@ function _evalComputeAndRender(){
       // retail access (co-tenancy / visibility)
       let ret=0; for(const r of evalData.retail){ if(Math.abs(r.lat-la)>bRet) continue; const d=hav(la,lo,r.lat,r.lon); if(d<RET_R) ret+=(r.area?0.6:1)*_grav(d,RET_R); }
       // competition (border-aware gravity); scan all comps for the true nearest readout
-      let comp=0, nearC=Infinity, nearPE=Infinity; for(const c of comps){ const d=hav(la,lo,c.lat,c.lon); if(d<nearC)nearC=d; if(d<R){ comp+=(c.pe?1.6:1)*_grav(d,R); if(c.pe && d<nearPE) nearPE=d; } }
+      let comp=0, nearC=Infinity, nearPE=Infinity; for(const c of comps){ const d=hav(la,lo,c.lat,c.lon); if(d<nearC)nearC=d; if(d<R){ comp+=(c.pe?1.6:1)*_revW(c.reviews,compMedRev)*_grav(d,R); if(c.pe && d<nearPE) nearPE=d; } }
       const affl=_cellAffl(la,lo); // per-cell ZIP demographics in area mode; constant in ZIP mode
       grid.push({la,lo,dem,ret,comp,nearC,nearPE,affl,nearRoad,nearCls,aadt,aadtRoad,stepLa,stepLo,zone:zinfo?zinfo.label:null,zcity:zinfo?zinfo.city:null});
     }
