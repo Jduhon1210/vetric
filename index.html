@@ -3389,6 +3389,8 @@ async function selectOppRegion(key){
   oppRegion=r;
   oppRegionIndependents=[]; oppBaseRows=[]; oppScored=[]; // force a full rebuild for the new region
   hexBaseRows=[]; hexScored=[]; _hexBuiltKey=''; _hexClinicIndex=null; _hexZipBuckets=null; _hexView=false;
+  oppView='list'; document.body.classList.remove('vf-surface');                 // land in List for the new region; re-entering Surface re-fits the map
+  { const _p=document.getElementById('opp-panel'); if(_p) _p.classList.remove('surface-mode'); }
   if(hexLayer){ map.removeLayer(hexLayer); hexLayer=null; }   // new region → rebuild geometry (pitch depends on lat)
   closeRegionPicker();
   switchSection('opportunity'); // openOpportunity re-runs (oppScored was reset) for the new region
@@ -3634,7 +3636,9 @@ function rescoreHexes(){
     const demand=Math.pow(Math.max(spendIdx,1e-3),aInc)*Math.pow(Math.max(volIdx,1e-3),aDog)*Math.pow(Math.max(trajIdx,1e-3),aGro);
     let share=HEX_AOWN/(HEX_AOWN+h.comp);                          // ABSOLUTE Huff (never min-max)
     if(h.nearPE<PE_NEAR_HARD) share=Math.min(share,0.20);
-    const score=clamp01(demand*Math.pow(share,shareExp));         // expected captured demand 0..1
+    let capTerm=Math.pow(share,shareExp);
+    if(h.nearPE<PE_NEAR_HARD) capTerm=Math.min(capTerm,0.20);      // hard-cap the contribution too — de-weighting competition can't revive a PE-adjacent site
+    const score=clamp01(demand*capTerm);                          // expected captured demand 0..1
     return {...h, demand, share, spendIdx, volIdx, trajIdx, score, _color:_evalColor(Math.pow(score,0.7))};
   });
   redrawHexCanvas();
@@ -3701,7 +3705,8 @@ function _hexInstallHandlers(){
 function renderHexSurface(){
   if(_hexSig()!==_hexBuiltKey || !hexBaseRows.length){
     const body=document.getElementById('hex-legend-body'); if(body) body.innerHTML='<div style="padding:10px 4px;color:#64748b;font-size:12px">Building surface…</div>';
-    buildHexBaseInputs().then(()=>{ _hexView=true; buildHexPolys(); rescoreHexes(); _hexInstallHandlers(); })
+    const _sig=_hexSig();
+    buildHexBaseInputs().then(()=>{ if(oppView!=='surface' || _hexSig()!==_sig) return; /* user left / region changed mid-build — drop the result */ _hexView=true; buildHexPolys(); rescoreHexes(); _hexInstallHandlers(); })
       .catch(err=>{ console.error('hex surface build failed',err); const b=document.getElementById('hex-legend-body'); if(b) b.innerHTML='<div style="padding:10px 4px;color:#b91c1c;font-size:12px">Could not build the surface — try reopening Opportunity.</div>'; });
     return;
   }
@@ -3734,7 +3739,7 @@ function _oppKillChoropleths(){
   off('toggle-growth', toggleGrowthLayer);
 }
 function _hexTeardown(){
-  _hexView=false;
+  _hexView=false; oppView='list';                              // reset the view flag so re-entry lands clean (avoids opaque-panel-over-surface desync)
   if(hexLayer){ map.removeLayer(hexLayer); hexLayer=null; }
   _hexHideTip();
   const panel=document.getElementById('opp-panel'); if(panel) panel.classList.remove('surface-mode');
@@ -3773,15 +3778,16 @@ function _hexOpenDetail(h){
     <button class="eval-btn" style="width:100%" onclick="evaluateHexSpot(${h.cLat.toFixed(5)},${h.cLon.toFixed(5)})">Evaluate this spot →</button>`;
 }
 function evaluateHexSpot(lat,lon){
-  const h=hexScored.find(x=>Math.abs(x.cLat-lat)<1e-4 && Math.abs(x.cLon-lon)<1e-4);
-  const ring=h?h.ring:_hexCornersLatLon(lat,lon);
-  _hexTeardown(); oppView='list';
+  _hexTeardown();                                              // resets oppView + surface CSS + layer
   const panel=document.getElementById('opp-panel'); if(panel) panel.classList.remove('show');
-  drawnArea={ type:'poly', points: ring.map(p=>({lat:p[0],lng:p[1]})) };
+  // Evaluate a ~2-mile box around the hex (not just the 1-mile cell) so the engine can find the
+  // nearest commercial pad — a growth exurb's retail corridor is often a mile or two from the hex.
+  const dLat=2.0/69.0, dLon=2.0/(69.0*Math.cos(lat*Math.PI/180));
+  drawnArea={ type:'poly', points:[{lat:lat-dLat,lng:lon-dLon},{lat:lat-dLat,lng:lon+dLon},{lat:lat+dLat,lng:lon+dLon},{lat:lat+dLat,lng:lon-dLon}] };
   switchSection('map');
   setTimeout(()=>{
     map.invalidateSize();
-    map.setView([lat,lon],14,{animate:false});
+    map.setView([lat,lon],12,{animate:false});
     try{ captureAreaClinics(); }catch(e){}
     openEvaluateArea();
   },60);
@@ -3999,7 +4005,7 @@ let oppBaseRows=[];
 // Normalize 0–100 across the regional set, apply weights, sort, render
 function rescoreAndRender(){
   if(!oppBaseRows.length){
-    document.getElementById('opp-list-wrap').innerHTML='<div class="opp-empty">No ZIP data in the North Texas region yet.</div>';
+    if(oppView!=='surface') document.getElementById('opp-list-wrap').innerHTML='<div class="opp-empty">No ZIP data in the North Texas region yet.</div>'; // don't stomp the surface card
     return;
   }
   const w=getOppWeights();
@@ -4038,7 +4044,9 @@ function rescoreAndRender(){
     return { ...r, fIncome, fDemand, fComp, fGrowth, score };
   }).sort((a,b)=>b.score-a.score);
 
-  renderOppList();
+  // In Surface view, the card is already built (by setOppView) and recolored by rescoreHexes —
+  // don't rebuild #opp-list-wrap here (that would wipe an open hex-detail and double the work).
+  if(oppView==='surface') _oppKpiTop(); else renderOppList();
 }
 
 // Single-hue green intensity ramp — darker = stronger opportunity (white text stays WCAG-legible on all buckets).
