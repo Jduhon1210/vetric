@@ -841,6 +841,19 @@ body.dev-mode .search-bar{background:var(--amber-light);border-bottom-color:#fde
       </div>
       <div class="layer-status" id="clinics-status">Off</div>
     </div>
+    <div class="layer-item">
+      <div class="layer-row">
+        <div>
+          <div class="layer-name">Competition Strength on Pins</div>
+          <div class="layer-desc">Size each clinic pin by its Google review volume — bigger = busier, stronger incumbent. Spot dominant practices vs. weak ones while scanning. Ownership colors stay (navy = independent, red = PE).</div>
+        </div>
+        <label class="toggle" style="margin-left:12px">
+          <input type="checkbox" id="toggle-strength" onchange="toggleStrengthPins(this.checked)"/>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <div class="layer-status" id="strength-status">Off</div>
+    </div>
   </div>
   <div class="income-legend" id="income-legend">
     <div class="legend-title">Median Household Income</div>
@@ -1153,9 +1166,10 @@ const clusterGroup = L.layerGroup();
 map.addLayer(clusterGroup);
 const propertyLayer = L.layerGroup(); // not added to map until toggled on
 
-function pinSVG(color){
-  const id=color.replace('#','');
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="38" viewBox="0 0 28 38"><filter id="f${id}"><feDropShadow dx="0" dy="1.5" stdDeviation="1.5" flood-color="rgba(0,0,0,0.22)"/></filter><path d="M14 1.5C7.1 1.5 1.5 7.1 1.5 14C1.5 24.5 14 36.5 14 36.5C14 36.5 26.5 24.5 26.5 14C26.5 7.1 20.9 1.5 14 1.5Z" fill="${color}" stroke="white" stroke-width="1.5" filter="url(#f${id})"/><circle cx="14" cy="14" r="5.5" fill="white" opacity="0.92"/></svg>`;
+function pinSVG(color, tier){
+  const id=color.replace('#','')+(tier==null?'':'t'+tier);
+  const r = tier==null ? 5.5 : (3.4 + tier*1.25); // strength mode: inner dot scales with review volume (weak→dominant)
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="38" viewBox="0 0 28 38"><filter id="f${id}"><feDropShadow dx="0" dy="1.5" stdDeviation="1.5" flood-color="rgba(0,0,0,0.22)"/></filter><path d="M14 1.5C7.1 1.5 1.5 7.1 1.5 14C1.5 24.5 14 36.5 14 36.5C14 36.5 26.5 24.5 26.5 14C26.5 7.1 20.9 1.5 14 1.5Z" fill="${color}" stroke="white" stroke-width="1.5" filter="url(#f${id})"/><circle cx="14" cy="14" r="${r}" fill="white" opacity="0.92"/></svg>`;
 }
 function miniPin(color){
   return `<svg width="14" height="19" viewBox="0 0 28 38"><path d="M14 1.5C7.1 1.5 1.5 7.1 1.5 14C1.5 24.5 14 36.5 14 36.5C14 36.5 26.5 24.5 26.5 14C26.5 7.1 20.9 1.5 14 1.5Z" fill="${color}" stroke="white" stroke-width="1.5"/><circle cx="14" cy="14" r="5.5" fill="white" opacity="0.92"/></svg>`;
@@ -1163,8 +1177,13 @@ function miniPin(color){
 // divIcons are immutable and shareable across markers — memoize one per color instead of
 // rebuilding the SVG string for every pin on every commit (up to MAX_CLINICS pins).
 const _iconCache={};
-function makeIcon(color){ return _iconCache[color] || (_iconCache[color]=L.divIcon({html:pinSVG(color),iconSize:[28,38],iconAnchor:[14,38],popupAnchor:[0,-40],className:''})); }
+function makeIcon(color, tier){ const k=color+(tier==null?'':'_t'+tier); return _iconCache[k] || (_iconCache[k]=L.divIcon({html:pinSVG(color,tier),iconSize:[28,38],iconAnchor:[14,38],popupAnchor:[0,-40],className:''})); }
 function pinColor(c){ return c.pe ? RED : (c.peChecked ? NAVY : AMBER); }
+// Optional competition-strength encoding (default OFF, session-only so the ownership
+// view is the default). Pin inner-dot size = Google review-volume tier; colors unchanged.
+let STRENGTH_PINS=false;
+function pinTier(c){ if(!STRENGTH_PINS) return null; const rev=(c&&c.reviews)||0; return rev>=500?3:rev>=150?2:rev>=30?1:0; }
+function toggleStrengthPins(on){ STRENGTH_PINS=!!on; const st=document.getElementById('strength-status'); if(st) st.textContent=on?'On — pin size = review volume':'Off'; refreshPins(); }
 function clinicKey(c){ return `${Math.round(c.lat*1000)}_${Math.round(c.lon*1000)}`; }
 
 let markers=[],clinics=[],activeIdx=null,fetchTimer=null;
@@ -1282,7 +1301,7 @@ function applyOverride(key,nm,pe){
   if(nm) c.name=nm;
   c.pe=pe?{owner:pe,brand:'Manual override',manual:true}:null;
   c.peChecked=true;
-  if(markers[idx]){ markers[idx].setIcon(makeIcon(pinColor(c))); markers[idx].setPopupContent(buildPopup(c)); markers[idx].openPopup(); }
+  if(markers[idx]){ markers[idx].setIcon(makeIcon(pinColor(c), pinTier(c))); markers[idx].setPopupContent(buildPopup(c)); markers[idx].openPopup(); }
   renderList();
 }
 
@@ -1363,7 +1382,7 @@ function refreshPins(){
       c.pe=checkPE(c.name,c.lat,c.lon,key,overrides);
     }
     c.peChecked=true;
-    if(markers[i]){ markers[i].setIcon(makeIcon(pinColor(c))); markers[i].setPopupContent(buildPopup(c)); }
+    if(markers[i]){ markers[i].setIcon(makeIcon(pinColor(c), pinTier(c))); markers[i].setPopupContent(buildPopup(c)); }
   });
   renderList();
 }
@@ -1809,7 +1828,7 @@ function ensurePEClinicsForSelectedZips(){
       clinics.push(c);
       // Add a marker for it so it shows on the map
       const idx = clinics.length-1;
-      const m = L.marker([plat,plon],{icon:makeIcon(pinColor(c))})
+      const m = L.marker([plat,plon],{icon:makeIcon(pinColor(c), pinTier(c))})
         .bindPopup(()=>buildPopup(c),{maxWidth:260})
         .on('click',()=>{
           if(activeIdx!==null){const p=document.getElementById('c'+activeIdx);if(p)p.className='card';}
@@ -2843,7 +2862,7 @@ async function fetchClinics(){
 
   const batch=[];
   markers=clinics.map((c,i)=>{
-    const m=L.marker([c.lat,c.lon],{icon:makeIcon(pinColor(c))})
+    const m=L.marker([c.lat,c.lon],{icon:makeIcon(pinColor(c), pinTier(c))})
       .bindPopup(()=>buildPopup(c),{maxWidth:260})
       .on('click',()=>{
         if(activeIdx!==null){const p=document.getElementById('c'+activeIdx);if(p)p.className='card';}
