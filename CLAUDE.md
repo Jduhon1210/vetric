@@ -145,8 +145,8 @@ let lastIndependents = []; // Cache of last good Overpass result (Overpass fallb
 Nav items: Map (working), Opportunity (working), Acquisitions (working), Properties (stub — points to the Available Properties layer), **Watchlist** (working — the former "Reports" stub, now `renderWatchlist`: saved markets/targets/sites with a compare table + CSV export, `switchSection('reports')` → `enterWatchlist`/`exitWatchlist`, `watchMode` flag mirrors `acqMode`).
 `switchSection(s)` handles routing. The opportunity panel is an `position:absolute` overlay inside `.main` — it covers the map div without resizing it.
 
-## Dev mode
-Toggle in search bar. Adds clinic/property via map click, persists to `localStorage`. `getCustomClinics()`, `saveCustomClinics()`, `getDeleted()`, `getOverrides()` all read/write localStorage keys prefixed `vf_`.
+## Editing clinics (Dev Mode removed)
+The "Dev Mode" toggle was removed. Editing is now first-class: **click any pin → the popup has a gear (edit) button → an inline form** to change Clinic name, PE firm (owned by; blank = independent), **Competition × (per-clinic multiplier)**, and **Clinic type** (small/large/specialty). `saveSettings(key)` writes `vf_overrides[key] = {name, pe, mult, kind}`; `applyOverride()` applies live; `fetchClinics` re-applies overrides (name/pe/mult/`_kind`) on every commit so edits persist across pans/refetch. The **competition multiplier** flows into Evaluate's capture model — `_evalCompetitors` carries `mult` (looked up from `overrides` by cell key) and the comp loop multiplies `(c.mult||1)` alongside the PE-weight and `_revW`. The **clinic-type override** sets `c._kind` (wins over the name heuristic) and respects the type filter. The old `devMode` flag stays `false` (its add-clinic/add-property-via-map-click paths are now dead code, left harmless). `getDeleted()`/`getOverrides()` still read/write `vf_`-prefixed localStorage.
 
 ## Census API key
 Hardcoded in the fetch URLs: `key=3429f2401376a586a8f6ffc02bb5678ee32fbf44`. This is a public demo key. If Census calls start failing with 401, this key needs refreshing at api.census.gov.

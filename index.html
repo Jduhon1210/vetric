@@ -712,10 +712,6 @@ body.dev-mode .search-bar{background:var(--amber-light);border-bottom-color:#fde
     <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
     Layers
   </button>
-  <button id="dev-btn" class="tool-btn" onclick="toggleDevMode()" title="Developer mode">
-    <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-    Dev Mode
-  </button>
   <button id="property-mode-btn" class="tool-btn" onclick="togglePropertyAddMode()" title="Add property listings" style="display:none">
     <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/><path d="M9 9v.01"/><path d="M9 12v.01"/><path d="M9 15v.01"/><path d="M9 18v.01"/></svg>
     Add Property
@@ -814,7 +810,7 @@ body.dev-mode .search-bar{background:var(--amber-light);border-bottom-color:#fde
       <div class="layer-row">
         <div>
           <div class="layer-name">Available Properties</div>
-          <div class="layer-desc">Curated lease/sale/lot listings added via Dev Mode</div>
+          <div class="layer-desc">Curated lease / sale / lot listings</div>
         </div>
         <label class="toggle" style="margin-left:12px">
           <input type="checkbox" id="toggle-properties" onchange="togglePropertyLayer(this.checked)"/>
@@ -1293,23 +1289,32 @@ function buildPopup(c) {
 
   const peOwnerVal = c.pe && !c.pe.independent ? (c.pe.owner||'') : '';
   const safeName = c.name.replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  const curMult = (c.mult!=null ? c.mult : 1);
+  const curKind = _kindOf(c);
+  const multHTML = (curMult!=1) ? `<div style="display:inline-block;font-size:10px;font-weight:700;color:#92400e;background:#fef3c7;border-radius:10px;padding:2px 8px;margin-top:5px;margin-left:6px">competition ×${curMult}</div>` : '';
 
   return `<div class="popup">
     <div class="popup-header">
       <div class="popup-name">${c.name}</div>
-      ${devMode ? `<button class="gear-btn" onclick="toggleSettings('${key}')" title="Edit"></button>` : ''}
+      <button class="gear-btn" onclick="toggleSettings('${key}')" title="Edit this clinic"></button>
     </div>
-    ${starHTML}${kindHTML}${addrHTML}${telHTML}${webHTML}${peHTML}
+    ${starHTML}${kindHTML}${multHTML}${addrHTML}${telHTML}${webHTML}${peHTML}
     <div class="popup-disclaimer">Source: privateequityvet.org — Texas</div>
-    ${devMode ? `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);display:flex;gap:6px;">
-      <button class="settings-btn save" style="flex:1;font-size:11.5px;padding:5px 8px" onclick="toggleSettings('${key}')">Edit</button>
-      ${c.customId ? `<button class="settings-btn delete" style="flex:1;font-size:11.5px;padding:5px 8px" onclick="deleteCustomClinic(${c.customId})">Delete</button>` : `<button class="settings-btn delete" style="flex:1;font-size:11.5px;padding:5px 8px" onclick="deleteClinic('${key}')">Remove</button>`}
-    </div>` : ''}
     <div class="settings-panel" id="sp-${key}">
       <div><div class="settings-label">Clinic name</div>
         <input class="settings-input" id="si-name-${key}" value="${safeName}"/></div>
-      <div><div class="settings-label">PE owner (blank = independent)</div>
-        <input class="settings-input" id="si-pe-${key}" value="${peOwnerVal}" placeholder="e.g. KKR, Mars..."/></div>
+      <div><div class="settings-label">PE firm — owned by (blank = independent)</div>
+        <input class="settings-input" id="si-pe-${key}" value="${peOwnerVal}" placeholder="e.g. Mars, Shore Capital..."/></div>
+      <div class="settings-row" style="gap:10px">
+        <div style="flex:1"><div class="settings-label">Competition ×</div>
+          <input class="settings-input" id="si-mult-${key}" type="number" min="0" max="5" step="0.1" value="${curMult}"/></div>
+        <div style="flex:1.4"><div class="settings-label">Clinic type</div>
+          <select class="settings-input" id="si-kind-${key}">
+            <option value="small"${curKind==='small'?' selected':''}>Small animal</option>
+            <option value="large"${curKind==='large'?' selected':''}>Large animal / equine</option>
+            <option value="specialty"${curKind==='specialty'?' selected':''}>Specialty / ER</option>
+          </select></div>
+      </div>
       <div class="settings-row">
         <button class="settings-btn save" onclick="saveSettings('${key}')">Save</button>
         <button class="settings-btn cancel" onclick="toggleSettings('${key}')">Cancel</button>
@@ -1324,22 +1329,31 @@ function toggleSettings(key){ const el=document.getElementById('sp-'+key); if(el
 function saveSettings(key){
   const nm=document.getElementById('si-name-'+key)?.value.trim();
   const pe=document.getElementById('si-pe-'+key)?.value.trim()||null;
-  const o=getOverrides(); o[key]={name:nm,pe}; setStore('vf_overrides',o);
-  applyOverride(key,nm,pe);
+  let mult=parseFloat(document.getElementById('si-mult-'+key)?.value);
+  if(!isFinite(mult)||mult<0) mult=1;
+  const kind=document.getElementById('si-kind-'+key)?.value||'small';
+  const o=getOverrides(); o[key]={name:nm,pe,mult,kind}; setStore('vf_overrides',o);
+  applyOverride(key,nm,pe,mult,kind);
+  _acqIndKey=''; // overrides changed → invalidate the memoized acquisitions pool
+  // a per-clinic competition multiplier feeds Evaluate's capture model — re-run if it's open
+  if(typeof evalActive!=='undefined' && evalActive && typeof _evalComputeAndRender==='function') _evalComputeAndRender();
 }
 function deleteClinic(key){
   const d=getDeleted(); d[key]=true; setStore('vf_deleted',d);
   const idx=clinics.findIndex(c=>clinicKey(c)===key);
   if(idx>=0){ clusterGroup.removeLayer(markers[idx]); markers.splice(idx,1); clinics.splice(idx,1); renderList(); }
 }
-function applyOverride(key,nm,pe){
+function applyOverride(key,nm,pe,mult,kind){
   const idx=clinics.findIndex(c=>clinicKey(c)===key);
   if(idx<0)return;
   const c=clinics[idx];
   if(nm) c.name=nm;
   c.pe=pe?{owner:pe,brand:'Manual override',manual:true}:null;
   c.peChecked=true;
-  if(markers[idx]){ markers[idx].setIcon(makeIcon(pinColor(c), pinTier(c))); markers[idx].setPopupContent(buildPopup(c)); markers[idx].openPopup(); }
+  if(mult!=null) c.mult=mult;
+  if(kind) c._kind=kind;                 // manual clinic-type override
+  if(markers[idx]){ markers[idx]._kind=_kindOf(c); markers[idx].setIcon(makeIcon(pinColor(c), pinTier(c))); markers[idx].setPopupContent(buildPopup(c)); markers[idx].openPopup(); }
+  applyTypeVisibility();                  // type may have changed → re-apply the type filter
   renderList();
 }
 
@@ -2702,7 +2716,7 @@ function renderPropertyLayer(){
   const status = document.getElementById('property-status');
   if(status) status.textContent = properties.length
     ? `${properties.length} ${properties.length===1?'listing':'listings'}`
-    : 'No properties yet — use Dev Mode + Add Property to drop one';
+    : 'No properties yet.';
 }
 
 /* ─── Traffic counts layer — TxDOT AADT (annual avg daily traffic) ─────────────
@@ -2810,7 +2824,7 @@ async function fetchClinics(){
       const pe=ovr?(ovr.pe?{owner:ovr.pe,brand:'Manual override',manual:true}:null):{owner,brand};
       const nm=ovr?.name||clinicName||'Unknown Clinic';
       const _pe=_vetEnrichAt(plat,plon); // pull Google rating/reviews/phone/addr for this PE clinic
-      local.push({name:nm,website:clinicWebsite||(_pe&&_pe.web)||'',addr:(_pe&&_pe.addr)||'',rating:_pe&&_pe.rating,reviews:_pe&&_pe.reviews,tel:_pe&&_pe.tel,days:_pe&&_pe.days,pe,peChecked:true,lat:plat,lon:plon,dist:hav(lat,lng,plat,plon),fromSheet:true});
+      local.push({name:nm,website:clinicWebsite||(_pe&&_pe.web)||'',addr:(_pe&&_pe.addr)||'',rating:_pe&&_pe.rating,reviews:_pe&&_pe.reviews,tel:_pe&&_pe.tel,days:_pe&&_pe.days,mult:(ovr&&ovr.mult),_kind:(ovr&&ovr.kind),pe,peChecked:true,lat:plat,lon:plon,dist:hav(lat,lng,plat,plon),fromSheet:true});
     }
   }
 
@@ -2829,7 +2843,7 @@ async function fetchClinics(){
       if(dupe) continue;
       const pe=checkPE(vc.name,clat,clon,ck,overrides);
       const nm=overrides[ck]?.name||vc.name||'Veterinary Clinic';
-      local.push({name:nm,website:vc.web||'',addr:vc.addr||'',rating:vc.rating,reviews:vc.reviews,tel:vc.tel,days:vc.days,pe,peChecked:peLoaded,lat:clat,lon:clon,dist:hav(lat,lng,clat,clon)});
+      local.push({name:nm,website:vc.web||'',addr:vc.addr||'',rating:vc.rating,reviews:vc.reviews,tel:vc.tel,days:vc.days,mult:(overrides[ck]&&overrides[ck].mult),_kind:(overrides[ck]&&overrides[ck].kind),pe,peChecked:peLoaded,lat:clat,lon:clon,dist:hav(lat,lng,clat,clon)});
     }
   } else {
     // Overpass fallback (used outside DFW or if vet-clinics.js not loaded)
@@ -4154,7 +4168,7 @@ function _evalZipAffluence(zip){
 function _evalCompetitors(feat, radiusMi){
   const {s,n,w,e}=_evalBuffer(feat, radiusMi);
   const deleted=getDeleted(), overrides=getOverrides(), byKey=new Map();
-  const add=(la,lo,pe,reviews,rating)=>{ if(la<s||la>n||lo<w||lo>e) return; const k=`${Math.round(la*1000)}_${Math.round(lo*1000)}`; if(deleted[k]) return; if(!byKey.has(k)) byKey.set(k,{lat:la,lon:lo,pe:!!pe,reviews:(typeof reviews==='number'?reviews:null),rating:(typeof rating==='number'?rating:null)}); }; // reviews/rating are DISPLAY-only (dot size + popup); only reviews feeds _revW in the engine
+  const add=(la,lo,pe,reviews,rating)=>{ if(la<s||la>n||lo<w||lo>e) return; const k=`${Math.round(la*1000)}_${Math.round(lo*1000)}`; if(deleted[k]) return; if(!byKey.has(k)) byKey.set(k,{lat:la,lon:lo,pe:!!pe,reviews:(typeof reviews==='number'?reviews:null),rating:(typeof rating==='number'?rating:null),mult:(overrides[k]&&overrides[k].mult)||1}); }; // reviews/rating DISPLAY-only; mult is the per-clinic competition override (Settings → edit pin)
   if(peLoaded && typeof PE_COORDS!=='undefined') for(const c of PE_COORDS){ if(c[0]<s||c[0]>n||c[1]<w||c[1]>e) continue; const enr=_vetEnrichAt(c[0],c[1]); add(c[0],c[1],true,enr&&enr.reviews,enr&&enr.rating); } // NB: var must NOT be named 'e' — shadows the destructured east bound 'e' above → TDZ ReferenceError
   // SINGLE independent source: VET_CLINICS (Google Places, complete & not viewport-limited),
   // PE-typed via checkPE. Do NOT also fold in evalData.vets (Overpass) — that double-counted
@@ -4651,7 +4665,7 @@ function _evalComputeAndRender(){
       // retail access (co-tenancy / visibility)
       let ret=0; for(const r of evalData.retail){ if(Math.abs(r.lat-la)>bRet) continue; const d=hav(la,lo,r.lat,r.lon); if(d<RET_R) ret+=(r.area?0.6:1)*_grav(d,RET_R); }
       // competition (border-aware gravity); scan all comps for the true nearest readout
-      let comp=0, nearC=Infinity, nearPE=Infinity; for(const c of comps){ const d=hav(la,lo,c.lat,c.lon); if(d<nearC)nearC=d; if(d<R){ comp+=(c.pe?1.6:1)*_revW(c.reviews,compMedRev)*_grav(d,R); if(c.pe && d<nearPE) nearPE=d; } }
+      let comp=0, nearC=Infinity, nearPE=Infinity; for(const c of comps){ const d=hav(la,lo,c.lat,c.lon); if(d<nearC)nearC=d; if(d<R){ comp+=(c.pe?1.6:1)*_revW(c.reviews,compMedRev)*(c.mult||1)*_grav(d,R); if(c.pe && d<nearPE) nearPE=d; } }
       const affl=_cellAffl(la,lo); // per-cell ZIP demographics in area mode; constant in ZIP mode
       grid.push({la,lo,dem,ret,comp,nearC,nearPE,affl,nearRoad,nearCls,aadt,aadtRoad,stepLa,stepLo,zone:zinfo?zinfo.label:null,zcity:zinfo?zinfo.city:null});
     }
