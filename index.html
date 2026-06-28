@@ -1020,6 +1020,29 @@ function _activeVetClinics(){
   if(typeof VET_CLINICS==='undefined' || !VET_CLINICS.length) return [];
   return _vfIncludeMobile() ? VET_CLINICS : VET_CLINICS.filter(v=>!v.mobile);
 }
+// PE clinics come from PE_COORDS (owner/brand, complete) which has NO Google fields. Their
+// rating/reviews/phone/etc. live in VET_CLINICS (same clinic, PE-typed there). Match by location
+// to enrich PE pins + give PE competitors a review weight. Cell index built once; lookup scans a
+// ~330m window (checkPE's tolerance) and picks the nearest match.
+let _vetCellIdx=null;
+function _vetCellIndex(){
+  if(_vetCellIdx) return _vetCellIdx;
+  _vetCellIdx=new Map();
+  if(typeof VET_CLINICS!=='undefined') for(const v of VET_CLINICS){
+    const k=Math.round(v.lat*1000)+'_'+Math.round(v.lon*1000);
+    let a=_vetCellIdx.get(k); if(!a){a=[];_vetCellIdx.set(k,a);} a.push(v);
+  }
+  return _vetCellIdx;
+}
+function _vetEnrichAt(lat,lon){
+  const idx=_vetCellIndex(), la=Math.round(lat*1000), lo=Math.round(lon*1000);
+  let best=null, bestD=Infinity;
+  for(let dla=-3;dla<=3;dla++) for(let dlo=-4;dlo<=4;dlo++){
+    const a=idx.get((la+dla)+'_'+(lo+dlo)); if(!a) continue;
+    for(const v of a){ const d=Math.abs(v.lat-lat)+Math.abs(v.lon-lon); if(d<bestD){bestD=d;best=v;} }
+  }
+  return best;
+}
 const MIN_ZOOM=10;
 
 // PE data — populated by pe-data.js once it loads
@@ -2697,7 +2720,8 @@ async function fetchClinics(){
       const ovr=overrides[ck];
       const pe=ovr?(ovr.pe?{owner:ovr.pe,brand:'Manual override',manual:true}:null):{owner,brand};
       const nm=ovr?.name||clinicName||'Unknown Clinic';
-      local.push({name:nm,website:clinicWebsite||'',addr:'',pe,peChecked:true,lat:plat,lon:plon,dist:hav(lat,lng,plat,plon),fromSheet:true});
+      const _pe=_vetEnrichAt(plat,plon); // pull Google rating/reviews/phone/addr for this PE clinic
+      local.push({name:nm,website:clinicWebsite||(_pe&&_pe.web)||'',addr:(_pe&&_pe.addr)||'',rating:_pe&&_pe.rating,reviews:_pe&&_pe.reviews,tel:_pe&&_pe.tel,days:_pe&&_pe.days,pe,peChecked:true,lat:plat,lon:plon,dist:hav(lat,lng,plat,plon),fromSheet:true});
     }
   }
 
@@ -3830,7 +3854,7 @@ function _evalCompetitors(feat, radiusMi){
   const {s,n,w,e}=_evalBuffer(feat, radiusMi);
   const deleted=getDeleted(), overrides=getOverrides(), byKey=new Map();
   const add=(la,lo,pe,reviews)=>{ if(la<s||la>n||lo<w||lo>e) return; const k=`${Math.round(la*1000)}_${Math.round(lo*1000)}`; if(deleted[k]) return; if(!byKey.has(k)) byKey.set(k,{lat:la,lon:lo,pe:!!pe,reviews:(typeof reviews==='number'?reviews:null)}); };
-  if(peLoaded && typeof PE_COORDS!=='undefined') for(const c of PE_COORDS) add(c[0],c[1],true);
+  if(peLoaded && typeof PE_COORDS!=='undefined') for(const c of PE_COORDS){ if(c[0]<s||c[0]>n||c[1]<w||c[1]>e) continue; const e=_vetEnrichAt(c[0],c[1]); add(c[0],c[1],true,e&&e.reviews); }
   // SINGLE independent source: VET_CLINICS (Google Places, complete & not viewport-limited),
   // PE-typed via checkPE. Do NOT also fold in evalData.vets (Overpass) — that double-counted
   // the same clinics at slightly different coords (dedup is only ~110m) and inflated `comp`,
