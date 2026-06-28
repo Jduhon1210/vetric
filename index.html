@@ -3397,6 +3397,7 @@ async function selectOppRegion(key){
   hexBaseRows=[]; hexScored=[]; _hexBuiltKey=''; _hexClinicIndex=null; _hexZipBuckets=null; _hexView=false;
   oppView='list'; hexStrategy='all'; document.body.classList.remove('vf-surface'); // land in List for the new region; re-entering Surface re-fits the map
   { const _p=document.getElementById('opp-panel'); if(_p) _p.classList.remove('surface-mode'); }
+  _hexSelIdx=-1; if(_hexSelLayer){ map.removeLayer(_hexSelLayer); _hexSelLayer=null; }
   if(hexLayer){ map.removeLayer(hexLayer); hexLayer=null; }   // new region → rebuild geometry (pitch depends on lat)
   closeRegionPicker();
   switchSection('opportunity'); // openOpportunity re-runs (oppScored was reset) for the new region
@@ -3489,6 +3490,7 @@ const HEX_BUCKET = 0.02;         // spatial-index bucket size, degrees
 // Module state
 let oppView='list';              // 'list' | 'surface'
 let hexStrategy='all';           // 'all' | 'build' | 'land' — surface strategy filter
+let _hexSelIdx=-1, _hexSelLayer=null, _hexSelCanvas=null;   // selected/highlighted hex + its ZIP outline
 let hexBaseRows=[];              // per-hex precomputed records (heavy; built once)
 let hexScored=[];                // per-hex scored (index-aligned with hexBaseRows)
 let hexLayer=null;               // L.layerGroup of persistent canvas polygons
@@ -3702,9 +3704,10 @@ function redrawHexCanvas(){
   for(let i=0;i<hexScored.length;i++){
     const base=hexBaseRows[i]; const poly=base&&base._poly; if(!poly) continue;  // index-aligned (order-independent)
     const h=hexScored[i];
-    if(h.score==null){ poly.setStyle({fillOpacity:0}); continue; }
-    if(_hexStageMatch(h._stage&&h._stage.key)) poly.setStyle({fillColor:h._color, fillOpacity:0.58});
-    else poly.setStyle({fillColor:'#94a3b8', fillOpacity:0.06});    // dim non-matching plays so the matches pop
+    if(h.score==null){ poly.setStyle({fillOpacity:0, stroke:false}); continue; }
+    if(i===_hexSelIdx) poly.setStyle({fillColor:h._color||'#7c3aed', fillOpacity:0.95, stroke:true, color:'#0f172a', weight:3}); // highlighted pick
+    else if(_hexStageMatch(h._stage&&h._stage.key)) poly.setStyle({fillColor:h._color, fillOpacity:0.58, stroke:false});
+    else poly.setStyle({fillColor:'#94a3b8', fillOpacity:0.06, stroke:false});    // dim non-matching plays so the matches pop
   }
 }
 
@@ -3738,7 +3741,7 @@ function _hexInstallHandlers(){
       const h=_hexAt(e.latlng.lat,e.latlng.lng);
       if(!h||h.score==null){ _hexHideTip(); return; } _hexShowTip(e.latlng,h); }); });
   map.on('click', e=>{ if(!_hexView) return;
-    const h=_hexAt(e.latlng.lat,e.latlng.lng); if(h&&h.zip) _hexOpenDetail(h); });
+    const h=_hexAt(e.latlng.lat,e.latlng.lng); if(h&&h.zip) _hexFocus(h,false); });
 }
 
 // ── surface entry / view toggle / card / detail / handoff ───────────────────
@@ -3764,7 +3767,7 @@ function setOppView(v){
     document.body.classList.add('vf-surface');                  // hides the "zoom in to see clinics" pill
     setTimeout(()=>{ map.invalidateSize(); try{ map.fitBounds([[oppRegion.s,oppRegion.w],[oppRegion.n,oppRegion.e]],{animate:false,padding:[18,18]}); }catch(e){ map.setView([oppRegion.lat,oppRegion.lon],10,{animate:false}); } },40);
   } else {
-    _hexView=false;
+    _hexView=false; _hexClearSel();
     if(hexLayer){ map.removeLayer(hexLayer); hexLayer=null; }
     _hexHideTip();
     if(panel) panel.classList.remove('surface-mode');
@@ -3779,7 +3782,7 @@ function _oppKillChoropleths(){
   off('toggle-growth', toggleGrowthLayer);
 }
 function _hexTeardown(){
-  _hexView=false; oppView='list';                              // reset the view flag so re-entry lands clean (avoids opaque-panel-over-surface desync)
+  _hexView=false; oppView='list'; _hexClearSel();              // reset the view flag so re-entry lands clean (avoids opaque-panel-over-surface desync)
   if(hexLayer){ map.removeLayer(hexLayer); hexLayer=null; }
   _hexHideTip();
   const panel=document.getElementById('opp-panel'); if(panel) panel.classList.remove('surface-mode');
@@ -3813,7 +3816,23 @@ function _fillLegend(){
     `<div style="display:flex;justify-content:space-between;font-size:9.5px;color:#94a3b8;margin-top:1px"><span>low</span><span>high</span></div>`+
     `<div class="hex-top-h">Top spots${hexStrategy==='all'?'':' · '+(hexStrategy==='land'?'Land-bank':'Build-now')}</div>${top||'<div style="font-size:11px;color:#94a3b8">No matching plays.</div>'}`;
 }
-function _hexOpenDetailByCell(q,r){ const i=_hexAxialIndex.get(q+'_'+r); if(i!=null && hexScored[i]) _hexOpenDetail(hexScored[i]); }
+function _hexOpenDetailByCell(q,r){ const i=_hexAxialIndex.get(q+'_'+r); if(i!=null && hexScored[i]) _hexFocus(hexScored[i], true); }
+function _hexClearSel(){ _hexSelIdx=-1; if(_hexSelLayer){ map.removeLayer(_hexSelLayer); _hexSelLayer=null; } }
+// Fly to a hex's ZIP region, outline it, bold-highlight the hex, then open its detail.
+function _hexFocus(h, doZoom){
+  if(!h) return;
+  const i=_hexAxialIndex.get(h.q+'_'+h.r); _hexSelIdx=(i==null?-1:i);
+  if(_hexSelLayer){ map.removeLayer(_hexSelLayer); _hexSelLayer=null; }
+  if(h.feat){
+    if(!_hexSelCanvas) _hexSelCanvas=L.canvas({padding:0.5});       // own renderer (sits above the hex canvas)
+    try{ _hexSelLayer=L.geoJSON(h.feat,{interactive:false, renderer:_hexSelCanvas, style:{color:'#0f172a', weight:2.5, opacity:0.9, fill:false}}).addTo(map); }catch(e){}
+  }
+  redrawHexCanvas();                                                // re-applies the bold style to the selected hex
+  if(doZoom){ const bb=h.feat?_rawBBoxG(h.feat):null;
+    try{ if(bb) map.fitBounds([[bb.minLat,bb.minLon],[bb.maxLat,bb.maxLon]],{animate:false,maxZoom:13,padding:[50,50]}); else map.setView([h.cLat,h.cLon],13,{animate:false}); }
+    catch(e){ try{ map.setView([h.cLat,h.cLon],13,{animate:false}); }catch(_){} } }
+  _hexOpenDetail(h);
+}
 function _hexOpenDetail(h){
   const box=document.getElementById('hex-detail'); if(!box) return;
   box.style.display='block';
