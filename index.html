@@ -3031,7 +3031,7 @@ const VM_METHOD = 'Vetric — Texas veterinary market intelligence. Clinics: Goo
 function _csvCell(v){
   if(v==null) v='';
   let s=''+v;
-  if(/^[=+\-@\t\r]/.test(s)) s="'"+s;                 // neutralize spreadsheet formula injection
+  if(/^[=+\-@\t\r]/.test(s) && !/^[-+]?\d+(\.\d+)?$/.test(s)) s="'"+s;   // neutralize formula injection, but keep pure numbers (e.g. negative lon) numeric
   if(/[",\n]/.test(s)) s='"'+s.replace(/"/g,'""')+'"';
   return s;
 }
@@ -3183,6 +3183,14 @@ function switchSection(s){
 let acqMode=false, acqRollup='whitespace';
 const ACQ_RADIUS_MI=5;
 function _acqSize(rev){ if(!rev) return null; return rev>=400?'Large':rev>=120?'Mid':'Small'; }
+// Memoized statewide PE-filtered independent pool (see _acqRank). Key captures the only inputs
+// that change it at runtime: the mobile-vet toggle and dev-mode overrides → self-invalidating.
+let _acqIndCache=null, _acqIndKey='';
+function _acqIndPool(overrides){
+  const k=(_vfIncludeMobile()?'m1':'m0')+':'+JSON.stringify(overrides||getOverrides());
+  if(_acqIndKey!==k){ const ov=overrides||getOverrides(); _acqIndCache=_activeVetClinics().filter(v=>!checkPE(v.name,v.lat,v.lon,null,ov)); _acqIndKey=k; }
+  return _acqIndCache;
+}
 function exportAcqCSV(){
   downloadCSV(window._vmAcqScope||[], [
     {label:'Target',get:r=>r.c.name},
@@ -3206,8 +3214,10 @@ function _acqRank(){
   const overrides=getOverrides();
   const peSet=(peLoaded && typeof PE_COORDS!=='undefined')?PE_COORDS:[];
   // STATEWIDE independent pool (not viewport-limited) so cluster counts are zoom-independent &
-  // defensible; respects the mobile-vet exclusion toggle via _activeVetClinics().
-  const indAll=_activeVetClinics().filter(v=>!checkPE(v.name,v.lat,v.lon,null,overrides));
+  // defensible; respects the mobile-vet exclusion toggle via _activeVetClinics(). MEMOIZED —
+  // this is a ~6,400×checkPE sweep; it's viewport-independent so rebuilding it per pan is pure
+  // waste. Key on the only runtime-variable inputs (mobile toggle + overrides) → self-invalidates.
+  const indAll=_acqIndPool(overrides);
   const rows=inView.map(c=>{
     let peNear=0; for(const p of peSet){ if(Math.abs(p[0]-c.lat)>bandLat) continue; if(hav(c.lat,c.lon,p[0],p[1])<R) peNear++; }
     let indNear=0; for(const o of indAll){ if(Math.abs(o.lat-c.lat)>bandLat) continue; if(Math.abs(o.lat-c.lat)<1e-5&&Math.abs(o.lon-c.lon)<1e-5) continue; if(hav(c.lat,c.lon,o.lat,o.lon)<R) indNear++; }
@@ -3248,7 +3258,7 @@ function renderAcquisitions(){
   }).join('') || '<div class="empty">No independent clinics in view.<br>Pan or search a city to load targets.</div>';
   const chip=(k,label)=>`<span class="eval-chip ${acqRollup===k?'on':''}" onclick="setAcqRollup('${k}')">${label}</span>`;
   sb.innerHTML=`
-    <div class="area-header"><span class="area-title">Acquisition Targets</span><span style="display:flex;align-items:center;gap:8px">${rows.length?_exportBtn('exportAcqCSV()','Export'):''}<span style="font-size:12px;color:#64748b;font-weight:600">${rows.length}</span></span></div>
+    <div class="area-header"><span class="area-title">Acquisition Targets</span><span style="display:flex;align-items:center;gap:8px">${rows.length?_exportBtn('exportAcqCSV()','Export '+rows.length):''}<span style="font-size:12px;color:#64748b;font-weight:600">${rows.length}</span></span></div>
     <div class="eval-verdict">Independent clinics in view, ranked as roll-up targets.</div>
     <div class="eval-toggle-row">${chip('whitespace','Whitespace')}${chip('tuckin','Tuck-in')}</div>
     <div class="eval-cards">${cards}</div>
@@ -4103,7 +4113,7 @@ function _evalCompetitors(feat, radiusMi){
   const {s,n,w,e}=_evalBuffer(feat, radiusMi);
   const deleted=getDeleted(), overrides=getOverrides(), byKey=new Map();
   const add=(la,lo,pe,reviews,rating)=>{ if(la<s||la>n||lo<w||lo>e) return; const k=`${Math.round(la*1000)}_${Math.round(lo*1000)}`; if(deleted[k]) return; if(!byKey.has(k)) byKey.set(k,{lat:la,lon:lo,pe:!!pe,reviews:(typeof reviews==='number'?reviews:null),rating:(typeof rating==='number'?rating:null)}); }; // reviews/rating are DISPLAY-only (dot size + popup); only reviews feeds _revW in the engine
-  if(peLoaded && typeof PE_COORDS!=='undefined') for(const c of PE_COORDS){ if(c[0]<s||c[0]>n||c[1]<w||c[1]>e) continue; const e=_vetEnrichAt(c[0],c[1]); add(c[0],c[1],true,e&&e.reviews,e&&e.rating); }
+  if(peLoaded && typeof PE_COORDS!=='undefined') for(const c of PE_COORDS){ if(c[0]<s||c[0]>n||c[1]<w||c[1]>e) continue; const enr=_vetEnrichAt(c[0],c[1]); add(c[0],c[1],true,enr&&enr.reviews,enr&&enr.rating); } // NB: var must NOT be named 'e' — shadows the destructured east bound 'e' above → TDZ ReferenceError
   // SINGLE independent source: VET_CLINICS (Google Places, complete & not viewport-limited),
   // PE-typed via checkPE. Do NOT also fold in evalData.vets (Overpass) — that double-counted
   // the same clinics at slightly different coords (dedup is only ~110m) and inflated `comp`,
