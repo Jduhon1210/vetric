@@ -172,6 +172,12 @@ body.dev-mode .search-bar{background:var(--amber-light);border-bottom-color:#fde
 .hex-top-row:hover{background:#f8fafc;}
 .hex-tip{font-size:12px;}
 body.vf-surface #zoom-msg{display:none!important;}
+.hex-strat-seg{display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;}
+.hex-strat-seg button{flex:1;border:0;border-right:1px solid var(--border);background:#fff;padding:6px 4px;font-size:11px;font-weight:700;color:#64748b;cursor:pointer;}
+.hex-strat-seg button:last-child{border-right:0;}
+.hex-strat-seg button.on{background:#334155;color:#fff;}
+.hex-strat-seg button.on.b{background:#15803d;}
+.hex-strat-seg button.on.l{background:#7c3aed;}
 .opp-list-head{display:grid;grid-template-columns:30px 1fr 64px;gap:12px;padding:0 14px 10px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);position:sticky;top:0;background:var(--bg);}
 .opp-row{display:grid;grid-template-columns:30px 1fr 64px;gap:12px;align-items:center;padding:12px 14px;background:var(--surface);border:1px solid var(--border);border-radius:10px;margin-bottom:8px;cursor:pointer;transition:box-shadow .12s,transform .12s;}
 .opp-row:hover{box-shadow:var(--shadow);transform:translateY(-1px);}
@@ -3389,7 +3395,7 @@ async function selectOppRegion(key){
   oppRegion=r;
   oppRegionIndependents=[]; oppBaseRows=[]; oppScored=[]; // force a full rebuild for the new region
   hexBaseRows=[]; hexScored=[]; _hexBuiltKey=''; _hexClinicIndex=null; _hexZipBuckets=null; _hexView=false;
-  oppView='list'; document.body.classList.remove('vf-surface');                 // land in List for the new region; re-entering Surface re-fits the map
+  oppView='list'; hexStrategy='all'; document.body.classList.remove('vf-surface'); // land in List for the new region; re-entering Surface re-fits the map
   { const _p=document.getElementById('opp-panel'); if(_p) _p.classList.remove('surface-mode'); }
   if(hexLayer){ map.removeLayer(hexLayer); hexLayer=null; }   // new region → rebuild geometry (pitch depends on lat)
   closeRegionPicker();
@@ -3482,6 +3488,7 @@ const HEX_MI_PER_DEG_LAT = 69.0;
 const HEX_BUCKET = 0.02;         // spatial-index bucket size, degrees
 // Module state
 let oppView='list';              // 'list' | 'surface'
+let hexStrategy='all';           // 'all' | 'build' | 'land' — surface strategy filter
 let hexBaseRows=[];              // per-hex precomputed records (heavy; built once)
 let hexScored=[];                // per-hex scored (index-aligned with hexBaseRows)
 let hexLayer=null;               // L.layerGroup of persistent canvas polygons
@@ -3683,13 +3690,21 @@ function buildHexPolys(){
   hexLayer.addTo(map);
   if(hexLayer.bringToBack) hexLayer.bringToBack();
 }
+function _hexStageMatch(key){
+  if(hexStrategy==='all') return true;
+  if(hexStrategy==='build') return key==='build'||key==='emerge';   // developed / developing — build now or soon
+  if(hexStrategy==='land')  return key==='land';                    // cheap rural growth — acquire & hold
+  return true;
+}
+function setHexStrategy(s){ hexStrategy=s; redrawHexCanvas(); _fillLegend(); }
 function redrawHexCanvas(){
   if(!_hexView||!hexLayer) return;
   for(let i=0;i<hexScored.length;i++){
     const base=hexBaseRows[i]; const poly=base&&base._poly; if(!poly) continue;  // index-aligned (order-independent)
     const h=hexScored[i];
-    if(h.score==null) poly.setStyle({fillOpacity:0});
-    else poly.setStyle({fillColor:h._color, fillOpacity:0.58});
+    if(h.score==null){ poly.setStyle({fillOpacity:0}); continue; }
+    if(_hexStageMatch(h._stage&&h._stage.key)) poly.setStyle({fillColor:h._color, fillOpacity:0.58});
+    else poly.setStyle({fillColor:'#94a3b8', fillOpacity:0.06});    // dim non-matching plays so the matches pop
   }
 }
 
@@ -3779,17 +3794,24 @@ function _hexSurfaceCard(){
 }
 function _fillLegend(){
   const body=document.getElementById('hex-legend-body'); if(!body) return;
-  const ranked=[...hexScored].filter(h=>h.score!=null).sort((a,b)=>b.score-a.score);
+  const match=[...hexScored].filter(h=>h.score!=null && _hexStageMatch(h._stage&&h._stage.key)).sort((a,b)=>b.score-a.score);
   const seen=new Set(), best=[];                                  // top DISTINCT ZIPs (one hex per ZIP)
-  for(const h of ranked){ if(seen.has(h.zip)) continue; seen.add(h.zip); best.push(h); if(best.length>=6) break; }
+  for(const h of match){ if(seen.has(h.zip)) continue; seen.add(h.zip); best.push(h); if(best.length>=6) break; }
   const top=best.map(h=>{ const st=h._stage||_hexStage(h.dens,h.trajIdx); return `<div class="hex-top-row" onclick="_hexOpenDetailByCell(${h.q},${h.r})">`+
        `<span style="color:${h._color};font-weight:800;min-width:22px;text-align:right">${Math.round(h.score*100)}</span>`+
        `<span style="flex:1">${h.zip}${h.city?' · '+h.city:''}</span>`+
        `<span style="font-size:9px;font-weight:700;color:${st.color};white-space:nowrap">${st.label}</span></div>`; }).join('');
-  body.innerHTML=`<div style="font-size:11px;color:#475569">Captured demand (low → high)</div>
-    <div class="hex-legbar"></div>
-    <div style="display:flex;justify-content:space-between;font-size:9.5px;color:#94a3b8;margin-top:1px"><span>low</span><span>high</span></div>
-    <div class="hex-top-h">Top spots</div>${top||'<div style="font-size:11px;color:#94a3b8">No scored hexes yet.</div>'}`;
+  const seg=`<div class="hex-strat-seg">`+
+    `<button class="${hexStrategy==='all'?'on':''}" onclick="setHexStrategy('all')">All</button>`+
+    `<button class="${hexStrategy==='build'?'on b':''}" onclick="setHexStrategy('build')">Build-now</button>`+
+    `<button class="${hexStrategy==='land'?'on l':''}" onclick="setHexStrategy('land')">Land-bank</button></div>`;
+  const nZ=new Set(match.map(h=>h.zip)).size;
+  const note = hexStrategy==='all' ? '' :
+    `<div style="font-size:10.5px;color:${hexStrategy==='land'?'#7c3aed':'#15803d'};font-weight:600;margin:7px 0 0">${nZ} ${hexStrategy==='land'?'land-bank (hold)':'build-now'} ZIP${nZ!==1?'s':''} highlighted</div>`;
+  body.innerHTML=`${seg}${note}<div style="font-size:11px;color:#475569;margin-top:9px">Captured demand (low → high)</div>`+
+    `<div class="hex-legbar"></div>`+
+    `<div style="display:flex;justify-content:space-between;font-size:9.5px;color:#94a3b8;margin-top:1px"><span>low</span><span>high</span></div>`+
+    `<div class="hex-top-h">Top spots${hexStrategy==='all'?'':' · '+(hexStrategy==='land'?'Land-bank':'Build-now')}</div>${top||'<div style="font-size:11px;color:#94a3b8">No matching plays.</div>'}`;
 }
 function _hexOpenDetailByCell(q,r){ const i=_hexAxialIndex.get(q+'_'+r); if(i!=null && hexScored[i]) _hexOpenDetail(hexScored[i]); }
 function _hexOpenDetail(h){
