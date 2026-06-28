@@ -15,10 +15,12 @@ export async function onRequestGet({ request, env }) {
   if (!isFinite(lat) || !isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180)
     return new Response('bad params', { status: 400 });
   const loc = lat.toFixed(6) + ',' + lon.toFixed(6);
+  const big = url.searchParams.get('big') === '1';          // expanded/lightbox view
+  const size = big ? '640x400' : '440x220';                 // 640 is the Street View Static max
 
   // Edge cache — a location's Street View is static, so cache hard and serve repeats for free.
   const cache = caches.default;
-  const cacheKey = new Request(url.origin + '/api/streetview?loc=' + loc);
+  const cacheKey = new Request(url.origin + '/api/streetview?loc=' + loc + (big ? '&big=1' : ''));
   const hit = await cache.match(cacheKey);
   if (hit) return hit;
 
@@ -30,8 +32,8 @@ export async function onRequestGet({ request, env }) {
   } catch (e) {}
   if (!meta || meta.status !== 'OK') return new Response(null, { status: 204 });
 
-  const img = await fetch('https://maps.googleapis.com/maps/api/streetview?size=440x220&location=' +
-    loc + '&fov=78&radius=60&source=outdoor&return_error_code=true&key=' + key);
+  const img = await fetch('https://maps.googleapis.com/maps/api/streetview?size=' + size + '&location=' +
+    loc + '&fov=' + (big ? '90' : '78') + '&radius=60&source=outdoor&return_error_code=true&key=' + key);
   if (!img.ok) return new Response(null, { status: 204 });
 
   const resp = new Response(img.body, {

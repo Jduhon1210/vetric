@@ -379,8 +379,15 @@ body.dev-mode .search-bar{background:var(--amber-light);border-bottom-color:#fde
 .popup{padding:14px 16px;}
 .popup-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px;}
 .popup-name{font-weight:700;font-size:13.5px;line-height:1.3;flex:1;color:var(--text);}
-.popup-sv-wrap{margin:0 0 9px;border-radius:9px;overflow:hidden;border:1px solid var(--border);background:#eef2f7;}
-.popup-sv{width:100%;height:118px;object-fit:cover;display:block;}
+.popup-sv-wrap{position:relative;margin:0 0 9px;border-radius:9px;overflow:hidden;border:1px solid var(--border);background:#eef2f7;}
+.popup-sv{width:100%;height:118px;object-fit:cover;display:block;cursor:zoom-in;}
+.popup-sv-zoom{position:absolute;top:6px;right:6px;background:rgba(15,23,42,.62);color:#fff;font-size:12px;line-height:1;padding:3px 6px;border-radius:6px;pointer-events:none;}
+.sv-lightbox{position:fixed;inset:0;background:rgba(0,0,0,.86);display:none;align-items:center;justify-content:center;z-index:5000;cursor:zoom-out;}
+.sv-lightbox.show{display:flex;}
+.sv-lb-img{max-width:94vw;max-height:90vh;border-radius:8px;box-shadow:0 10px 50px rgba(0,0,0,.55);opacity:0;transition:opacity .2s;}
+.sv-lb-close{position:absolute;top:18px;right:22px;background:rgba(255,255,255,.16);color:#fff;border:none;width:38px;height:38px;border-radius:50%;font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+.sv-lb-close:hover{background:rgba(255,255,255,.3);}
+.sv-lb-spin{width:34px;height:34px;border:3px solid rgba(255,255,255,.25);border-top-color:#fff;border-radius:50%;animation:oppspin .8s linear infinite;position:absolute;}
 .popup-rating{font-size:12.5px;color:#b45309;font-weight:700;margin:5px 0 0;}
 .popup-rating .popup-rev{color:#64748b;font-weight:500;}
 .popup-addr{font-size:11.5px;color:#64748b;margin-top:4px;line-height:1.35;}
@@ -1298,7 +1305,7 @@ function buildPopup(c) {
   const curKind = _kindOf(c);
   const multHTML = (curMult!=1) ? `<div style="display:inline-block;font-size:10px;font-weight:700;color:#92400e;background:#fef3c7;border-radius:10px;padding:2px 8px;margin-top:5px;margin-left:6px">competition ×${curMult}</div>` : '';
 
-  const svHTML = STREETVIEW ? `<div class="popup-sv-wrap" id="sv-${key}" style="display:none"><img class="popup-sv" src="/api/streetview?lat=${c.lat}&lon=${c.lon}" alt="Street View of ${safeName}" onload="var w=document.getElementById('sv-${key}');if(w)w.style.display='block'" onerror="var w=this.closest('.popup-sv-wrap');if(w)w.style.display='none'"></div>` : '';
+  const svHTML = STREETVIEW ? `<div class="popup-sv-wrap" id="sv-${key}" style="display:none"><img class="popup-sv" src="/api/streetview?lat=${c.lat}&lon=${c.lon}" alt="Street View of ${safeName}" title="Click to enlarge" onclick="openSVLightbox(${c.lat},${c.lon})" onload="var w=document.getElementById('sv-${key}');if(w)w.style.display='block'" onerror="var w=this.closest('.popup-sv-wrap');if(w)w.style.display='none'"><span class="popup-sv-zoom">⤢</span></div>` : '';
   return `<div class="popup">
     ${svHTML}
     <div class="popup-header">
@@ -1330,6 +1337,16 @@ function buildPopup(c) {
     </div>
   </div>`;
 }
+
+/*  Street View lightbox — click a popup photo to view it full-screen  */
+function openSVLightbox(lat,lon){
+  let ov=document.getElementById('sv-lightbox');
+  if(!ov){ ov=document.createElement('div'); ov.id='sv-lightbox'; ov.className='sv-lightbox'; ov.onclick=closeSVLightbox; document.body.appendChild(ov); }
+  ov.innerHTML=`<button class="sv-lb-close" aria-label="Close" onclick="closeSVLightbox()">✕</button><div class="sv-lb-spin"></div><img class="sv-lb-img" src="/api/streetview?lat=${lat}&lon=${lon}&big=1" alt="Street View" onload="this.style.opacity=1;var s=this.previousElementSibling;if(s)s.style.display='none'" onerror="closeSVLightbox()">`;
+  ov.classList.add('show');
+}
+function closeSVLightbox(){ const ov=document.getElementById('sv-lightbox'); if(ov) ov.classList.remove('show'); }
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeSVLightbox(); });
 
 /*  Settings actions  */
 function toggleSettings(key){ const el=document.getElementById('sp-'+key); if(el) el.classList.toggle('open'); }
