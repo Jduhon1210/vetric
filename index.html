@@ -1275,7 +1275,7 @@ function buildPopup(c) {
     ? `<div class="popup-rating">★ ${c.rating.toFixed(1)} <span class="popup-rev">· ${(c.reviews||0).toLocaleString()} reviews${c.days?` · ${c.days} days/wk`:''}</span></div>`
     : '';
   const telHTML = c.tel ? `<div class="popup-contact"><a href="tel:${(''+c.tel).replace(/[^0-9+]/g,'')}">${c.tel}</a></div>` : '';
-  const addrHTML = c.addr ? `<div class="popup-addr">${c.addr}</div>` : '';
+  const addrHTML = c.addr ? `<div class="popup-addr">${c.addr.replace(/,?\s*USA\s*$/i,'')}</div>` : '';
   const kindHTML = `<div style="display:inline-block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#475569;background:#eef2f7;border-radius:10px;padding:2px 8px;margin-top:5px">${CLINIC_KIND_LABEL[_kindOf(c)]}</div>`;
 
   let peHTML;
@@ -1468,7 +1468,7 @@ function startDraw(mode){
   map.getContainer().style.cursor='crosshair';
   document.getElementById('dev-hint').textContent = mode==='rect'
     ? 'Click and drag to draw a rectangle'
-    : 'Click to place points · Click first point to close';
+    : 'Press and drag to draw a freehand area · release to finish';
   document.getElementById('dev-hint').classList.add('show');
 }
 
@@ -1488,91 +1488,62 @@ function cancelDraw(){
   btn.innerHTML='<svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg> Draw Area';
 }
 
-// Rectangle events
+// Draw events — rectangle (drag a box) and free (press & drag a freehand lasso)
+let firstPointMarker = null;      // retained: cancelDraw() still references it (unused by the lasso)
+let freeDrawing=false, _lastFreePx=null;
+const FREE_MIN_PX=4;              // min pixel move before adding a freehand vertex (keeps the polygon light)
 map.getContainer().addEventListener('mousedown',e=>{
-  if(!drawingMode||drawMode!=='rect') return;
+  if(!drawingMode || e.button!==0) return;
   const r=map.getContainer().getBoundingClientRect();
-  drawStart=map.containerPointToLatLng(L.point(e.clientX-r.left,e.clientY-r.top));
+  const pt=L.point(e.clientX-r.left,e.clientY-r.top);
+  if(drawMode==='rect'){ drawStart=map.containerPointToLatLng(pt); }
+  else if(drawMode==='free'){
+    freeDrawing=true; freePoints=[map.containerPointToLatLng(pt)]; _lastFreePx=pt;
+    if(freePreview){ map.removeLayer(freePreview); freePreview=null; }
+    e.preventDefault();
+  }
 });
 map.getContainer().addEventListener('mousemove',e=>{
   if(!drawingMode) return;
   const r=map.getContainer().getBoundingClientRect();
-  const cur=map.containerPointToLatLng(L.point(e.clientX-r.left,e.clientY-r.top));
+  const pt=L.point(e.clientX-r.left,e.clientY-r.top);
+  const cur=map.containerPointToLatLng(pt);
   if(drawMode==='rect'&&drawStart){
     if(drawRect) map.removeLayer(drawRect);
     drawRect=L.rectangle([drawStart,cur],{color:'#1e3a8a',weight:2,fillColor:'#1e3a8a',fillOpacity:0.08,dashArray:'6,4'}).addTo(map);
-  } else if(drawMode==='free'&&freePoints.length>0){
-    if(freePreview) map.removeLayer(freePreview);
-    freePreview=L.polyline([...freePoints,cur],{color:'#1e3a8a',weight:2,dashArray:'6,4'}).addTo(map);
-  }
-});
-map.getContainer().addEventListener('mouseup',e=>{
-  if(!drawingMode||drawMode!=='rect'||!drawStart) return;
-  const r=map.getContainer().getBoundingClientRect();
-  const end=map.containerPointToLatLng(L.point(e.clientX-r.left,e.clientY-r.top));
-  drawnArea={type:'rect',bounds:L.latLngBounds(drawStart,end)};
-  if(drawRect) map.removeLayer(drawRect);
-  drawLayer=L.rectangle(drawnArea.bounds,{color:'#1e3a8a',weight:2,fillColor:'#1e3a8a',fillOpacity:0.06,dashArray:'6,4'}).addTo(map);
-  drawStart=null;
-  cancelDraw();
-  captureAreaClinics();
-});
-
-// Free draw — click to add points, click first point or double-click to finish
-let firstPointMarker = null;
-const CLOSE_THRESHOLD = 20; // pixels to snap/close
-
-map.on('click',e=>{
-  if(!drawingMode||drawMode!=='free'||devMode) return;
-
-  // Check if clicking near the first point to close the shape
-  if(freePoints.length >= 3 && firstPointMarker) {
-    const firstPx = map.latLngToContainerPoint(freePoints[0]);
-    const clickPx = map.latLngToContainerPoint(e.latlng);
-    const dist = firstPx.distanceTo(clickPx);
-    if(dist < CLOSE_THRESHOLD) {
-      // Close the polygon
-      if(freePreview){map.removeLayer(freePreview);freePreview=null;}
-      if(firstPointMarker){map.removeLayer(firstPointMarker);firstPointMarker=null;}
-      drawnArea={type:'poly',points:[...freePoints]};
-      drawLayer=L.polygon(freePoints,{color:'#1e3a8a',weight:2,fillColor:'#1e3a8a',fillOpacity:0.06,dashArray:'6,4'}).addTo(map);
-      freePoints=[];
-      cancelDraw();
-      captureAreaClinics();
-      return;
+  } else if(drawMode==='free'&&freeDrawing){
+    if(!_lastFreePx || pt.distanceTo(_lastFreePx)>=FREE_MIN_PX){
+      freePoints.push(cur); _lastFreePx=pt;
+      if(freePreview) map.removeLayer(freePreview);
+      freePreview=L.polyline(freePoints,{color:'#1e3a8a',weight:2.5}).addTo(map);
     }
   }
-
-  freePoints.push(e.latlng);
-
-  // Show a dot on the first point so user knows where to click to close
-  if(freePoints.length === 1) {
-    firstPointMarker = L.circleMarker(e.latlng, {
-      radius:6, fillColor:'#1e3a8a', fillOpacity:1,
-      color:'white', weight:2, interactive:false
-    }).addTo(map);
-  }
-
-  if(freePreview) map.removeLayer(freePreview);
-  // Draw closed preview polygon once we have 3+ points
-  if(freePoints.length >= 3) {
-    freePreview = L.polygon(freePoints,{color:'#1e3a8a',weight:2,fillColor:'#1e3a8a',fillOpacity:0.06,dashArray:'6,4'}).addTo(map);
-  } else {
-    freePreview = L.polyline(freePoints,{color:'#1e3a8a',weight:2,dashArray:'6,4'}).addTo(map);
-  }
 });
-
-// Double-click also closes as fallback
-map.on('dblclick',e=>{
-  if(!drawingMode||drawMode!=='free'||freePoints.length<3) return;
-  if(freePreview){map.removeLayer(freePreview);freePreview=null;}
-  if(firstPointMarker){map.removeLayer(firstPointMarker);firstPointMarker=null;}
-  drawnArea={type:'poly',points:[...freePoints]};
-  drawLayer=L.polygon(freePoints,{color:'#1e3a8a',weight:2,fillColor:'#1e3a8a',fillOpacity:0.06,dashArray:'6,4'}).addTo(map);
-  freePoints=[];
-  cancelDraw();
-  captureAreaClinics();
+function _finishFreeDraw(){
+  if(!freeDrawing) return;
+  freeDrawing=false; _lastFreePx=null;
+  if(freePreview){ map.removeLayer(freePreview); freePreview=null; }
+  if(freePoints.length>=3){
+    drawnArea={type:'poly',points:[...freePoints]};
+    drawLayer=L.polygon(freePoints,{color:'#1e3a8a',weight:2,fillColor:'#1e3a8a',fillOpacity:0.06}).addTo(map);
+    freePoints=[];
+    cancelDraw();
+    captureAreaClinics();
+  } else { freePoints=[]; }       // too small a scribble — discard, stay in draw mode
+}
+map.getContainer().addEventListener('mouseup',e=>{
+  if(!drawingMode) return;
+  if(drawMode==='rect'&&drawStart){
+    const r=map.getContainer().getBoundingClientRect();
+    const end=map.containerPointToLatLng(L.point(e.clientX-r.left,e.clientY-r.top));
+    drawnArea={type:'rect',bounds:L.latLngBounds(drawStart,end)};
+    if(drawRect) map.removeLayer(drawRect);
+    drawLayer=L.rectangle(drawnArea.bounds,{color:'#1e3a8a',weight:2,fillColor:'#1e3a8a',fillOpacity:0.06,dashArray:'6,4'}).addTo(map);
+    drawStart=null; cancelDraw(); captureAreaClinics();
+  } else if(drawMode==='free'){ _finishFreeDraw(); }
 });
+// release anywhere (even off the map edge) still finalizes a freehand lasso
+document.addEventListener('mouseup',()=>{ if(drawingMode&&drawMode==='free'&&freeDrawing) _finishFreeDraw(); });
 
 // Point in polygon for free draw
 function pointInPolygon(lat,lon,points){
