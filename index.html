@@ -16,7 +16,7 @@
 <link rel="preconnect" href="https://overpass.private.coffee" crossorigin/>
 <link rel="dns-prefetch" href="https://nominatim.openstreetmap.org"/>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet"/>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
 :root{
@@ -384,6 +384,12 @@ body.dev-mode .search-bar{background:var(--amber-light);border-bottom-color:#fde
 .popup-addr{font-size:11.5px;color:#64748b;margin-top:4px;line-height:1.35;}
 .popup-contact{font-size:12px;margin-top:4px;}
 .popup-contact a{color:var(--navy);text-decoration:none;font-weight:600;}
+.vm-export-btn{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;color:var(--navy);background:#eef2fb;border:1px solid #dbe3f4;border-radius:7px;padding:4px 10px;cursor:pointer;letter-spacing:.01em;transition:background .15s;}
+.vm-export-btn:hover{background:#e0e7f7;}
+.vm-method-note{font-size:11px;color:#64748b;line-height:1.45;margin-top:8px;padding:8px 10px;background:#f8fafc;border:1px solid var(--border);border-radius:8px;}
+.vm-method-note summary{cursor:pointer;font-weight:700;color:#475569;}
+.vm-star{cursor:pointer;color:#cbd5e1;font-size:15px;line-height:1;user-select:none;transition:color .15s;}
+.vm-star.on{color:#f59e0b;}
 .gear-btn{background:none;border:none;cursor:pointer;padding:2px 6px;border-radius:var(--radius);color:var(--subtle);font-size:13px;line-height:1;flex-shrink:0;margin-left:8px;transition:all .15s;font-family:inherit;}
 .gear-btn:hover{background:var(--bg2);color:var(--text);}
 .popup-website{margin-bottom:10px;}
@@ -1300,17 +1306,34 @@ function renderList(){
       : 'No clinics in current view.<br>Pan or zoom to find clinics.';
     l.innerHTML='<div class="empty">'+msg+'</div>';return;
   }
+  window._vmListScope=visible; // exact scope for CSV export
   const _idx=new Map(); clinics.forEach((c,i)=>_idx.set(c,i)); // O(n) lookup, not indexOf-per-row
-  l.innerHTML=visible.map(c=>{
+  l.innerHTML=`<div style="display:flex;justify-content:flex-end;padding:2px 2px 8px">${_exportBtn('exportClinicsCSV()','Export '+visible.length+' clinics')}</div>`+visible.map(c=>{
     const i = _idx.get(c);
+    const rate=(typeof c.rating==='number')?`<div style="font-size:11px;color:#475569;margin-top:3px"><span style="color:#b45309;font-weight:700">★ ${c.rating.toFixed(1)}</span> · ${(c.reviews||0).toLocaleString()} reviews</div>`:'';
     return `<div class="card" id="c${i}" onclick="focusClinic(${i})">
       <div style="flex-shrink:0;margin-top:2px">${miniPin(pinColor(c))}</div>
       <div class="card-body">
         <div class="card-name">${c.name}</div>
         <div class="card-meta">${cardTag(c)}${c.pe?`<span class="card-dist" style="font-size:11px;color:#666">${c.pe.owner}</span>`:''}</div>
+        ${rate}
       </div>
     </div>`;
   }).join('');
+}
+// export scope = exactly what the in-view list shows
+function exportClinicsCSV(){
+  downloadCSV(window._vmListScope||[], [
+    {label:'Name',key:'name'},
+    {label:'Ownership',get:r=>r.pe?('PE: '+(r.pe.owner||'')):'Independent'},
+    {label:'Rating',get:r=>typeof r.rating==='number'?r.rating:''},
+    {label:'Reviews',get:r=>typeof r.reviews==='number'?r.reviews:''},
+    {label:'Days/wk',get:r=>r.days||''},
+    {label:'Phone',get:r=>r.tel||''},
+    {label:'Website',get:r=>r.website||''},
+    {label:'Address',get:r=>r.addr||''},
+    {label:'Lat',key:'lat'},{label:'Lon',key:'lon'}
+  ], 'vetric-clinics-in-view.csv');
 }
 function focusClinic(i){
   if(activeIdx!==null){const p=document.getElementById('c'+activeIdx);if(p)p.className='card';}
@@ -2975,6 +2998,35 @@ function vfToast(msg){
   clearTimeout(t._timer); t._timer=setTimeout(()=>{t.style.opacity='0';},2800);
 }
 
+// ── Methodology / provenance (single source of truth, stamped into every export) ──
+const VM_METHOD = 'Vetric — Texas veterinary market intelligence. Clinics: Google Places (statewide scan) + PE/corporate registry (privateequityvet.org). Income: U.S. Census ACS 2022 5-yr (B19013). Pet demand: MODELED from ACS 2022 housing, not a survey. Growth: ACS 2021->2024 on 2020-ZCTA boundaries. Competition: distance-decayed Huff capture, PE-weighted, radius-based (not drive-time). Ratings/reviews: Google. Screening tool — verify before diligence.';
+
+// ── Shared client-side CSV export (no backend). headers: [{label, key|get}] ──
+function _csvCell(v){
+  if(v==null) v='';
+  let s=''+v;
+  if(/^[=+\-@\t\r]/.test(s)) s="'"+s;                 // neutralize spreadsheet formula injection
+  if(/[",\n]/.test(s)) s='"'+s.replace(/"/g,'""')+'"';
+  return s;
+}
+function downloadCSV(rows, headers, filename){
+  if(!rows || !rows.length){ vfToast('Nothing to export in the current view'); return; }
+  const lines=[ headers.map(h=>_csvCell(h.label)).join(',') ];
+  for(const r of rows) lines.push(headers.map(h=>_csvCell(typeof h.get==='function'?h.get(r):r[h.key])).join(','));
+  lines.push('');                                      // separator, then provenance footer
+  lines.push(_csvCell('Source / method: '+VM_METHOD));
+  lines.push(_csvCell('Exported from Vetric'));
+  const blob=new Blob([lines.join('\r\n')], {type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download=filename; document.body.appendChild(a); a.click();
+  setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+  vfToast('Exported '+rows.length+' rows  ·  '+filename);
+}
+// Small export-button HTML used across sidebars; caller wires the onclick.
+function _exportBtn(onclick, label){
+  return `<button class="vm-export-btn" onclick="${onclick}">↓ ${label||'Export CSV'}</button>`;
+}
+
 const SECTION_MSG={
   properties:'A dedicated Properties view is coming. For now, use the Available Properties layer under Layers.',
   reports:'Reports are coming in a later phase.'
@@ -3011,15 +3063,35 @@ function switchSection(s){
    Market quality, ratings, and owner-age/succession come as datasets are added. */
 let acqMode=false, acqRollup='whitespace';
 const ACQ_RADIUS_MI=5;
+function _acqSize(rev){ if(!rev) return null; return rev>=400?'Large':rev>=120?'Mid':'Small'; }
+function exportAcqCSV(){
+  downloadCSV(window._vmAcqScope||[], [
+    {label:'Target',get:r=>r.c.name},
+    {label:'Roll-up score',get:r=>Math.round(r.score*100)},
+    {label:'Mode',get:r=>acqRollup==='tuckin'?'Tuck-in':'Whitespace'},
+    {label:'Est. size (reviews)',get:r=>_acqSize(r.c.reviews)||''},
+    {label:'Rating',get:r=>typeof r.c.rating==='number'?r.c.rating:''},
+    {label:'Reviews',get:r=>typeof r.c.reviews==='number'?r.c.reviews:''},
+    {label:'PE within '+ACQ_RADIUS_MI+'mi',get:r=>r.peNear},
+    {label:'Indep within '+ACQ_RADIUS_MI+'mi',get:r=>r.indNear},
+    {label:'Phone',get:r=>r.c.tel||''},
+    {label:'Website',get:r=>r.c.website||''},
+    {label:'Address',get:r=>r.c.addr||''},
+    {label:'Lat',get:r=>r.c.lat},{label:'Lon',get:r=>r.c.lon}
+  ], 'vetric-acquisition-targets.csv');
+}
 function _acqRank(){
   const b=map.getBounds();
   const inView=clinics.filter(c=>!c.pe && b.contains([c.lat,c.lon]));
   const R=ACQ_RADIUS_MI*1609.344, bandLat=0.09;
+  const overrides=getOverrides();
   const peSet=(peLoaded && typeof PE_COORDS!=='undefined')?PE_COORDS:[];
-  const indAll=clinics.filter(c=>!c.pe);
+  // STATEWIDE independent pool (not viewport-limited) so cluster counts are zoom-independent &
+  // defensible; respects the mobile-vet exclusion toggle via _activeVetClinics().
+  const indAll=_activeVetClinics().filter(v=>!checkPE(v.name,v.lat,v.lon,null,overrides));
   const rows=inView.map(c=>{
     let peNear=0; for(const p of peSet){ if(Math.abs(p[0]-c.lat)>bandLat) continue; if(hav(c.lat,c.lon,p[0],p[1])<R) peNear++; }
-    let indNear=0; for(const o of indAll){ if(o===c||Math.abs(o.lat-c.lat)>bandLat) continue; if(hav(c.lat,c.lon,o.lat,o.lon)<R) indNear++; }
+    let indNear=0; for(const o of indAll){ if(Math.abs(o.lat-c.lat)>bandLat) continue; if(Math.abs(o.lat-c.lat)<1e-5&&Math.abs(o.lon-c.lon)<1e-5) continue; if(hav(c.lat,c.lon,o.lat,o.lon)<R) indNear++; }
     return {c, peNear, indNear};
   });
   const maxPe=Math.max(1,...rows.map(r=>r.peNear)), maxInd=Math.max(1,...rows.map(r=>r.indNear));
@@ -3036,21 +3108,26 @@ function _acqRank(){
 function renderAcquisitions(){
   const sb=document.querySelector('.sidebar'); if(!sb) return;
   const rows=_acqRank();
+  window._vmAcqScope=rows; // export scope
   const cards=rows.slice(0,40).map(r=>{
     const i=clinics.indexOf(r.c);
     const rate = (typeof r.c.rating==='number') ? `<span style="color:#b45309;font-weight:700">★ ${r.c.rating.toFixed(1)}</span> · ${(r.c.reviews||0).toLocaleString()} reviews` : '<span style="color:#94a3b8">No rating</span>';
+    const sz=_acqSize(r.c.reviews);
+    const szBadge = sz?`<span title="estimated from Google review volume — a size proxy, not headcount" style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#475569;background:#eef2f7;border-radius:9px;padding:1px 7px;margin-left:6px">~${sz}</span>`:'';
+    const contact = (r.c.tel||r.c.addr)?`<div style="font-size:11px;color:#64748b;margin-top:2px">${r.c.tel||''}${r.c.tel&&r.c.addr?' · ':''}${r.c.addr?r.c.addr.split(',').slice(0,2).join(','):''}</div>`:'';
     return `<div class="card" id="c${i}" onclick="focusClinic(${i})">
       <div class="card-body">
-        <div class="card-name">${r.c.name}</div>
+        <div class="card-name">${r.c.name}${szBadge}</div>
         <div class="card-meta"><span class="tag-ind">Independent</span><span class="card-dist" style="font-weight:600;color:#15803d">${Math.round(r.score*100)}</span></div>
         <div style="font-size:11px;color:#475569;margin-top:3px">${rate}</div>
         <div style="font-size:11px;color:#64748b;margin-top:2px">${r.peNear} PE · ${r.indNear} independent within ${ACQ_RADIUS_MI} mi</div>
+        ${contact}
       </div>
     </div>`;
   }).join('') || '<div class="empty">No independent clinics in view.<br>Pan or search a city to load targets.</div>';
   const chip=(k,label)=>`<span class="eval-chip ${acqRollup===k?'on':''}" onclick="setAcqRollup('${k}')">${label}</span>`;
   sb.innerHTML=`
-    <div class="area-header"><span class="area-title">Acquisition Targets</span><span style="font-size:12px;color:#64748b;font-weight:600">${rows.length}</span></div>
+    <div class="area-header"><span class="area-title">Acquisition Targets</span><span style="display:flex;align-items:center;gap:8px">${rows.length?_exportBtn('exportAcqCSV()','Export'):''}<span style="font-size:12px;color:#64748b;font-weight:600">${rows.length}</span></span></div>
     <div class="eval-verdict">Independent clinics in view, ranked as roll-up targets.</div>
     <div class="eval-toggle-row">${chip('whitespace','Whitespace')}${chip('tuckin','Tuck-in')}</div>
     <div class="eval-cards">${cards}</div>
@@ -3432,7 +3509,8 @@ function rescoreAndRender(){
   renderOppList();
 }
 
-function oppScoreColor(s){ return s>=80?'#15803d':s>=65?'#4d7c0f':s>=50?'#b45309':'#64748b'; }
+// Single-hue green intensity ramp — darker = stronger opportunity (white text stays WCAG-legible on all buckets).
+function oppScoreColor(s){ return s>=80?'#14532d':s>=65?'#166534':s>=50?'#15803d':s>=35?'#3f6212':'#6b7280'; }
 
 function renderOppList(){
   const wrap=document.getElementById('opp-list-wrap');
