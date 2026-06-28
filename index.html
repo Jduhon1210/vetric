@@ -761,7 +761,15 @@ body.dev-mode .search-bar{background:var(--amber-light);border-bottom-color:#fde
 <div class="main">
   <div class="dev-badge" id="dev-badge">DEV MODE</div>
   <div class="layers-panel" id="layers-panel">
-    <div class="layers-panel-header">Data Layers</div>
+    <div class="layers-panel-header">Clinic Type</div>
+    <div class="company-filters" style="border-bottom:1px solid var(--border)">
+      <div class="company-filters-title">Show clinic types <span style="font-weight:500;text-transform:none;letter-spacing:0;color:var(--subtle)">— inferred from name</span></div>
+      <div class="company-check"><input type="checkbox" id="type-small" checked onchange="toggleClinicType('small',this.checked)"/><label for="type-small">Small animal</label></div>
+      <div class="company-check"><input type="checkbox" id="type-large" checked onchange="toggleClinicType('large',this.checked)"/><label for="type-large">Large animal / equine</label></div>
+      <div class="company-check"><input type="checkbox" id="type-specialty" checked onchange="toggleClinicType('specialty',this.checked)"/><label for="type-specialty">Specialty / ER</label></div>
+      <div class="layer-status" id="type-status" style="padding-top:4px">All types shown</div>
+    </div>
+    <div class="layers-panel-header" style="border-top:1px solid var(--border)">Data Layers</div>
     <div style="padding:0 16px 10px;font-size:11px;color:var(--subtle);line-height:1.5;border-bottom:1px solid var(--border);margin-bottom:2px;">The map shows one color scheme at a time — turning one on switches the other off, so the colors stay readable.</div>
     <div class="layer-item">
       <div class="layer-row">
@@ -1184,6 +1192,33 @@ function pinColor(c){ return c.pe ? RED : (c.peChecked ? NAVY : AMBER); }
 let STRENGTH_PINS=false;
 function pinTier(c){ if(!STRENGTH_PINS) return null; const rev=(c&&c.reviews)||0; return rev>=500?3:rev>=150?2:rev>=30?1:0; }
 function toggleStrengthPins(on){ STRENGTH_PINS=!!on; const st=document.getElementById('strength-status'); if(st) st.textContent=on?'On — pin size = review volume':'Off'; refreshPins(); }
+
+// ── Clinic-type classification (name heuristic) + show/hide filter ──────────────
+// Google's data has no large/small/specialty tag, so infer from the name: equine/livestock
+// → large animal; referral/ER/specialty keywords → specialty; everything else → small animal
+// (the default & vast majority — companion-pet clinics). Memoized on the clinic object as _kind.
+function clinicCategory(name){
+  const n=(name||'').toLowerCase();
+  if(/\bequine\b|\bhorse\b|large animal|livestock|\bbovine\b|\bcattle\b|food animal|mixed animal|\bfarm\b/.test(n)) return 'large';
+  if(/\bspecialt|\breferral\b|\bemergenc|critical care|\b24[\- ]?hour|\ber\b for|oncolog|cardiolog|neurolog|ophthalmolog|dermatolog|bluepearl|\bmedvet\b|veterinary emergenc|\bveg\b|surgical (center|specialists|group)/.test(n)) return 'specialty';
+  return 'small';
+}
+function _kindOf(c){ return c._kind || (c._kind = clinicCategory(c.name)); }
+const CLINIC_KIND_LABEL = {small:'Small animal', large:'Large animal', specialty:'Specialty / ER'};
+let TYPE_ON = {small:true, large:true, specialty:true};
+function _typeOKkind(k){ return TYPE_ON[k||'small']!==false; }
+function _typeOK(c){ return _typeOKkind(_kindOf(c)); }
+// Re-apply combined visibility = (base filter via _baseVisible) AND (clinic-type filter).
+function applyTypeVisibility(){
+  if(typeof markers==='undefined') return;
+  markers.forEach(m=>{ if(!m) return; const ok=(m._baseVisible!==false)&&_typeOKkind(m._kind); m.setOpacity(ok?1:0); if(m._icon) m._icon.style.pointerEvents=ok?'':'none'; });
+}
+function toggleClinicType(kind,on){
+  TYPE_ON[kind]=!!on;
+  applyTypeVisibility();
+  if(typeof drawnArea!=='undefined' && drawnArea && typeof applyAreaFilter==='function') applyAreaFilter(); else renderList();
+  const st=document.getElementById('type-status'); if(st){ const off=Object.keys(TYPE_ON).filter(k=>!TYPE_ON[k]); st.textContent=off.length?('Hiding: '+off.map(k=>CLINIC_KIND_LABEL[k]).join(', ')):'All types shown'; }
+}
 function clinicKey(c){ return `${Math.round(c.lat*1000)}_${Math.round(c.lon*1000)}`; }
 
 let markers=[],clinics=[],activeIdx=null,fetchTimer=null;
@@ -1206,8 +1241,10 @@ function clearMarkers(){clusterGroup.clearLayers();markers=[];}
 // off, the click falls through to the ZIP polygon (or map) underneath as intended.
 function setMarkerVisible(m, visible){
   if(!m) return;
-  m.setOpacity(visible ? 1 : 0);
-  if(m._icon) m._icon.style.pointerEvents = visible ? '' : 'none';
+  m._baseVisible = visible;                              // remember the non-type filter state
+  const ok = visible && _typeOKkind(m._kind);            // AND the clinic-type filter
+  m.setOpacity(ok ? 1 : 0);
+  if(m._icon) m._icon.style.pointerEvents = ok ? '' : 'none';
 }
 
 // Loaded pins persist across pans instead of vanishing when they leave the view.
@@ -1243,6 +1280,7 @@ function buildPopup(c) {
     : '';
   const telHTML = c.tel ? `<div class="popup-contact"><a href="tel:${(''+c.tel).replace(/[^0-9+]/g,'')}">${c.tel}</a></div>` : '';
   const addrHTML = c.addr ? `<div class="popup-addr">${c.addr}</div>` : '';
+  const kindHTML = `<div style="display:inline-block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#475569;background:#eef2f7;border-radius:10px;padding:2px 8px;margin-top:5px">${CLINIC_KIND_LABEL[_kindOf(c)]}</div>`;
 
   let peHTML;
   if (!c.peChecked) {
@@ -1261,7 +1299,7 @@ function buildPopup(c) {
       <div class="popup-name">${c.name}</div>
       ${devMode ? `<button class="gear-btn" onclick="toggleSettings('${key}')" title="Edit"></button>` : ''}
     </div>
-    ${starHTML}${addrHTML}${telHTML}${webHTML}${peHTML}
+    ${starHTML}${kindHTML}${addrHTML}${telHTML}${webHTML}${peHTML}
     <div class="popup-disclaimer">Source: privateequityvet.org — Texas</div>
     ${devMode ? `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);display:flex;gap:6px;">
       <button class="settings-btn save" style="flex:1;font-size:11.5px;padding:5px 8px" onclick="toggleSettings('${key}')">Edit</button>
@@ -1322,6 +1360,7 @@ function renderList(){
     const b = map.getBounds();
     visible = clinics.filter(c => b.contains([c.lat, c.lon]));
   }
+  visible = visible.filter(_typeOK);               // clinic-type filter (large/small/specialty)
   const badge=document.getElementById('badge');
   if(badge) badge.textContent = visible.length;  // null in ZIP-selection sidebar — guard it
   const l=document.getElementById('list');
@@ -1710,6 +1749,7 @@ function applyAreaFilter(){
     else if(activeFilter==='pe') show=!!c.pe;
     // Apply company filter
     if(show&&c.pe&&activeCompanies.size>0) show=activeCompanies.has(c.pe.owner);
+    if(show) show=_typeOK(c);                       // clinic-type filter (large/small/specialty)
     setMarkerVisible(markers[i], show);
     if(show){
       visibleCount++;
@@ -2869,10 +2909,12 @@ async function fetchClinics(){
         activeIdx=i;const el=document.getElementById('c'+i);
         if(el){el.className='card '+(c.pe?'act-pe':'act-ind');el.scrollIntoView({behavior:'smooth',block:'nearest'});}
       });
+    m._kind=_kindOf(c);            // for the clinic-type filter
     batch.push(m);return m;
   });
   batch.forEach(m=>clusterGroup.addLayer(m));
   renderList();
+  applyTypeVisibility();           // honor an active clinic-type filter on freshly-drawn pins
 
   // Cache the independents from this load so a future rate-limited fetch can
   // fall back to them instead of showing PE-only.
