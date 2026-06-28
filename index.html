@@ -390,6 +390,13 @@ body.dev-mode .search-bar{background:var(--amber-light);border-bottom-color:#fde
 .vm-method-note summary{cursor:pointer;font-weight:700;color:#475569;}
 .vm-star{cursor:pointer;color:#cbd5e1;font-size:15px;line-height:1;user-select:none;transition:color .15s;}
 .vm-star.on{color:#f59e0b;}
+.vm-star:hover{color:#f59e0b;}
+.vm-cmp{width:100%;border-collapse:collapse;font-size:11.5px;margin-top:4px;}
+.vm-cmp th{font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;color:#94a3b8;font-weight:700;text-align:center;padding:4px 5px;border-bottom:1px solid var(--border);}
+.vm-cmp th:first-child{text-align:left;}
+.vm-cmp td{padding:6px 5px;border-bottom:1px solid #f1f5f9;color:#334155;}
+.vm-rm{cursor:pointer;color:#cbd5e1;font-weight:700;font-size:13px;}
+.vm-rm:hover{color:#dc2626;}
 .gear-btn{background:none;border:none;cursor:pointer;padding:2px 6px;border-radius:var(--radius);color:var(--subtle);font-size:13px;line-height:1;flex-shrink:0;margin-left:8px;transition:all .15s;font-family:inherit;}
 .gear-btn:hover{background:var(--bg2);color:var(--text);}
 .popup-website{margin-bottom:10px;}
@@ -621,7 +628,7 @@ body.dev-mode .search-bar{background:var(--amber-light);border-bottom-color:#fde
       <button class="nav-link" data-section="opportunity" onclick="switchSection('opportunity')">Opportunity</button>
       <button class="nav-link" data-section="acquisitions" onclick="switchSection('acquisitions')">Acquisitions</button>
       <button class="nav-link" data-section="properties" onclick="switchSection('properties')">Properties</button>
-      <button class="nav-link" data-section="reports" onclick="switchSection('reports')">Reports<span class="soon">soon</span></button>
+      <button class="nav-link" data-section="reports" onclick="switchSection('reports')">Watchlist</button>
     </nav>
   </div>
   <div style="display:flex;align-items:center;gap:12px;">
@@ -3028,11 +3035,90 @@ function _exportBtn(onclick, label){
 }
 
 const SECTION_MSG={
-  properties:'A dedicated Properties view is coming. For now, use the Available Properties layer under Layers.',
-  reports:'Reports are coming in a later phase.'
+  properties:'A dedicated Properties view is coming. For now, use the Available Properties layer under Layers.'
 };
+
+/* ─── Watchlist (saved markets & targets) → the "Reports" tab. Stores VALUES (with the
+   weights/date at save time) so a later re-score never silently rewrites a saved number. ─── */
+function getWatch(){ try{ return JSON.parse(localStorage.getItem('vf_watchlist')||'[]'); }catch(e){ return []; } }
+function saveWatch(a){ try{ localStorage.setItem('vf_watchlist', JSON.stringify(a)); }catch(e){} }
+function _inWatch(type,id){ return getWatch().some(w=>w.type===type && w.id===id); }
+function _watchRemove(type,id){ saveWatch(getWatch().filter(w=>!(w.type===type&&w.id===id))); if(watchMode) renderWatchlist(); }
+function toggleWatchMarket(zip, el){
+  const a=getWatch(); const idx=a.findIndex(w=>w.type==='market'&&w.id===zip);
+  if(idx>=0){ a.splice(idx,1); if(el)el.classList.remove('on'); }
+  else{
+    const r=(oppScored||[]).find(x=>x.zip===zip); if(!r){ vfToast('Open Opportunity first'); return; }
+    a.push({type:'market', id:zip, name:zip+(r.city?' · '+r.city:''), score:Math.round(r.score), inc:r.inc, dog:r.dog, grow:r.grow, cons:r.cons, peCount:r.peCount, indCount:r.indCount, region:oppRegion.name, weights:getOppWeights(), savedAt:new Date().toISOString().slice(0,10)});
+    if(el)el.classList.add('on'); vfToast('Saved '+zip+' to watchlist');
+  }
+  saveWatch(a); if(watchMode) renderWatchlist();
+}
+function toggleWatchTarget(i, el){
+  const c=clinics[i]; if(!c) return; const id=clinicKey(c);
+  const a=getWatch(); const idx=a.findIndex(w=>w.type==='target'&&w.id===id);
+  if(idx>=0){ a.splice(idx,1); if(el)el.classList.remove('on'); }
+  else{ a.push({type:'target', id, name:c.name, rating:c.rating, reviews:c.reviews, tel:c.tel, addr:c.addr, website:c.website, lat:c.lat, lon:c.lon, savedAt:new Date().toISOString().slice(0,10)}); if(el)el.classList.add('on'); vfToast('Saved '+c.name+' to watchlist'); }
+  saveWatch(a); if(watchMode) renderWatchlist();
+}
+let watchMode=false;
+function enterWatchlist(){ watchMode=true; renderWatchlist(); }
+function exitWatchlist(){ watchMode=false; renderNormalSidebar(); }
+function exportWatchCSV(){
+  downloadCSV(getWatch(), [
+    {label:'Type',key:'type'},{label:'Name',key:'name'},
+    {label:'Score',get:r=>r.score!=null?r.score:''},
+    {label:'Rating',get:r=>r.rating!=null?r.rating:''},
+    {label:'Reviews',get:r=>r.reviews!=null?r.reviews:''},
+    {label:'Median income',get:r=>r.inc!=null?Math.round(r.inc):''},
+    {label:'Growth',get:r=>r.grow!=null?(r.grow*100).toFixed(1)+'%':''},
+    {label:'PE clinics',get:r=>r.peCount!=null?r.peCount:''},
+    {label:'Indep clinics',get:r=>r.indCount!=null?r.indCount:''},
+    {label:'Region',get:r=>r.region||''},
+    {label:'Phone',get:r=>r.tel||''},{label:'Address',get:r=>r.addr||''},
+    {label:'Saved',key:'savedAt'}
+  ], 'vetric-watchlist.csv');
+}
+function renderWatchlist(){
+  const sb=document.querySelector('.sidebar'); if(!sb) return;
+  const w=getWatch();
+  const markets=w.filter(x=>x.type==='market'), targets=w.filter(x=>x.type==='target');
+  if(!w.length){
+    sb.innerHTML=`<div class="area-header"><span class="area-title">Watchlist</span></div>
+      <div class="empty" style="padding:30px 22px;line-height:1.7;color:#64748b">Your shortlist is empty.<br><br>★ a <b>market</b> in Opportunity (tap a ZIP to expand), or a <b>target</b> in Acquisitions, to save it here — then compare and export it for your IC.</div>`;
+    return;
+  }
+  let mkt='';
+  if(markets.length){
+    const cmp=markets.map(m=>`<tr>
+      <td style="font-weight:700;font-family:'JetBrains Mono',monospace">${m.id}</td>
+      <td style="text-align:center"><span style="font-weight:700;color:#fff;background:${oppScoreColor(m.score)};border-radius:6px;padding:1px 6px">${m.score}</span></td>
+      <td style="text-align:right">${m.inc!=null?'$'+Math.round(m.inc/1000)+'k':'—'}</td>
+      <td style="text-align:right">${m.grow!=null?(m.grow*100).toFixed(0)+'%':'—'}</td>
+      <td style="text-align:center">${(m.peCount||0)}/${(m.indCount||0)}</td>
+      <td style="text-align:center"><span class="vm-rm" onclick="_watchRemove('market','${m.id}')" title="Remove">✕</span></td>
+    </tr>`).join('');
+    mkt=`<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#64748b;margin:6px 0 4px">Markets — compare (${markets.length})</div>
+      <table class="vm-cmp"><thead><tr><th>ZIP</th><th>Score</th><th>Income</th><th>Growth</th><th>PE/Ind</th><th></th></tr></thead><tbody>${cmp}</tbody></table>
+      <div style="font-size:10.5px;color:#94a3b8;margin-top:5px;line-height:1.4">Scores are as-saved (region-relative percentile, with the weights active at save time).</div>`;
+  }
+  let tgt='';
+  if(targets.length){
+    const cards=targets.map(t=>`<div class="card" onclick="map.setView([${t.lat},${t.lon}],15)">
+      <div class="card-body"><div class="card-name">${t.name}</div>
+        <div style="font-size:11px;color:#475569;margin-top:3px">${t.rating!=null?`★ ${t.rating} · ${(t.reviews||0).toLocaleString()} reviews`:'No rating'}</div>
+        <div style="font-size:11px;color:#64748b;margin-top:2px">${t.tel||''}</div></div>
+      <span class="vm-rm" style="align-self:center" onclick="event.stopPropagation();_watchRemove('target','${(t.id||'').replace(/'/g,"\\'")}')" title="Remove">✕</span>
+    </div>`).join('');
+    tgt=`<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#64748b;margin:16px 0 6px">Targets (${targets.length})</div>${cards}`;
+  }
+  sb.innerHTML=`<div class="area-header"><span class="area-title">Watchlist</span><span style="display:flex;gap:8px;align-items:center">${_exportBtn('exportWatchCSV()','Export')}<span style="font-size:12px;color:#64748b;font-weight:600">${w.length}</span></span></div>
+    <div class="eval-scroll" style="flex:1 1 auto;min-height:0;overflow-y:auto;padding:8px 16px 24px">${mkt}${tgt}</div>`;
+}
+
 function switchSection(s){
   if(acqMode && s!=='acquisitions') exitAcquisitions();
+  if(watchMode && s!=='reports') exitWatchlist();
   document.querySelectorAll('.nav-link').forEach(n=>n.classList.toggle('active',n.dataset.section===s));
   const opp=document.getElementById('opp-panel');
   if(s==='map'){
@@ -3049,7 +3135,12 @@ function switchSection(s){
     enterAcquisitions();
     return;
   }
-  // properties / reports — not built yet; revert nav to map
+  if(s==='reports'){
+    opp.classList.remove('show');
+    enterWatchlist();
+    return;
+  }
+  // properties — points to the Available Properties layer; revert nav to map
   opp.classList.remove('show');
   document.querySelectorAll('.nav-link').forEach(n=>n.classList.toggle('active',n.dataset.section==='map'));
   vfToast(SECTION_MSG[s]||'Coming soon.');
@@ -3115,6 +3206,7 @@ function renderAcquisitions(){
     const sz=_acqSize(r.c.reviews);
     const szBadge = sz?`<span title="estimated from Google review volume — a size proxy, not headcount" style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#475569;background:#eef2f7;border-radius:9px;padding:1px 7px;margin-left:6px">~${sz}</span>`:'';
     const contact = (r.c.tel||r.c.addr)?`<div style="font-size:11px;color:#64748b;margin-top:2px">${r.c.tel||''}${r.c.tel&&r.c.addr?' · ':''}${r.c.addr?r.c.addr.split(',').slice(0,2).join(','):''}</div>`:'';
+    const starred=_inWatch('target',clinicKey(r.c));
     return `<div class="card" id="c${i}" onclick="focusClinic(${i})">
       <div class="card-body">
         <div class="card-name">${r.c.name}${szBadge}</div>
@@ -3123,6 +3215,7 @@ function renderAcquisitions(){
         <div style="font-size:11px;color:#64748b;margin-top:2px">${r.peNear} PE · ${r.indNear} independent within ${ACQ_RADIUS_MI} mi</div>
         ${contact}
       </div>
+      <span class="vm-star ${starred?'on':''}" style="align-self:center;padding:0 2px" title="Add to watchlist" onclick="event.stopPropagation();toggleWatchTarget(${i},this)">★</span>
     </div>`;
   }).join('') || '<div class="empty">No independent clinics in view.<br>Pan or search a city to load targets.</div>';
   const chip=(k,label)=>`<span class="eval-chip ${acqRollup===k?'on':''}" onclick="setAcqRollup('${k}')">${label}</span>`;
@@ -3512,6 +3605,54 @@ function rescoreAndRender(){
 // Single-hue green intensity ramp — darker = stronger opportunity (white text stays WCAG-legible on all buckets).
 function oppScoreColor(s){ return s>=80?'#14532d':s>=65?'#166534':s>=50?'#15803d':s>=35?'#3f6212':'#6b7280'; }
 
+const _fmtMoney=v=>v==null?'—':'$'+Math.round(v).toLocaleString();
+const _fmtPct=v=>v==null?'—':(v>=0?'+':'')+(v*100).toFixed(1)+'%';
+function _oppUnder(r){ const w=getOppWeights(); return r.dog!=null ? r.dog/(r.peCount*w.peMult + r.indCount + 1) : null; }
+// Per-ZIP drill-down with the REAL underlying numbers (not just the 0-100 bars) + region-relative caveat.
+function renderOppDetail(r){
+  const u=_oppUnder(r);
+  const line=(label,val,sub)=>`<div style="display:flex;justify-content:space-between;padding:2.5px 0;font-size:12px"><span style="color:#64748b">${label}</span><span style="font-weight:700;color:#1f2933">${val}${sub?` <span style='color:#94a3b8;font-weight:500'>${sub}</span>`:''}</span></div>`;
+  return `<div class="opp-detail-inner">
+    ${line('Median income', _fmtMoney(r.inc))}
+    ${line('Dog households', r.dog!=null?Math.round(r.dog).toLocaleString():'—','modeled')}
+    ${line('Population growth ’21→’24', _fmtPct(r.grow))}
+    ${line('New construction (2010+)', r.cons!=null?(r.cons*100).toFixed(0)+'%':'—')}
+    ${line('Clinics', (r.peCount+r.indCount), `${r.peCount} PE / ${r.indCount} indep`)}
+    ${line('Underservice', u!=null?Math.round(u).toLocaleString():'—','HH / weighted clinic')}
+    <div style="height:1px;background:var(--border);margin:6px 0"></div>
+    ${line('Income · Demand · LowComp · Growth', `${r.fIncome.toFixed(0)} · ${r.fDemand.toFixed(0)} · ${r.fComp.toFixed(0)} · ${(r.fGrowth||0).toFixed(0)}`)}
+    ${line('Composite score', Math.round(r.score))}
+    <div style="display:flex;gap:8px;margin-top:10px;align-items:center">
+      <button class="vm-export-btn" style="flex:1;justify-content:center" onclick="event.stopPropagation();oppSelect('${r.zip}')">View on map →</button>
+      <span class="vm-star ${_inWatch&&_inWatch('market',r.zip)?'on':''}" title="Add to watchlist" onclick="event.stopPropagation();toggleWatchMarket('${r.zip}',this)">★</span>
+    </div>
+    <div style="font-size:10.5px;color:#94a3b8;margin-top:8px;line-height:1.4">Sub-scores are percentiles <b>within ${oppRegion.name}</b> (min–max across its ZIPs) — not comparable across regions.</div>
+  </div>`;
+}
+function oppToggleDetail(i){
+  const d=document.getElementById('oppd-'+i); if(!d) return;
+  const open=d.style.display!=='none'; d.style.display=open?'none':'block';
+  const row=d.closest('.opp-row'); if(row) row.classList.toggle('expanded',!open);
+}
+function exportOppCSV(){
+  downloadCSV((window.oppScored||oppScored||[]).map((r,i)=>({r,i})), [
+    {label:'Rank',get:x=>x.i+1},
+    {label:'ZIP',get:x=>x.r.zip},
+    {label:'City',get:x=>x.r.city||''},
+    {label:'Composite score',get:x=>Math.round(x.r.score)},
+    {label:'Median income',get:x=>x.r.inc!=null?Math.round(x.r.inc):''},
+    {label:'Dog households (modeled)',get:x=>x.r.dog!=null?Math.round(x.r.dog):''},
+    {label:'Growth 21-24',get:x=>x.r.grow!=null?(x.r.grow*100).toFixed(1)+'%':''},
+    {label:'New construction %',get:x=>x.r.cons!=null?(x.r.cons*100).toFixed(0):''},
+    {label:'PE clinics',get:x=>x.r.peCount},
+    {label:'Indep clinics',get:x=>x.r.indCount},
+    {label:'Income score',get:x=>x.r.fIncome.toFixed(0)},
+    {label:'Demand score',get:x=>x.r.fDemand.toFixed(0)},
+    {label:'LowComp score',get:x=>x.r.fComp.toFixed(0)},
+    {label:'Growth score',get:x=>(x.r.fGrowth||0).toFixed(0)}
+  ], 'vetric-opportunity-'+(oppRegion.key||'region')+'.csv');
+}
+
 function renderOppList(){
   const wrap=document.getElementById('opp-list-wrap');
   const tEl=document.getElementById('opp-title'); if(tEl) tEl.textContent='Opportunity Scores — '+oppRegion.name;
@@ -3520,10 +3661,10 @@ function renderOppList(){
   const rows=oppScored.map((r,i)=>{
     const col=oppScoreColor(r.score);
     const cityLabel=r.city ? r.city : (r.peCount+r.indCount)+' clinics';
-    return `<div class="opp-row" onclick="oppSelect('${r.zip}')">
+    return `<div class="opp-row" onclick="oppToggleDetail(${i})">
       <div class="opp-rank ${i<3?'top':''}">${i+1}</div>
       <div class="opp-main">
-        <div class="opp-zip">${r.zip}</div>
+        <div class="opp-zip">${r.zip} <span style="font-size:10px;color:#cbd5e1;font-weight:600">▾</span></div>
         <div class="opp-city">${cityLabel} · ${r.peCount} PE / ${r.indCount} indep</div>
         <div class="opp-factors">
           <div class="opp-fbar"><i style="width:${r.fIncome.toFixed(0)}%;background:#15803d"></i></div>
@@ -3532,11 +3673,13 @@ function renderOppList(){
           <div class="opp-fbar"><i style="width:${(r.fGrowth||0).toFixed(0)}%;background:#0d9488"></i></div>
         </div>
         <div class="opp-flabel"><span>Income</span><span>Demand</span><span>Low comp</span><span>Growth</span></div>
+        <div class="opp-detail" id="oppd-${i}" style="display:none;margin-top:10px;padding-top:10px;border-top:1px dashed var(--border)">${renderOppDetail(r)}</div>
       </div>
       <div class="opp-score" style="background:${col}">${Math.round(r.score)}</div>
     </div>`;
   }).join('');
-  wrap.innerHTML=`<div class="opp-list-head"><span>#</span><span>ZIP</span><span style="text-align:center">Score</span></div>${rows}`;
+  const methodNote=`<details class="vm-method-note" style="margin-top:14px"><summary>How these scores are computed</summary><div style="margin-top:6px">Four factors — income (Census ACS 2022), pet demand (<b>modeled</b> from ACS 2022 housing), low competition (pet households per PE-weighted clinic), and growth (ACS 2021→2024 population + new construction) — each scaled 0–100 across this region's ZIPs and blended by your weights. Sub-scores are <b>region-relative percentiles</b>, not absolute. Competition is radius-based, not drive-time. A screening signal — verify before diligence.</div></details>`;
+  wrap.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div class="opp-list-head" style="margin:0;flex:1"><span>#</span><span>ZIP — tap to expand</span><span style="text-align:center">Score</span></div>${oppScored.length?_exportBtn('exportOppCSV()','Export'):''}</div>${rows}${methodNote}`;
 
   // Reflect the current #1 in the KPI bar
   if(oppScored.length){
