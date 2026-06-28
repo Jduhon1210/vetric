@@ -4871,6 +4871,10 @@ function _evalRenderSidebar(){
         <span style="color:#94a3b8;font-family:'JetBrains Mono',monospace">${sid}</span>
         <span class="vm-star ${_inWatch('site',sid)?'on':''}" style="margin-left:auto" title="Save site to watchlist" onclick="toggleWatchSite(${g.la},${g.lo},${headline},this)">★</span>
       </div>
+      <div style="margin-top:7px" onclick="event.stopPropagation()">
+        <button class="vm-export-btn" style="color:#6d28d9;background:#f3effd;border-color:#ddd0f7" onclick="evalDriveTime(${i},this)">◔ 10-min drive area</button>
+        <div id="evd-${i}" style="font-size:11px;color:#6d28d9;margin-top:5px;line-height:1.4"></div>
+      </div>
     </div>`;
   }).join('') || '<div class="empty">No developed, buildable spots in this ZIP — it may be largely rural.</div>';
   const chip=(k,label)=>`<span class="eval-chip ${evalShow[k]?'on':''}" onclick="evalToggle('${k}')">${label}</span>`;
@@ -4928,10 +4932,70 @@ function evalToggle(k){ evalShow[k]=!evalShow[k]; _evalRenderLayers(); const sb=
 // Zoning FILTER toggle — re-gates and rescores the grid (residential cells drop in/out).
 function evalToggleZoning(){ evalZoning=!evalZoning; if(evalActive) _evalComputeAndRender(); }
 function evalFlyTo(i){ const g=evalTop[i]; if(g) map.setView([g.la,g.lo], Math.max(map.getZoom(),14), {animate:true}); }
+
+// ── Drive-time trade areas (Routes API via /api/route) — refines the top Evaluate sites ──
+let evalDriveLayer=null;            // the drawn isochrone polygon
+const DRIVE_BUDGET_SEC=600;         // 10 minutes
+async function _routeMatrix(origin, destinations){
+  const r=await fetch('/api/route',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({origin,destinations})});
+  if(!r.ok) throw new Error('route '+r.status);
+  const j=await r.json(); return j.durations||[];
+}
+function _polyAreaMi(ring){
+  const latc=ring.reduce((a,p)=>a+p[0],0)/ring.length;
+  const kx=69.0*Math.cos(latc*Math.PI/180), ky=69.0;
+  let a=0; for(let i=0,j=ring.length-1;i<ring.length;j=i++){ a+=(ring[j][1]*kx)*(ring[i][0]*ky)-(ring[i][1]*kx)*(ring[j][0]*ky); }
+  return Math.abs(a/2);
+}
+// Build a drive-time isochrone polygon: ray-sample in DIRS directions, one Route Matrix call,
+// threshold each ray at the time budget (interpolating the boundary), connect into a polygon.
+async function computeIsochrone(lat, lon, budgetSec){
+  const DIRS=18, maxMi=(budgetSec/60)*0.9, fracs=[0.22,0.45,0.7,1.0];
+  const mpdLat=69.0, mpdLon=69.0*Math.cos(lat*Math.PI/180);
+  const dests=[], meta=[];
+  for(let d=0; d<DIRS; d++){ const th=2*Math.PI*d/DIRS;
+    for(const f of fracs){ const dist=f*maxMi;
+      dests.push({lat:lat+(dist*Math.sin(th))/mpdLat, lon:lon+(dist*Math.cos(th))/mpdLon}); meta.push({dir:d,dist}); } }
+  const durs=await _routeMatrix({lat,lon}, dests);
+  const sec=new Array(dests.length).fill(null);
+  for(const e of durs){ if(e.i>=0 && e.i<sec.length) sec[e.i]=e.s; }
+  const ring=[];
+  for(let d=0; d<DIRS; d++){
+    const idxs=[]; for(let k=0;k<meta.length;k++) if(meta[k].dir===d) idxs.push(k);
+    idxs.sort((a,b)=>meta[a].dist-meta[b].dist);
+    let bDist=0, lastGood=null;
+    for(const k of idxs){ const s=sec[k];
+      if(s!=null && s<=budgetSec){ lastGood={dist:meta[k].dist,s}; bDist=meta[k].dist; }
+      else if(s!=null && s>budgetSec){ if(lastGood){ const fr=(budgetSec-lastGood.s)/(s-lastGood.s); bDist=lastGood.dist+fr*(meta[k].dist-lastGood.dist); } else { bDist=meta[k].dist*(budgetSec/s); } break; } }
+    if(!(bDist>0)) bDist=0.3;
+    const th=2*Math.PI*d/DIRS;
+    ring.push([lat+(bDist*Math.sin(th))/mpdLat, lon+(bDist*Math.cos(th))/mpdLon]);
+  }
+  return ring;
+}
+async function evalDriveTime(i, btn){
+  const g=evalTop[i]; if(!g) return;
+  const orig = btn ? btn.textContent : '';
+  if(btn){ btn.disabled=true; btn.textContent='Computing…'; }
+  try{
+    const ring=await computeIsochrone(g.la, g.lo, DRIVE_BUDGET_SEC);
+    if(evalDriveLayer){ map.removeLayer(evalDriveLayer); evalDriveLayer=null; }
+    evalDriveLayer=L.polygon(ring,{color:'#7c3aed',weight:2.5,fillColor:'#7c3aed',fillOpacity:0.12}).addTo(map);
+    try{ map.fitBounds(evalDriveLayer.getBounds(),{padding:[40,40],maxZoom:14}); }catch(e){}
+    const poly=ring.map(p=>({lat:p[0],lng:p[1]}));
+    let pe=0, ind=0;
+    for(const c of evalCompsCache){ if(pointInPolygon(c.lat,c.lon,poly)){ c.pe?pe++:ind++; } }
+    const el=document.getElementById('evd-'+i);
+    if(el) el.innerHTML=`<b>10-min drive:</b> ${pe+ind} clinics in range (${pe} PE · ${ind} indep) · ~${Math.round(_polyAreaMi(ring))} mi² catchment`;
+  }catch(e){
+    vfToast('Drive-time unavailable — is the Routes API set up?');
+  } finally { if(btn){ btn.disabled=false; btn.textContent=orig||'◔ 10-min drive'; } }
+}
 function clearEvaluate(){
   const wasArea=evalAreaMode;
   evalActive=false; evalAreaMode=false; evalAreaZips=null; evalSat=null; evalZoneStat=null; evalZoneCities=[]; evalParcelCounties=[];
   _evalClearLayers(); _evalHideLegend();
+  if(evalDriveLayer){ map.removeLayer(evalDriveLayer); evalDriveLayer=null; }
   evalData={vets:[], retail:[], resid:[], roads:[], aadt:[], zoning:[], osmLU:[], parcels:[]}; evalDataOk={retail:false,roads:false,resid:false,aadt:false,zoning:false,parcels:false};
   evalCells=[]; evalTop=[]; evalCompsCache=[];
   if(selectedZips.size) applyZipSelection();
