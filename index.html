@@ -3557,6 +3557,28 @@ function _hexZipAt(lat,lon){
   }
   return null;
 }
+// ZIP land area in sq mi (cached) — for housing density → development stage
+const _zipAreaCache=new Map();
+function _zipAreaMi(feat){
+  const z=feat.properties.zip; if(_zipAreaCache.has(z)) return _zipAreaCache.get(z);
+  const g=feat.geometry; let aDeg=0;
+  const ringArea=ring=>{ let a=0; for(let i=0,j=ring.length-1;i<ring.length;j=i++){ a+=ring[j][0]*ring[i][1]-ring[i][0]*ring[j][1]; } return Math.abs(a/2); };
+  if(g.type==='Polygon'){ aDeg=ringArea(g.coordinates[0]); }
+  else if(g.type==='MultiPolygon'){ for(const poly of g.coordinates) aDeg+=ringArea(poly[0]); }
+  const bb=_rawBBoxG(feat); const latMid=bb?(bb.minLat+bb.maxLat)/2:31;
+  const areaMi=aDeg*69.0*(69.0*Math.cos(latMid*Math.PI/180));   // deg² → mi² at the ZIP's latitude
+  _zipAreaCache.set(z,areaMi); return areaMi;
+}
+// Development stage from housing density + growth trajectory — distinguishes "build a clinic now"
+// from "land-bank: cheap rural land in the path of growth, acquire & hold". Display-only (NOT scored).
+function _hexStage(dens, traj){
+  const dev = dens!=null ? clamp01(dens/1400) : 0.5;            // developed-ness 0..1
+  const g   = traj!=null ? traj : 0.5;
+  if(dev>=0.5) return {key:'build',  label:'Build-ready',  color:'#15803d', land:dev>0.78?'Premium land':'Moderate land'};
+  if(g>=0.55)  return {key:'land',   label:'Land-bank',    color:'#7c3aed', land:'Value land · hold play'};
+  if(dev>=0.28 || g>=0.42) return {key:'emerge', label:'Emerging', color:'#0d9488', land:'Value land'};
+  return {key:'quiet', label:'Rural / quiet', color:'#94a3b8', land:'Cheap land'};
+}
 
 // ── clinic spatial index (deduped, PE-flagged, reviews-carrying) ────────────
 function buildHexClinicIndex(){
@@ -3606,6 +3628,8 @@ async function buildHexBaseInputs(){
     h.dog = (dogSrc&&dogSrc[z]!=null)?dogSrc[z]:((dogData[z]&&dogData[z].est)!=null?dogData[z].est:null);
     h.grow= growSrc[z]!=null?growSrc[z]:(growthData[z]!=null?growthData[z]:null);
     h.cons= consSrc[z]!=null?consSrc[z]:(constructionData[z]!=null?constructionData[z]:null);
+    const _hh=(dogData[z]&&dogData[z].households)||null, _am=_zipAreaMi(f);
+    h.dens=(_hh!=null&&_am>0)?_hh/_am:null;                       // households per sq mi → development stage
     let comp=0, nearPE=Infinity;
     const bi=Math.round(h.cLat/HEX_BUCKET), bj=Math.round(h.cLon/HEX_BUCKET);
     for(let di=-winB;di<=winB;di++) for(let dj=-winB;dj<=winB;dj++){
@@ -3639,7 +3663,8 @@ function rescoreHexes(){
     let capTerm=Math.pow(share,shareExp);
     if(h.nearPE<PE_NEAR_HARD) capTerm=Math.min(capTerm,0.20);      // hard-cap the contribution too — de-weighting competition can't revive a PE-adjacent site
     const score=clamp01(demand*capTerm);                          // expected captured demand 0..1
-    return {...h, demand, share, spendIdx, volIdx, trajIdx, score, _color:_evalColor(Math.pow(score,0.7))};
+    const _stage=_hexStage(h.dens, trajIdx);
+    return {...h, demand, share, spendIdx, volIdx, trajIdx, score, _stage, _color:_evalColor(Math.pow(score,0.7))};
   });
   redrawHexCanvas();
   _fillLegend();
@@ -3757,10 +3782,10 @@ function _fillLegend(){
   const ranked=[...hexScored].filter(h=>h.score!=null).sort((a,b)=>b.score-a.score);
   const seen=new Set(), best=[];                                  // top DISTINCT ZIPs (one hex per ZIP)
   for(const h of ranked){ if(seen.has(h.zip)) continue; seen.add(h.zip); best.push(h); if(best.length>=6) break; }
-  const top=best.map(h=>
-    `<div class="hex-top-row" onclick="_hexOpenDetailByCell(${h.q},${h.r})">
-       <span style="color:${h._color};font-weight:800;min-width:22px;text-align:right">${Math.round(h.score*100)}</span>
-       <span>${h.zip}${h.city?' · '+h.city:''}</span></div>`).join('');
+  const top=best.map(h=>{ const st=h._stage||_hexStage(h.dens,h.trajIdx); return `<div class="hex-top-row" onclick="_hexOpenDetailByCell(${h.q},${h.r})">`+
+       `<span style="color:${h._color};font-weight:800;min-width:22px;text-align:right">${Math.round(h.score*100)}</span>`+
+       `<span style="flex:1">${h.zip}${h.city?' · '+h.city:''}</span>`+
+       `<span style="font-size:9px;font-weight:700;color:${st.color};white-space:nowrap">${st.label}</span></div>`; }).join('');
   body.innerHTML=`<div style="font-size:11px;color:#475569">Captured demand (low → high)</div>
     <div class="hex-legbar"></div>
     <div style="display:flex;justify-content:space-between;font-size:9.5px;color:#94a3b8;margin-top:1px"><span>low</span><span>high</span></div>
@@ -3770,8 +3795,11 @@ function _hexOpenDetailByCell(q,r){ const i=_hexAxialIndex.get(q+'_'+r); if(i!=n
 function _hexOpenDetail(h){
   const box=document.getElementById('hex-detail'); if(!box) return;
   box.style.display='block';
+  const st=h._stage||_hexStage(h.dens,h.trajIdx);
   const bar=(lbl,v,col)=>`<div style="display:flex;align-items:center;gap:6px;margin:2px 0"><span style="width:62px;font-size:10px;color:#64748b">${lbl}</span><div style="flex:1;height:7px;background:#eef2f7;border-radius:4px;overflow:hidden"><i style="display:block;height:100%;width:${Math.round(clamp01(v)*100)}%;background:${col}"></i></div></div>`;
-  box.innerHTML=`<div style="font-weight:800;font-size:13px">${h.zip}${h.city?' · '+h.city:''}</div>
+  box.innerHTML=`<div style="font-weight:800;font-size:13px">${h.zip}${h.city?' · '+h.city:''}
+      <span style="font-size:10px;font-weight:700;color:#fff;background:${st.color};padding:1px 7px;border-radius:10px;margin-left:4px;vertical-align:1px">${st.label}</span></div>
+    <div style="font-size:10.5px;color:${st.color};font-weight:600;margin-top:3px">${st.land}${h.dens!=null?` · ~${Math.round(h.dens).toLocaleString()} homes/mi²`:''}</div>
     <div style="font-size:11px;color:#475569;margin:6px 0">Income ${_fmtMoney(h.inc)} · Dog HH ${h.dog!=null?Math.round(h.dog).toLocaleString():'—'}<br>Growth '21→'24 ${_fmtPct(h.grow)} · New construction ${h.cons!=null?Math.round(h.cons*100)+'%':'—'}</div>
     ${bar('Spend',h.spendIdx||0,'#15803d')}${bar('Volume',h.volIdx||0,'#4338ca')}${bar('Trajectory',h.trajIdx||0,'#0d9488')}${bar('Capture',h.share||0,'#b45309')}
     <div style="margin:8px 0 6px;font-size:12px">Captured-demand score <b style="color:${h._color}">${Math.round((h.score||0)*100)}</b></div>
