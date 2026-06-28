@@ -154,6 +154,24 @@ body.dev-mode .search-bar{background:var(--amber-light);border-bottom-color:#fde
 .opp-preset:hover{border-color:var(--navy);color:var(--navy);}
 .opp-divider{height:1px;background:var(--border);margin:6px 0 18px;}
 .opp-list-wrap{overflow-y:auto;padding:14px 18px 24px;}
+/* Hex opportunity surface — Surface view reveals the live map behind the panel */
+.opp-panel.surface-mode{background:transparent;pointer-events:none;}
+.opp-panel.surface-mode .opp-top{pointer-events:auto;}
+.opp-panel.surface-mode .opp-body{background:transparent;}
+.opp-panel.surface-mode .opp-controls{pointer-events:auto;}
+.opp-panel.surface-mode .opp-list-wrap{background:transparent;pointer-events:none;}
+.opp-panel.surface-mode .opp-list-wrap > *{pointer-events:auto;}
+.opp-view-seg{display:inline-flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;flex-shrink:0;}
+.opp-view-seg button{border:0;background:#fff;padding:5px 13px;font-size:12px;font-weight:700;color:#64748b;cursor:pointer;}
+.opp-view-seg button.on{background:#15803d;color:#fff;}
+.hex-card{background:#fff;border:1px solid var(--border);border-radius:12px;padding:12px 14px;box-shadow:0 6px 24px rgba(0,0,0,.14);max-width:300px;}
+.hex-card-h{font-weight:800;font-size:13px;margin-bottom:8px;}
+.hex-legbar{height:12px;border-radius:6px;margin:4px 0;background:linear-gradient(90deg,rgb(224,68,68),rgb(238,140,38),rgb(244,196,48),rgb(150,196,89),rgb(60,138,40));}
+.hex-top-h{font-size:11px;font-weight:700;color:#64748b;margin:9px 0 3px;}
+.hex-top-row{display:flex;gap:8px;align-items:center;font-size:12px;padding:3px 0;cursor:pointer;border-bottom:1px solid #f1f5f9;}
+.hex-top-row:hover{background:#f8fafc;}
+.hex-tip{font-size:12px;}
+body.vf-surface #zoom-msg{display:none!important;}
 .opp-list-head{display:grid;grid-template-columns:30px 1fr 64px;gap:12px;padding:0 14px 10px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);position:sticky;top:0;background:var(--bg);}
 .opp-row{display:grid;grid-template-columns:30px 1fr 64px;gap:12px;align-items:center;padding:12px 14px;background:var(--surface);border:1px solid var(--border);border-radius:10px;margin-bottom:8px;cursor:pointer;transition:box-shadow .12s,transform .12s;}
 .opp-row:hover{box-shadow:var(--shadow);transform:translateY(-1px);}
@@ -2065,6 +2083,7 @@ async function fetchIncomeBatch(zips){
 }
 
 async function toggleIncomeLayer(on){
+  if(on && typeof _hexView!=='undefined' && _hexView) setOppView('list'); // single-fill: opening a choropleth drops the hex surface
   const status = document.getElementById('income-status');
   const legend = document.getElementById('income-legend');
   if(!on){
@@ -2167,6 +2186,7 @@ function dogColor(rate){
 }
 
 async function toggleDogLayer(on){
+  if(on && typeof _hexView!=='undefined' && _hexView) setOppView('list'); // single-fill: opening a choropleth drops the hex surface
   const status = document.getElementById('dog-status');
   const legend = document.getElementById('dog-legend');
   if(!on){
@@ -2308,6 +2328,7 @@ function growthColor(pct){
 }
 
 async function toggleGrowthLayer(on){
+  if(on && typeof _hexView!=='undefined' && _hexView) setOppView('list'); // single-fill: opening a choropleth drops the hex surface
   const status = document.getElementById('growth-status');
   const legend = document.getElementById('growth-legend');
   if(!on){
@@ -3199,6 +3220,7 @@ function switchSection(s){
   if(acqMode && s!=='acquisitions') exitAcquisitions();
   if(watchMode && s!=='reports') exitWatchlist();
   document.querySelectorAll('.nav-link').forEach(n=>n.classList.toggle('active',n.dataset.section===s));
+  if(s!=='opportunity' && typeof _hexTeardown==='function') _hexTeardown(); // never strand the hex surface on nav-out
   const opp=document.getElementById('opp-panel');
   if(s==='map'){
     opp.classList.remove('show');
@@ -3366,6 +3388,8 @@ async function selectOppRegion(key){
   const r=OPP_REGIONS.find(x=>x.key===key); if(!r) return;
   oppRegion=r;
   oppRegionIndependents=[]; oppBaseRows=[]; oppScored=[]; // force a full rebuild for the new region
+  hexBaseRows=[]; hexScored=[]; _hexBuiltKey=''; _hexClinicIndex=null; _hexZipBuckets=null; _hexView=false;
+  if(hexLayer){ map.removeLayer(hexLayer); hexLayer=null; }   // new region → rebuild geometry (pitch depends on lat)
   closeRegionPicker();
   switchSection('opportunity'); // openOpportunity re-runs (oppScored was reset) for the new region
 }
@@ -3413,6 +3437,7 @@ function onWeightChange(){
   document.getElementById('w-growth-val').textContent=Math.round(wg/sum*100)+'%';
   document.getElementById('w-pe-val').textContent=((+document.getElementById('w-pe').value)/10).toFixed(1)+'×';
   rescoreAndRender();
+  if(oppView==='surface' && hexBaseRows.length) rescoreHexes(); // recolor the surface live (presets route through here too)
 }
 
 function oppPreset(kind){
@@ -3436,6 +3461,331 @@ let oppDogSnap = {};
 let oppGrowthSnap = {};
 let oppConstructionSnap = {};
 let oppGeoSnap = null;
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   HEX OPPORTUNITY SURFACE — a continuous, region-wide generalization of the
+   Evaluate capture model (ABSOLUTE Huff share × demand), driven by the existing
+   Opportunity weight sliders. The ranked LIST is untouched; this is an alternate
+   "Surface" view of the same region. Built from the multi-agent design spec.
+   ═══════════════════════════════════════════════════════════════════════════ */
+const clamp01 = v => v<0?0:(v>1?1:v);
+// Constants — MIRROR Evaluate exactly (do NOT invent new values; see CLAUDE.md A_OWN gotcha)
+const HEX_RADIUS_MI = 3;
+const HEX_R    = HEX_RADIUS_MI * 1609.344;             // metres
+const HEX_AOWN = 2.5 * Math.pow(HEX_RADIUS_MI/3, 2);   // 2.5 @3mi, radius-invariant
+const PE_NEAR_HARD = 700;        // m — within this of a PE clinic, share is hard-capped
+const HEX_PE_W = 1.6;            // PE competitor weight (calibrated; FIXED — not the w-pe slider)
+const HEX_MI = 1.0;              // column pitch, miles (~3,500 cells over DFW)
+const HEX_MI_PER_DEG_LAT = 69.0;
+const HEX_BUCKET = 0.02;         // spatial-index bucket size, degrees
+// Module state
+let oppView='list';              // 'list' | 'surface'
+let hexBaseRows=[];              // per-hex precomputed records (heavy; built once)
+let hexScored=[];                // per-hex scored (index-aligned with hexBaseRows)
+let hexLayer=null;               // L.layerGroup of persistent canvas polygons
+let _hexCanvas=null;             // dedicated canvas renderer (ONE; never the shared SVG)
+let _hexView=false;              // surface currently painted on the map
+let hexHoverTip=null;            // single reusable tooltip
+let _hexHandlersOn=false;
+let _hexBuiltKey='';
+let _hexClinicIndex=null;        // "bi_bj" -> [competitor]
+let _hexZipBuckets=null;         // "bi_bj" -> [zip feature]
+let _hexCompMedRev=150;
+let _hexAxialIndex=new Map();    // "q_r" -> index into hexBaseRows
+let _hexLatMid, HEX_MI_PER_DEG_LON, hexColPitchLon, hexRowPitchLat, hexCircumLat, hexCircumLon;
+const _hexSig = () => oppRegion.key+':'+HEX_MI+':'+HEX_RADIUS_MI+':'+(_vfIncludeMobile()?'m1':'m0');
+
+// ── geometry ──────────────────────────────────────────────────────────────
+function _hexComputeSpacing(){
+  _hexLatMid=(oppRegion.s+oppRegion.n)/2;
+  HEX_MI_PER_DEG_LON=69.0*Math.cos(_hexLatMid*Math.PI/180);    // ~58 at lat 33
+  hexColPitchLon=HEX_MI/HEX_MI_PER_DEG_LON;
+  hexRowPitchLat=(HEX_MI*Math.sqrt(3)/2)/HEX_MI_PER_DEG_LAT;
+  hexCircumLat=(HEX_MI/Math.sqrt(3))/HEX_MI_PER_DEG_LAT;
+  hexCircumLon=(HEX_MI/Math.sqrt(3))/HEX_MI_PER_DEG_LON;
+}
+function _hexCornersLatLon(cLat,cLon){
+  const pts=[];
+  for(let k=0;k<6;k++){ const ang=Math.PI/180*(60*k-90); pts.push([cLat+hexCircumLat*Math.sin(ang), cLon+hexCircumLon*Math.cos(ang)]); }
+  return pts;
+}
+function buildHexGrid(){
+  _hexComputeSpacing();
+  const {s,n,w,e}=oppRegion; const rows=[]; _hexAxialIndex.clear(); let r=0;
+  for(let lat=s; lat<=n+hexRowPitchLat; lat+=hexRowPitchLat, r++){
+    const lonOffset=(r%2)?hexColPitchLon/2:0; let q=0;
+    for(let lon=w+lonOffset; lon<=e+hexColPitchLon; lon+=hexColPitchLon, q++){
+      rows.push({q,r,cLat:lat,cLon:lon,zip:null,ring:_hexCornersLatLon(lat,lon)});
+      _hexAxialIndex.set(q+'_'+r, rows.length-1);
+    }
+  }
+  hexBaseRows=rows;
+}
+
+// ── ZIP spatial index (lat/lon → containing ZIP feature) ────────────────────
+function _rawBBoxG(f){
+  const g=f&&f.geometry; if(!g) return null;
+  let minLat=Infinity,maxLat=-Infinity,minLon=Infinity,maxLon=-Infinity;
+  const scan=ring=>{ for(const c of ring){ const lo=c[0],la=c[1]; if(la<minLat)minLat=la; if(la>maxLat)maxLat=la; if(lo<minLon)minLon=lo; if(lo>maxLon)maxLon=lo; } };
+  if(g.type==='Polygon'){ for(const r of g.coordinates) scan(r); }
+  else if(g.type==='MultiPolygon'){ for(const poly of g.coordinates) for(const r of poly) scan(r); }
+  else return null;
+  return {minLat,maxLat,minLon,maxLon};
+}
+function _buildHexZipBuckets(geo){
+  _hexZipBuckets=new Map();
+  for(const f of geo.features){
+    const bb=_rawBBoxG(f); if(!bb) continue;
+    if(bb.maxLat<oppRegion.s-0.1||bb.minLat>oppRegion.n+0.1||bb.maxLon<oppRegion.w-0.1||bb.minLon>oppRegion.e+0.1) continue;
+    const bi0=Math.round(bb.minLat/HEX_BUCKET), bi1=Math.round(bb.maxLat/HEX_BUCKET);
+    const bj0=Math.round(bb.minLon/HEX_BUCKET), bj1=Math.round(bb.maxLon/HEX_BUCKET);
+    for(let bi=bi0;bi<=bi1;bi++) for(let bj=bj0;bj<=bj1;bj++){
+      const k=bi+'_'+bj; let arr=_hexZipBuckets.get(k); if(!arr){ arr=[]; _hexZipBuckets.set(k,arr); } arr.push(f);
+    }
+  }
+}
+function _hexZipAt(lat,lon){
+  if(!_hexZipBuckets) return null;
+  const arr=_hexZipBuckets.get(Math.round(lat/HEX_BUCKET)+'_'+Math.round(lon/HEX_BUCKET));
+  if(!arr) return null;
+  for(const f of arr){
+    const bb=_rawBBoxG(f);
+    if(lat<bb.minLat||lat>bb.maxLat||lon<bb.minLon||lon>bb.maxLon) continue;
+    if(pointInGeoJSON(lat,lon,f)) return f;
+  }
+  return null;
+}
+
+// ── clinic spatial index (deduped, PE-flagged, reviews-carrying) ────────────
+function buildHexClinicIndex(){
+  const overrides=getOverrides(), deleted=getDeleted(), byCell=new Map();
+  const add=(la,lo,pe,reviews)=>{
+    const k=Math.round(la*1000)+'_'+Math.round(lo*1000);    // 110m dedup — exactly _evalCompetitors
+    if(deleted[k]||byCell.has(k)) return;
+    byCell.set(k,{lat:la,lon:lo,pe:!!pe,reviews:(typeof reviews==='number'?reviews:null),mult:(overrides[k]&&overrides[k].mult)||1});
+  };
+  if(peLoaded && typeof PE_COORDS!=='undefined') for(const c of PE_COORDS){
+    const enr=_vetEnrichAt(c[0],c[1]);                       // MUST be 'enr' (TDZ guard, CLAUDE.md)
+    add(c[0],c[1],true, enr&&enr.reviews);
+  }
+  for(const v of _activeVetClinics()){
+    add(v.lat,v.lon, !!checkPE(v.name,v.lat,v.lon,null,overrides), v.reviews);
+  }
+  const idx=new Map(), revs=[];
+  for(const c of byCell.values()){
+    const bk=Math.round(c.lat/HEX_BUCKET)+'_'+Math.round(c.lon/HEX_BUCKET);
+    let arr=idx.get(bk); if(!arr){ arr=[]; idx.set(bk,arr); } arr.push(c);
+    if(typeof c.reviews==='number'&&c.reviews>0) revs.push(c.reviews);
+  }
+  revs.sort((a,b)=>a-b);
+  _hexCompMedRev=revs.length?revs[Math.floor(revs.length/2)]:150;
+  _hexClinicIndex=idx;
+}
+
+// ── build pass (once per region/data load): ZIP join + competition join ─────
+async function buildHexBaseInputs(){
+  await loadZipGeometry();
+  const geo=oppGeoSnap||incomeGeoData||_zipGeoCache;
+  if(!geo) throw new Error('no zip geometry');
+  _buildHexZipBuckets(geo);
+  buildHexClinicIndex();
+  buildHexGrid();
+  const incSrc=Object.keys(oppIncomeSnap).length?oppIncomeSnap:incomeData;
+  const dogSrc=oppDogSnap;
+  const growSrc=Object.keys(oppGrowthSnap).length?oppGrowthSnap:growthData;
+  const consSrc=Object.keys(oppConstructionSnap).length?oppConstructionSnap:constructionData;
+  const winB=Math.ceil(HEX_R/(HEX_BUCKET*HEX_MI_PER_DEG_LON*1609.344));
+  for(const h of hexBaseRows){
+    const f=_hexZipAt(h.cLat,h.cLon);
+    if(!f){ h.zip=null; continue; }
+    h.zip=f.properties.zip; h.feat=f; h.city=f.properties.city||f.properties.po_name||'';
+    const z=h.zip;
+    h.inc = incSrc[z]!=null?incSrc[z]:(incomeData[z]!=null?incomeData[z]:null);
+    h.dog = (dogSrc&&dogSrc[z]!=null)?dogSrc[z]:((dogData[z]&&dogData[z].est)!=null?dogData[z].est:null);
+    h.grow= growSrc[z]!=null?growSrc[z]:(growthData[z]!=null?growthData[z]:null);
+    h.cons= consSrc[z]!=null?consSrc[z]:(constructionData[z]!=null?constructionData[z]:null);
+    let comp=0, nearPE=Infinity;
+    const bi=Math.round(h.cLat/HEX_BUCKET), bj=Math.round(h.cLon/HEX_BUCKET);
+    for(let di=-winB;di<=winB;di++) for(let dj=-winB;dj<=winB;dj++){
+      const arr=_hexClinicIndex.get((bi+di)+'_'+(bj+dj)); if(!arr) continue;
+      for(const c of arr){ const d=hav(h.cLat,h.cLon,c.lat,c.lon); if(d>=HEX_R) continue;
+        comp += (c.pe?HEX_PE_W:1)*_revW(c.reviews,_hexCompMedRev)*(c.mult||1)*_grav(d,HEX_R);
+        if(c.pe && d<nearPE) nearPE=d; }
+    }
+    h.comp=comp; h.nearPE=nearPE;
+  }
+  _hexBuiltKey=_hexSig();
+}
+
+// ── reblend (every slider/preset change): pure arithmetic over baked records ─
+function rescoreHexes(){
+  if(!hexBaseRows.length){ hexScored=[]; return; }
+  const w=getOppWeights();
+  const wD=w.income+w.demand+w.growth||1;
+  const aInc=w.income/wD, aDog=w.demand/wD, aGro=w.growth/wD;
+  const shareExp=0.5+2.0*w.comp;                              // w-comp tunes competition decisiveness
+  hexScored=hexBaseRows.map(h=>{
+    if(!h.zip) return {...h, score:null, _color:null};
+    const spendIdx=h.inc!=null?clamp01((h.inc-30000)/90000):0.5;   // $30k→0, $120k→1
+    const volIdx  =h.dog!=null?clamp01(h.dog/6000):0.5;            // 6000 dog-HH→1
+    const popIdx  =h.grow!=null?clamp01((h.grow+0.10)/0.70):0.5;   // -10%→0, +60%→1
+    const consIdx =h.cons!=null?clamp01(h.cons):0.5;
+    const trajIdx =(h.grow!=null&&h.cons!=null)?0.6*popIdx+0.4*consIdx:(h.grow!=null?popIdx:(h.cons!=null?consIdx:0.5));
+    const demand=Math.pow(Math.max(spendIdx,1e-3),aInc)*Math.pow(Math.max(volIdx,1e-3),aDog)*Math.pow(Math.max(trajIdx,1e-3),aGro);
+    let share=HEX_AOWN/(HEX_AOWN+h.comp);                          // ABSOLUTE Huff (never min-max)
+    if(h.nearPE<PE_NEAR_HARD) share=Math.min(share,0.20);
+    const score=clamp01(demand*Math.pow(share,shareExp));         // expected captured demand 0..1
+    return {...h, demand, share, spendIdx, volIdx, trajIdx, score, _color:_evalColor(Math.pow(score,0.7))};
+  });
+  redrawHexCanvas();
+  _fillLegend();
+}
+
+// ── render (dedicated canvas, persistent polygons, in-place restyle) ────────
+function _ensureHexCanvas(){ if(!_hexCanvas) _hexCanvas=L.canvas({padding:0.5}); }
+function buildHexPolys(){
+  _ensureHexCanvas();
+  if(hexLayer){ map.removeLayer(hexLayer); }
+  hexLayer=L.layerGroup();
+  for(const h of hexBaseRows){
+    h._poly=L.polygon(h.ring,{renderer:_hexCanvas, stroke:false, interactive:false, fillColor:'#9ca3af', fillOpacity:0.5});
+    hexLayer.addLayer(h._poly);
+  }
+  hexLayer.addTo(map);
+  if(hexLayer.bringToBack) hexLayer.bringToBack();
+}
+function redrawHexCanvas(){
+  if(!_hexView||!hexLayer) return;
+  for(let i=0;i<hexScored.length;i++){
+    const base=hexBaseRows[i]; const poly=base&&base._poly; if(!poly) continue;  // index-aligned (order-independent)
+    const h=hexScored[i];
+    if(h.score==null) poly.setStyle({fillOpacity:0});
+    else poly.setStyle({fillColor:h._color, fillOpacity:0.58});
+  }
+}
+
+// ── interaction (one throttled mousemove + one click; O(9) axial hit-test) ──
+function _hexAt(lat,lon){
+  if(!hexRowPitchLat) return null;
+  const r=Math.round((lat-oppRegion.s)/hexRowPitchLat); if(r<0) return null;
+  const lonOffset=(r%2)?hexColPitchLon/2:0;
+  const q=Math.round((lon-(oppRegion.w+lonOffset))/hexColPitchLon);
+  let best=null,bestD=Infinity;
+  for(let dr=-1;dr<=1;dr++) for(let dq=-1;dq<=1;dq++){
+    const i=_hexAxialIndex.get((q+dq)+'_'+(r+dr)); if(i==null) continue;
+    const h=hexScored[i]||hexBaseRows[i]; if(!h) continue;
+    const d=(h.cLat-lat)**2+(h.cLon-lon)**2; if(d<bestD){bestD=d;best=h;}
+  }
+  return best;
+}
+function _hexShowTip(latlng,h){
+  if(!hexHoverTip) hexHoverTip=L.tooltip({className:'hex-tip',direction:'top',offset:[0,-2],opacity:0.97});
+  const sc=h.score!=null?Math.round(h.score*100):'—';
+  hexHoverTip.setLatLng(latlng).setContent(`<b>${h.zip||'—'}${h.city?' · '+h.city:''}</b><br>Captured-demand <b>${sc}</b>`);
+  if(!map.hasLayer(hexHoverTip)) hexHoverTip.addTo(map);
+}
+function _hexHideTip(){ if(hexHoverTip && map.hasLayer(hexHoverTip)) map.removeLayer(hexHoverTip); }
+function _hexInstallHandlers(){
+  if(_hexHandlersOn) return; _hexHandlersOn=true;
+  let raf=0, lastT=0;
+  map.on('mousemove', e=>{ if(!_hexView) return;
+    const now=performance.now(); if(now-lastT<40) return; lastT=now;
+    if(raf) return; raf=requestAnimationFrame(()=>{ raf=0;
+      const h=_hexAt(e.latlng.lat,e.latlng.lng);
+      if(!h||h.score==null){ _hexHideTip(); return; } _hexShowTip(e.latlng,h); }); });
+  map.on('click', e=>{ if(!_hexView) return;
+    const h=_hexAt(e.latlng.lat,e.latlng.lng); if(h&&h.zip) _hexOpenDetail(h); });
+}
+
+// ── surface entry / view toggle / card / detail / handoff ───────────────────
+function renderHexSurface(){
+  if(_hexSig()!==_hexBuiltKey || !hexBaseRows.length){
+    const body=document.getElementById('hex-legend-body'); if(body) body.innerHTML='<div style="padding:10px 4px;color:#64748b;font-size:12px">Building surface…</div>';
+    buildHexBaseInputs().then(()=>{ _hexView=true; buildHexPolys(); rescoreHexes(); _hexInstallHandlers(); })
+      .catch(err=>{ console.error('hex surface build failed',err); const b=document.getElementById('hex-legend-body'); if(b) b.innerHTML='<div style="padding:10px 4px;color:#b91c1c;font-size:12px">Could not build the surface — try reopening Opportunity.</div>'; });
+    return;
+  }
+  _hexView=true;
+  if(!hexLayer) buildHexPolys();
+  if(!hexScored.length) rescoreHexes(); else { redrawHexCanvas(); _fillLegend(); }
+  _hexInstallHandlers();
+}
+function setOppView(v){
+  if(v===oppView) return; oppView=v;
+  const panel=document.getElementById('opp-panel');
+  if(v==='surface'){
+    _oppKillChoropleths();
+    if(panel) panel.classList.add('surface-mode');
+    document.body.classList.add('vf-surface');                  // hides the "zoom in to see clinics" pill
+    setTimeout(()=>{ map.invalidateSize(); try{ map.fitBounds([[oppRegion.s,oppRegion.w],[oppRegion.n,oppRegion.e]],{animate:false,padding:[18,18]}); }catch(e){ map.setView([oppRegion.lat,oppRegion.lon],10,{animate:false}); } },40);
+  } else {
+    _hexView=false;
+    if(hexLayer){ map.removeLayer(hexLayer); hexLayer=null; }
+    _hexHideTip();
+    if(panel) panel.classList.remove('surface-mode');
+    document.body.classList.remove('vf-surface');
+  }
+  renderOppList();
+}
+function _oppKillChoropleths(){
+  const off=(id,fn)=>{ const el=document.getElementById(id); if(el&&el.checked){ fn(false); el.checked=false; } };
+  off('toggle-income', toggleIncomeLayer);
+  off('toggle-pets',   toggleDogLayer);
+  off('toggle-growth', toggleGrowthLayer);
+}
+function _hexTeardown(){
+  _hexView=false;
+  if(hexLayer){ map.removeLayer(hexLayer); hexLayer=null; }
+  _hexHideTip();
+  const panel=document.getElementById('opp-panel'); if(panel) panel.classList.remove('surface-mode');
+  document.body.classList.remove('vf-surface');
+}
+function _hexSurfaceCard(){
+  return `<div class="hex-card">
+    <div class="hex-card-h">Opportunity surface · ${oppRegion.name}</div>
+    <div id="hex-legend-body"></div>
+    <div id="hex-detail" style="display:none;margin-top:10px;padding-top:10px;border-top:1px dashed var(--border)"></div>
+    <div style="margin-top:10px;font-size:10.5px;color:#64748b;line-height:1.55">Each hex ≈ ${HEX_MI} mi across. Color = <b>expected captured demand</b> — VetMetric's site-level capture model (the same engine as Evaluate, not the ranked-list blend), so the best surface hex and the #1 list ZIP can differ. Demographics come from the hex's ZIP; competition is computed per hex from real clinic coordinates within ${HEX_RADIUS_MI} mi (absolute Huff capture, PE-weighted ${HEX_PE_W}×). The income/pets/growth sliders steer demand; the competition slider tunes how decisive competition is. Hover any hex; click for its breakdown.</div></div>`;
+}
+function _fillLegend(){
+  const body=document.getElementById('hex-legend-body'); if(!body) return;
+  const ranked=[...hexScored].filter(h=>h.score!=null).sort((a,b)=>b.score-a.score);
+  const seen=new Set(), best=[];                                  // top DISTINCT ZIPs (one hex per ZIP)
+  for(const h of ranked){ if(seen.has(h.zip)) continue; seen.add(h.zip); best.push(h); if(best.length>=6) break; }
+  const top=best.map(h=>
+    `<div class="hex-top-row" onclick="_hexOpenDetailByCell(${h.q},${h.r})">
+       <span style="color:${h._color};font-weight:800;min-width:22px;text-align:right">${Math.round(h.score*100)}</span>
+       <span>${h.zip}${h.city?' · '+h.city:''}</span></div>`).join('');
+  body.innerHTML=`<div style="font-size:11px;color:#475569">Captured demand (low → high)</div>
+    <div class="hex-legbar"></div>
+    <div style="display:flex;justify-content:space-between;font-size:9.5px;color:#94a3b8;margin-top:1px"><span>low</span><span>high</span></div>
+    <div class="hex-top-h">Top spots</div>${top||'<div style="font-size:11px;color:#94a3b8">No scored hexes yet.</div>'}`;
+}
+function _hexOpenDetailByCell(q,r){ const i=_hexAxialIndex.get(q+'_'+r); if(i!=null && hexScored[i]) _hexOpenDetail(hexScored[i]); }
+function _hexOpenDetail(h){
+  const box=document.getElementById('hex-detail'); if(!box) return;
+  box.style.display='block';
+  const bar=(lbl,v,col)=>`<div style="display:flex;align-items:center;gap:6px;margin:2px 0"><span style="width:62px;font-size:10px;color:#64748b">${lbl}</span><div style="flex:1;height:7px;background:#eef2f7;border-radius:4px;overflow:hidden"><i style="display:block;height:100%;width:${Math.round(clamp01(v)*100)}%;background:${col}"></i></div></div>`;
+  box.innerHTML=`<div style="font-weight:800;font-size:13px">${h.zip}${h.city?' · '+h.city:''}</div>
+    <div style="font-size:11px;color:#475569;margin:6px 0">Income ${_fmtMoney(h.inc)} · Dog HH ${h.dog!=null?Math.round(h.dog).toLocaleString():'—'}<br>Growth '21→'24 ${_fmtPct(h.grow)} · New construction ${h.cons!=null?Math.round(h.cons*100)+'%':'—'}</div>
+    ${bar('Spend',h.spendIdx||0,'#15803d')}${bar('Volume',h.volIdx||0,'#4338ca')}${bar('Trajectory',h.trajIdx||0,'#0d9488')}${bar('Capture',h.share||0,'#b45309')}
+    <div style="margin:8px 0 6px;font-size:12px">Captured-demand score <b style="color:${h._color}">${Math.round((h.score||0)*100)}</b></div>
+    <button class="eval-btn" style="width:100%" onclick="evaluateHexSpot(${h.cLat.toFixed(5)},${h.cLon.toFixed(5)})">Evaluate this spot →</button>`;
+}
+function evaluateHexSpot(lat,lon){
+  const h=hexScored.find(x=>Math.abs(x.cLat-lat)<1e-4 && Math.abs(x.cLon-lon)<1e-4);
+  const ring=h?h.ring:_hexCornersLatLon(lat,lon);
+  _hexTeardown(); oppView='list';
+  const panel=document.getElementById('opp-panel'); if(panel) panel.classList.remove('show');
+  drawnArea={ type:'poly', points: ring.map(p=>({lat:p[0],lng:p[1]})) };
+  switchSection('map');
+  setTimeout(()=>{
+    map.invalidateSize();
+    map.setView([lat,lon],14,{animate:false});
+    try{ captureAreaClinics(); }catch(e){}
+    openEvaluateArea();
+  },60);
+}
 
 // New-construction signal: share of a ZIP's homes built 2010 or later (ACS B25034).
 // Forward-ish proxy for new rooftops → future pet demand. Fetched once, cached.
@@ -3745,6 +4095,14 @@ function exportOppCSV(){
 function renderOppList(){
   const wrap=document.getElementById('opp-list-wrap');
   const tEl=document.getElementById('opp-title'); if(tEl) tEl.textContent='Opportunity Scores — '+oppRegion.name;
+  const seg=`<div class="opp-view-seg"><button class="${oppView==='list'?'on':''}" onclick="setOppView('list')">List</button><button class="${oppView==='surface'?'on':''}" onclick="setOppView('surface')">Surface</button></div>`;
+  if(oppView==='surface'){
+    document.getElementById('opp-sub').textContent=`${oppScored.length} ZIPs scored across ${oppRegion.name} · opportunity surface — best buildable spots`;
+    wrap.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">${seg}${oppScored.length?_exportBtn('exportOppCSV()','Export'):''}</div>${_hexSurfaceCard()}`;
+    renderHexSurface();
+    _oppKpiTop();
+    return;
+  }
   document.getElementById('opp-sub').textContent=
     `${oppScored.length} ZIPs scored across ${oppRegion.name} · ranked best to worst`;
   const rows=oppScored.map((r,i)=>{
@@ -3768,15 +4126,16 @@ function renderOppList(){
     </div>`;
   }).join('');
   const methodNote=`<details class="vm-method-note" style="margin-top:14px"><summary>How these scores are computed</summary><div style="margin-top:6px">Four factors — income (Census ACS 2022), pet demand (<b>modeled</b> from ACS 2022 housing), low competition (pet households per PE-weighted clinic), and growth (ACS 2021→2024 population + new construction) — each scaled 0–100 across this region's ZIPs and blended by your weights. Sub-scores are <b>region-relative percentiles</b>, not absolute. Competition is radius-based, not drive-time. A screening signal — verify before diligence.</div></details>`;
-  wrap.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div class="opp-list-head" style="margin:0;flex:1"><span>#</span><span>ZIP — tap to expand</span><span style="text-align:center">Score</span></div>${oppScored.length?_exportBtn('exportOppCSV()','Export'):''}</div>${rows}${methodNote}`;
-
-  // Reflect the current #1 in the KPI bar
-  if(oppScored.length){
-    const top=oppScored[0];
-    const kEl=document.getElementById('kpi-opp'), kFoot=document.getElementById('kpi-opp-foot');
-    if(kEl){ kEl.textContent=top.zip; kEl.classList.remove('pending'); }
-    if(kFoot){ kFoot.textContent=`score ${Math.round(top.score)} · ${top.city||'North Texas'}`; }
-  }
+  wrap.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">${seg}<div class="opp-list-head" style="margin:0;flex:1;margin-left:10px"><span>#</span><span>ZIP — tap to expand</span><span style="text-align:center">Score</span></div>${oppScored.length?_exportBtn('exportOppCSV()','Export'):''}</div>${rows}${methodNote}`;
+  _oppKpiTop();
+}
+// Reflect the current #1 ranked ZIP in the KPI bar (shared by list + surface views)
+function _oppKpiTop(){
+  if(!oppScored.length) return;
+  const top=oppScored[0];
+  const kEl=document.getElementById('kpi-opp'), kFoot=document.getElementById('kpi-opp-foot');
+  if(kEl){ kEl.textContent=top.zip; kEl.classList.remove('pending'); }
+  if(kFoot){ kFoot.textContent=`score ${Math.round(top.score)} · ${top.city||'North Texas'}`; }
 }
 
 // Click a ranked ZIP → prepare everything while still on the Opportunity
