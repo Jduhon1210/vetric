@@ -3921,6 +3921,15 @@ function layerToRing(l){
     return ring.map(c=>[c[1],c[0]]); // GeoJSON is [lng,lat]
   }catch(e){ return null; }
 }
+// Outer ring(s) as [lat,lng][] straight from a raw GeoJSON feature (Polygon + MultiPolygon),
+// so area-weighting can run off the cached geometry without a painted Leaflet layer.
+function _zipRingsFromFeature(feat){
+  const g=feat&&feat.geometry; if(!g) return [];
+  const polys = g.type==='Polygon' ? [g.coordinates] : (g.type==='MultiPolygon' ? g.coordinates : []);
+  const rings=[];
+  for(const poly of polys){ const outer=poly&&poly[0]; if(outer&&outer.length) rings.push(outer.map(c=>[c[1],c[0]])); }
+  return rings;
+}
 
 // Compute area-weighted average of a value across ZIPs that intersect the draw shape.
 // dataLookup(zip) → number|null
@@ -4003,49 +4012,90 @@ function inViewZipValues(layer, dataLookup){
 }
 
 /* ─── Layer KPIs — draw mode (area-weighted) ─────────────────────────────────*/
+// Load the Census income data without painting a layer (reuses the cached batch fetch).
+async function ensureIncomeData(){
+  if(Object.keys(incomeData).length>=100) return;
+  await fetchIncomeBatch([]); // pulls all TX, force-cached
+}
+// Load + model the dog-ownership estimates without painting a layer. Mirrors the model in
+// toggleDogLayer (steps 2–4) — KEEP IN SYNC if that formula changes.
+async function ensureDogData(){
+  if(Object.keys(dogData).length>0) return;
+  if(!dogGeoData) dogGeoData = await loadZipGeometry();
+  const txZips = new Set(dogGeoData.features.map(f => f.properties.zip));
+  if(Object.keys(dogRaw).length===0){
+    const url='https://api.census.gov/data/2022/acs/acs5?get=B11001_001E,B25003_001E,B25003_002E,B25024_001E,B25024_002E&for=zip%20code%20tabulation%20area:*&key=3429f2401376a586a8f6ffc02bb5678ee32fbf44';
+    const res=await fetch(url,{cache:'force-cache'}); if(!res.ok) throw new Error('Census '+res.status);
+    const rows=await res.json();
+    rows.slice(1).forEach(row=>{ const [hh,totOcc,ownOcc,totUnits,sfUnits,zip]=row; if(!txZips.has(zip)) return;
+      const households=parseInt(hh), totalOcc=parseInt(totOcc), ownerOcc=parseInt(ownOcc), totalUnits=parseInt(totUnits), sf=parseInt(sfUnits);
+      if(isNaN(households)||households<=0) return;
+      dogRaw[zip]={ households, ownerPct:(totalOcc>0&&!isNaN(ownerOcc))?ownerOcc/totalOcc:null, sfPct:(totalUnits>0&&!isNaN(sf))?sf/totalUnits:null }; });
+  }
+  let oW=0,oWt=0,sW=0,sWt=0;
+  Object.values(dogRaw).forEach(z=>{ if(z.ownerPct!=null){oW+=z.ownerPct*z.households;oWt+=z.households;} if(z.sfPct!=null){sW+=z.sfPct*z.households;sWt+=z.households;} });
+  const avgOwner=oWt>0?oW/oWt:0.6, avgSf=sWt>0?sW/sWt:0.6;
+  Object.keys(dogRaw).forEach(zip=>{ const z=dogRaw[zip]; let m=0,p=0;
+    if(z.ownerPct!=null&&avgOwner>0){ m+=(z.ownerPct-avgOwner)/avgOwner; p++; }
+    if(z.sfPct!=null&&avgSf>0){ m+=(z.sfPct-avgSf)/avgSf; p++; }
+    m=p>0?m/p:0; m=Math.max(-0.3,Math.min(0.3,m));
+    let rate=TX_DOG_BASE_RATE*(1+m); rate=Math.max(0.2,Math.min(0.7,rate));
+    dogData[zip]={ households:z.households, rate, est:Math.round(z.households*rate) }; });
+}
+// Area-weight income + clipped dog households for a drawn polygon, straight off the cached ZIP
+// geometry (no painted layer needed). bbox prefilter keeps it to the handful of ZIPs in the area.
+function _drawAreaDemo(drawPoly){
+  if(!_zipGeoCache || !drawPoly) return null;
+  let dS=Infinity,dN=-Infinity,dW=Infinity,dE=-Infinity;
+  for(const p of drawPoly){ if(p[0]<dS)dS=p[0]; if(p[0]>dN)dN=p[0]; if(p[1]<dW)dW=p[1]; if(p[1]>dE)dE=p[1]; }
+  const haveInc=Object.keys(incomeData).length>0, haveDog=Object.keys(dogData).length>0;
+  let incW=0,incWt=0,incN=0, dogSum=0,dogN=0;
+  for(const feat of _zipGeoCache.features){
+    const zip=feat.properties&&feat.properties.zip; if(!zip) continue;
+    const hasInc=haveInc&&incomeData[zip]!=null, hasDog=haveDog&&dogData[zip];
+    if(!hasInc&&!hasDog) continue;
+    const rings=_zipRingsFromFeature(feat); if(!rings.length) continue;
+    let fS=Infinity,fN=-Infinity,fW=Infinity,fE=-Infinity;
+    for(const ring of rings) for(const c of ring){ if(c[0]<fS)fS=c[0]; if(c[0]>fN)fN=c[0]; if(c[1]<fW)fW=c[1]; if(c[1]>fE)fE=c[1]; }
+    if(fN<dS||fS>dN||fE<dW||fW>dE) continue;
+    let full=0, clip=0;
+    for(const ring of rings){ if(ring.length<3) continue; full+=_polyArea(ring); const cl=sutherlandHodgman(ring,drawPoly); if(cl&&cl.length>=3) clip+=_polyArea(cl); }
+    if(full<1e-14) continue;
+    const frac=Math.min(clip/full,1); if(frac<0.0001) continue;
+    if(hasInc){ incW+=incomeData[zip]*frac; incWt+=frac; incN++; }
+    if(hasDog){ dogSum+=dogData[zip].est*frac; dogN++; }
+  }
+  return { income: incWt>0?{value:incW/incWt,count:incN}:null, dogs: dogN>0?{sum:dogSum,count:dogN}:null };
+}
+let _drawDemoLoading=false;
+async function _ensureDrawDemo(){
+  if(_drawDemoLoading) return; _drawDemoLoading=true;
+  try{ await loadZipGeometry(); await ensureIncomeData(); await ensureDogData(); }catch(e){}
+  _drawDemoLoading=false;
+  if(drawnArea){ const p=drawnAreaToPolygon(); if(p) updateDrawLayerKpis(p); }
+}
+// Draw-area income + dog households. Now loads the Census data on its own (no need to toggle the
+// layer on) and computes off the cached geometry.
 function updateDrawLayerKpis(drawPoly){
   const incEl=document.getElementById('kpi-income'), incFoot=document.getElementById('kpi-income-foot');
-  if(incEl){
-    if(incomeLayer && Object.keys(incomeData).length){
-      const res=areaWeightedZipStat(incomeLayer, drawPoly, z=>incomeData[z]!=null?incomeData[z]:null, 'avg');
-      if(res){
-        const v=res.value;
-        incEl.textContent= v>=1000 ? '$'+(v/1000).toFixed(1)+'k' : '$'+Math.round(v);
-        incEl.classList.remove('pending');
-        incFoot.textContent=`area-weighted avg · ${res.count} ZIP${res.count!==1?'s':''}`;
-      } else { incEl.textContent='—'; incEl.classList.add('pending'); incFoot.textContent='No ZIP data in area'; }
-    } else { incEl.textContent='Off'; incEl.classList.add('pending'); incFoot.textContent='Turn on the income layer'; }
-  }
-
   const dEl=document.getElementById('kpi-dogs'), dFoot=document.getElementById('kpi-dogs-foot');
-  if(dEl){
-    if(dogLayer && Object.keys(dogData).length){
-      // For dog households: weight the per-ZIP density (est/area) then scale up by drawn area.
-      // Simpler + more correct: sum (clipped_fraction × ZIP_total_est)
-      let totalDogs=0, totalWeight=0, count=0;
-      dogLayer.eachLayer(l=>{
-        const zip=l.feature&&l.feature.properties&&l.feature.properties.zip;
-        if(!zip||!dogData[zip]) return;
-        const ring=layerToRing(l);
-        if(!ring||ring.length<3) return;
-        const fullArea=_polyArea(ring);
-        if(fullArea<1e-14) return;
-        const clipped=sutherlandHodgman(ring, drawPoly);
-        if(!clipped||clipped.length<3) return;
-        const clippedArea=_polyArea(clipped);
-        const fraction=Math.min(clippedArea/fullArea,1);
-        if(fraction<0.0001) return;
-        totalDogs+=dogData[zip].est*fraction;
-        totalWeight+=fraction;
-        count++;
-      });
-      if(count){
-        const sum=Math.round(totalDogs);
-        dEl.textContent= sum>=1000 ? (sum/1000).toFixed(0)+'k' : sum.toLocaleString();
-        dEl.classList.remove('pending');
-        dFoot.textContent=`area-weighted est · ${count} ZIP${count!==1?'s':''}`;
-      } else { dEl.textContent='—'; dEl.classList.add('pending'); dFoot.textContent='No ZIP data in area'; }
-    } else { dEl.textContent='Off'; dEl.classList.add('pending'); dFoot.textContent='Turn on the pet density layer'; }
+  const incReady=_zipGeoCache && Object.keys(incomeData).length>=100;
+  const dogReady=_zipGeoCache && Object.keys(dogData).length>0;
+  if(!incReady && incEl){ incEl.textContent='…'; incEl.classList.add('pending'); incFoot.textContent='Calculating for area…'; }
+  if(!dogReady && dEl){ dEl.textContent='…'; dEl.classList.add('pending'); dFoot.textContent='Calculating for area…'; }
+  if(!incReady || !dogReady) _ensureDrawDemo();
+  const demo=_drawAreaDemo(drawPoly);
+  if(incReady && incEl){
+    if(demo && demo.income){ const v=demo.income.value;
+      incEl.textContent= v>=1000?'$'+(v/1000).toFixed(1)+'k':'$'+Math.round(v); incEl.classList.remove('pending');
+      incFoot.textContent=`area-weighted avg · ${demo.income.count} ZIP${demo.income.count!==1?'s':''}`;
+    } else { incEl.textContent='—'; incEl.classList.add('pending'); incFoot.textContent='No ZIP data in area'; }
+  }
+  if(dogReady && dEl){
+    if(demo && demo.dogs){ const sum=Math.round(demo.dogs.sum);
+      dEl.textContent= sum>=1000?(sum/1000).toFixed(0)+'k':sum.toLocaleString(); dEl.classList.remove('pending');
+      dFoot.textContent=`area-weighted est · ${demo.dogs.count} ZIP${demo.dogs.count!==1?'s':''}`;
+    } else { dEl.textContent='—'; dEl.classList.add('pending'); dFoot.textContent='No ZIP data in area'; }
   }
 }
 
