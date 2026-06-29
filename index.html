@@ -201,6 +201,15 @@ body.vf-surface #zoom-msg{display:none!important;}
 .opp-overlay.show{display:flex;}
 .opp-spinner{width:34px;height:34px;border:3px solid var(--border2);border-top-color:var(--navy);border-radius:50%;animation:oppspin .7s linear infinite;}
 @keyframes oppspin{to{transform:rotate(360deg)}}
+/* Evaluate-in-progress loader (sidebar) */
+.eval-loading{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:60px 28px;gap:13px;}
+.eval-load-spin{width:42px;height:42px;border:3.5px solid var(--border2);border-top-color:var(--navy);border-radius:50%;animation:oppspin .7s linear infinite;}
+.eval-load-title{font-size:15px;font-weight:800;color:var(--text);letter-spacing:-.01em;}
+.eval-load-sub{font-size:12.5px;color:var(--muted);min-height:18px;animation:evalSubPulse 1.7s ease-in-out infinite;}
+@keyframes evalSubPulse{0%,100%{opacity:.5}50%{opacity:1}}
+.eval-load-bar{width:174px;height:4px;background:var(--border2);border-radius:3px;overflow:hidden;margin-top:3px;}
+.eval-load-bar>i{display:block;width:42%;height:100%;background:var(--navy);border-radius:3px;animation:evalBar 1.15s ease-in-out infinite;}
+@keyframes evalBar{0%{margin-left:-45%}100%{margin-left:100%}}
 .opp-overlay .opp-load-zip{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:15px;font-weight:700;color:var(--navy);}
 .opp-overlay .opp-load-sub{font-size:12.5px;color:var(--muted);}
 
@@ -5352,13 +5361,24 @@ function _cellAffl(la,lo){
   }
   return evalZipAffluence; // cell not inside any data ZIP — neutral fallback
 }
+// Animated "evaluating…" loader in the sidebar. Builds the spinner once, then just swaps the step text
+// on later calls so the spinner/bar don't restart. `title` = what we're doing, `msg` = the current step.
+function _evalStage(sb, title, msg){
+  if(!sb || !evalActive) return;
+  const cap = msg ? msg.charAt(0).toUpperCase()+msg.slice(1) : '';
+  const sub = sb.querySelector('.eval-load-sub');
+  if(sub){ sub.textContent=cap; return; }
+  sb.innerHTML=`<div class="eval-loading"><div class="eval-load-spin"></div>`
+    +`<div class="eval-load-title">${title}</div><div class="eval-load-sub">${cap}</div>`
+    +`<div class="eval-load-bar"><i></i></div></div>`;
+}
 async function openEvaluateArea(){
   if(!drawnArea){ vfToast('Draw an area first.'); return; }
   const feat=_drawnAreaToFeature();
   if(!feat){ vfToast('Could not read the drawn area — try redrawing it.'); return; }
   evalActive=true; evalAreaMode=true; evalAreaZips=null; evalZip=null; evalFeat=feat; evalZipAffluence=0.5;
   const sb=document.querySelector('.sidebar');
-  const setStage=msg=>{ if(sb && evalActive) sb.innerHTML='<div class="opp-loading">Analyzing drawn area — '+msg+'</div>'; };
+  const setStage=msg=>_evalStage(sb,'Evaluating this area',msg);
   setStage('loading demographics…');
   markers.forEach(m=>setMarkerVisible(m,false));
   try{ await _ensureEvalDemographics(); }catch(e){}
@@ -5375,7 +5395,7 @@ async function openEvaluate(){
   const zip=[...selectedZips.keys()][0];
   evalActive=true; evalAreaMode=false; evalAreaZips=null; evalZip=zip; evalFeat=selectedZips.get(zip).feat;
   const sb=document.querySelector('.sidebar');
-  const setStage=msg=>{ if(sb && evalActive) sb.innerHTML='<div class="opp-loading">Analyzing ZIP '+zip+' — '+msg+'</div>'; };
+  const setStage=msg=>_evalStage(sb,'Evaluating ZIP '+zip,msg);
   setStage('starting…');
   markers.forEach(m=>setMarkerVisible(m,false)); // competitors drawn by the eval layer
   evalZipAffluence=_evalZipAffluence(zip);
