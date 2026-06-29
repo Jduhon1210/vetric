@@ -3487,24 +3487,27 @@ const HEX_PE_W = 1.6;            // PE competitor weight (calibrated; FIXED — 
 const HEX_MI = 1.0;              // column pitch, miles (~3,500 cells over DFW)
 const HEX_MI_PER_DEG_LAT = 69.0;
 const HEX_BUCKET = 0.02;         // spatial-index bucket size, degrees
-// Major DFW-metroplex open water + big parks — hexes here are NOT graded (you can't build on a lake).
-// Rough [s,w,n,e] boxes (slightly over-exclude irregular shorelines; reliable + no network dep).
-const HEX_NOGRADE = [
-  {s:33.05,w:-97.07,n:33.28,e:-96.92}, // Lewisville Lake
-  {s:32.93,w:-97.15,n:33.04,e:-97.01}, // Grapevine Lake
-  {s:33.32,w:-97.14,n:33.47,e:-96.96}, // Ray Roberts Lake + State Park
-  {s:32.98,w:-96.56,n:33.14,e:-96.41}, // Lake Lavon
-  {s:32.79,w:-96.58,n:32.98,e:-96.41}, // Lake Ray Hubbard
-  {s:32.55,w:-97.05,n:32.71,e:-96.92}, // Joe Pool Lake + Cedar Hill State Park
-  {s:32.83,w:-97.55,n:33.02,e:-97.38}, // Eagle Mountain Lake
-  {s:32.75,w:-97.55,n:32.86,e:-97.41}, // Lake Worth
-  {s:32.58,w:-97.52,n:32.72,e:-97.39}, // Benbrook Lake
-  {s:32.65,w:-97.27,n:32.77,e:-97.16}, // Lake Arlington
-  {s:32.79,w:-96.75,n:32.85,e:-96.70}, // White Rock Lake
-  {s:32.68,w:-97.02,n:32.77,e:-96.93}, // Mountain Creek Lake
-  {s:33.05,w:-97.92,n:33.28,e:-97.72}, // Lake Bridgeport (NW)
-];
-function _hexNoGrade(lat,lon){ for(const b of HEX_NOGRADE){ if(lat>=b.s&&lat<=b.n&&lon>=b.w&&lon<=b.e) return true; } return false; }
+// Accurate open-water exclusion — REAL lake outlines (OSM) baked into dfw-water.json (88 polygons,
+// rings as [lon,lat]). A hex whose centroid sits inside any lake is NOT graded (renders transparent).
+// Replaces the old crude [s,w,n,e] boxes that over-excluded buildable land near irregular shorelines.
+let _hexWater=null, _hexWaterP=null;
+async function _loadHexWater(){
+  if(_hexWater) return _hexWater;
+  if(_hexWaterP) return _hexWaterP;
+  _hexWaterP=(async()=>{
+    try{
+      const rings=await (await fetch('dfw-water.json',{cache:'force-cache'})).json();
+      _hexWater=rings.map(r=>{ let s=99,n=-99,w=999,e=-999; for(const p of r){ if(p[1]<s)s=p[1]; if(p[1]>n)n=p[1]; if(p[0]<w)w=p[0]; if(p[0]>e)e=p[0]; } return {ring:r,s,n,w,e}; });
+    }catch(e){ _hexWater=[]; } // missing file → grade everything (never over-exclude land)
+    return _hexWater;
+  })();
+  return _hexWaterP;
+}
+function _hexInWater(lat,lon){
+  if(!_hexWater) return false;
+  for(const wp of _hexWater){ if(lat<wp.s||lat>wp.n||lon<wp.w||lon>wp.e) continue; if(_pointInRing(lat,lon,wp.ring)) return true; }
+  return false;
+}
 // Module state
 let oppView='list';              // 'list' | 'surface'
 let hexStrategy='all';           // 'all' | 'build' | 'land' — surface strategy filter
@@ -3637,6 +3640,7 @@ function buildHexClinicIndex(){
 // ── build pass (once per region/data load): ZIP join + competition join ─────
 async function buildHexBaseInputs(){
   await loadZipGeometry();
+  await _loadHexWater();                                          // real lake outlines → skip grading open water
   const geo=oppGeoSnap||incomeGeoData||_zipGeoCache;
   if(!geo) throw new Error('no zip geometry');
   _buildHexZipBuckets(geo);
@@ -3649,7 +3653,7 @@ async function buildHexBaseInputs(){
   const winB=Math.ceil(HEX_R/(HEX_BUCKET*HEX_MI_PER_DEG_LON*1609.344));
   for(const h of hexBaseRows){
     const f=_hexZipAt(h.cLat,h.cLon);
-    if(!f || _hexNoGrade(h.cLat,h.cLon)){ h.zip=null; continue; }   // outside TX ZIPs OR on a lake/park → don't grade
+    if(!f || _hexInWater(h.cLat,h.cLon)){ h.zip=null; continue; }   // outside TX ZIPs OR on a lake → don't grade
     h.zip=f.properties.zip; h.feat=f; h.city=f.properties.city||f.properties.po_name||'';
     const z=h.zip;
     h.inc = incSrc[z]!=null?incSrc[z]:(incomeData[z]!=null?incomeData[z]:null);
