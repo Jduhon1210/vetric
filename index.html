@@ -442,6 +442,17 @@ body.vf-surface #zoom-msg{display:none!important;}
 .cedit-sub{font-size:12px;color:var(--muted);margin-top:3px;}
 .cedit-x{background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted);line-height:1;padding:4px 6px;border-radius:8px;}
 .cedit-x:hover{background:var(--bg2);}
+.cedit-hero{position:relative;height:208px;background:linear-gradient(135deg,#1e3a5f,#2d5986);flex-shrink:0;overflow:hidden;}
+.cedit-hero-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .35s;cursor:zoom-in;}
+.cedit-hero-img.loaded{opacity:1;}
+.cedit-hero-grad{position:absolute;inset:0;pointer-events:none;background:linear-gradient(to bottom,rgba(0,0,0,.18),rgba(0,0,0,0) 40%,rgba(0,0,0,.62));}
+.cedit-hero .cedit-x{position:absolute;top:14px;right:16px;color:#fff;background:rgba(0,0,0,.34);font-size:18px;z-index:3;}
+.cedit-hero .cedit-x:hover{background:rgba(0,0,0,.58);}
+.cedit-hero-txt{position:absolute;left:24px;bottom:16px;right:120px;z-index:2;pointer-events:none;}
+.cedit-hero-txt .cedit-title{color:#fff;}
+.cedit-hero-txt .cedit-sub{color:rgba(255,255,255,.86);margin-top:4px;}
+.cedit-hero-zoom{position:absolute;bottom:15px;right:16px;z-index:3;display:none;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#fff;background:rgba(0,0,0,.42);border-radius:20px;padding:5px 11px;cursor:zoom-in;}
+.cedit-hero.has-sv .cedit-hero-zoom{display:flex;}
 .cedit-body{padding:4px 22px;overflow:auto;}
 .cedit-cols{display:flex;flex:1;min-height:0;}
 .cedit-main{flex:1.7;overflow:auto;padding:2px 26px 22px;min-width:0;}
@@ -1471,9 +1482,12 @@ function openClinicEditor(key){
   if(!root){ root=document.createElement('div'); root.id='clinic-editor-root'; document.body.appendChild(root); }
   root.innerHTML=`<div class="cedit-overlay show" onclick="if(event.target===this)closeClinicEditor()">
     <div class="cedit" role="dialog" aria-modal="true" aria-label="Edit location">
-      <div class="cedit-head">
-        <div><div class="cedit-title">Edit location</div><div class="cedit-sub">${esc(c.name)} · ${c.lat.toFixed(4)}, ${c.lon.toFixed(4)}</div></div>
+      <div class="cedit-hero">
+        <img class="cedit-hero-img" src="/api/streetview?lat=${c.lat}&lon=${c.lon}&big=1" alt="Street view of ${esc(c.name)}" onload="this.classList.add('loaded');this.parentElement.classList.add('has-sv')" onerror="this.style.display='none'" onclick="openSVLightbox(${c.lat},${c.lon})">
+        <div class="cedit-hero-grad"></div>
         <button class="cedit-x" onclick="closeClinicEditor()" aria-label="Close">✕</button>
+        <div class="cedit-hero-txt"><div class="cedit-title">Edit location</div><div class="cedit-sub">${esc(c.name)} · ${c.lat.toFixed(4)}, ${c.lon.toFixed(4)}</div></div>
+        <div class="cedit-hero-zoom" onclick="openSVLightbox(${c.lat},${c.lon})">⤢ Enlarge</div>
       </div>
       <div class="cedit-cols">
         <div class="cedit-main">
