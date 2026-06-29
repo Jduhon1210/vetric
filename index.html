@@ -433,6 +433,37 @@ body.vf-surface #zoom-msg{display:none!important;}
 .vm-rm:hover{color:#dc2626;}
 .gear-btn{background:none;border:none;cursor:pointer;padding:2px 6px;border-radius:var(--radius);color:var(--subtle);font-size:13px;line-height:1;flex-shrink:0;margin-left:8px;transition:all .15s;font-family:inherit;}
 .gear-btn:hover{background:var(--bg2);color:var(--text);}
+/* Full-screen clinic editor (analyst location editor) */
+.cedit-overlay{position:fixed;inset:0;z-index:4000;background:rgba(15,23,42,.55);display:none;align-items:flex-start;justify-content:center;padding:36px 16px;overflow:auto;}
+.cedit-overlay.show{display:flex;}
+.cedit{background:#fff;border-radius:16px;width:100%;max-width:780px;box-shadow:0 24px 70px rgba(0,0,0,.42);display:flex;flex-direction:column;max-height:88vh;}
+.cedit-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:18px 22px;border-bottom:1px solid var(--border);}
+.cedit-title{font-size:18px;font-weight:800;color:var(--text);}
+.cedit-sub{font-size:12px;color:var(--muted);margin-top:3px;}
+.cedit-x{background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted);line-height:1;padding:4px 6px;border-radius:8px;}
+.cedit-x:hover{background:var(--bg2);}
+.cedit-body{padding:4px 22px;overflow:auto;}
+.cedit-sec{padding:15px 0;border-bottom:1px solid #f1f5f9;}
+.cedit-sec:last-child{border-bottom:none;}
+.cedit-sec-h{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:#64748b;margin-bottom:11px;}
+.cedit-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.cedit-f{display:flex;flex-direction:column;gap:5px;min-width:0;}
+.cedit-f.full{grid-column:1/-1;}
+.cedit-f>label{font-size:11px;font-weight:700;color:#475569;}
+.cedit-f input,.cedit-f select,.cedit-f textarea{border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;font-family:inherit;color:var(--text);background:#fff;width:100%;box-sizing:border-box;}
+.cedit-f input:focus,.cedit-f select:focus,.cedit-f textarea:focus{outline:none;border-color:var(--navy);box-shadow:0 0 0 3px rgba(30,58,95,.12);}
+.cedit-f textarea{resize:vertical;min-height:62px;}
+.cedit-check{flex-direction:row;align-items:center;gap:8px;font-size:12.5px;color:var(--text);cursor:pointer;}
+.cedit-check input{width:auto;}
+.cedit-foot{display:flex;align-items:center;gap:10px;padding:14px 22px;border-top:1px solid var(--border);background:#fafbfc;border-radius:0 0 16px 16px;}
+.cedit-btn{border:none;border-radius:9px;padding:9px 16px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;}
+.cedit-btn.save{background:var(--navy);color:#fff;}
+.cedit-btn.save:hover{filter:brightness(1.08);}
+.cedit-btn.ghost{background:#fff;border:1px solid var(--border);color:var(--text);}
+.cedit-btn.ghost:hover{background:var(--bg2);}
+.cedit-btn.danger{background:#fff;border:1px solid #fecaca;color:#dc2626;}
+.cedit-btn.danger:hover{background:#fef2f2;}
+.cedit-spacer{flex:1;}
 .popup-website{margin-bottom:10px;}
 .popup-website a{font-size:12px;color:var(--navy);text-decoration:none;display:flex;align-items:center;gap:5px;}
 .popup-website a:hover{text-decoration:underline;}
@@ -1335,9 +1366,9 @@ function buildPopup(c) {
     ${svHTML}
     <div class="popup-header">
       <div class="popup-name">${c.name}</div>
-      <button class="gear-btn" onclick="toggleSettings('${key}')" title="Edit this clinic" aria-label="Edit this clinic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></button>
+      <button class="gear-btn" onclick="openClinicEditor('${key}')" title="Edit this location" aria-label="Edit this location"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></button>
     </div>
-    ${starHTML}${kindHTML}${multHTML}${addrHTML}${telHTML}${webHTML}${peHTML}
+    ${starHTML}${kindHTML}${multHTML}${addrHTML}${telHTML}${webHTML}${peHTML}${_analystPopupHTML(getOverrides()[key])}
     <div class="popup-disclaimer">Source: privateequityvet.org — Texas</div>
     <div class="settings-panel" id="sp-${key}">
       <div><div class="settings-label">Clinic name</div>
@@ -1404,6 +1435,144 @@ function applyOverride(key,nm,pe,mult,kind){
   if(markers[idx]){ markers[idx]._kind=_kindOf(c); markers[idx].setIcon(makeIcon(pinColor(c), pinTier(c))); markers[idx].setPopupContent(buildPopup(c)); markers[idx].openPopup(); }
   applyTypeVisibility();                  // type may have changed → re-apply the type filter
   renderList();
+}
+
+/*  Full-screen clinic editor — the analyst's "edit this location" workspace  */
+function _ceEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function _knownPEFirms(){
+  const set=new Set();
+  try{ if(typeof PE_COORDS!=='undefined') for(const c of PE_COORDS){ if(c[2]) set.add(c[2]); } }catch(e){}
+  const ov=getOverrides(); for(const k in ov){ if(ov[k]&&ov[k].pe) set.add(ov[k].pe); }
+  return [...set].sort((a,b)=>a.localeCompare(b));
+}
+function _ceSel(id,label,cur,opts,blank){
+  const o=opts.map(s=>{ const i=s.indexOf(':'),val=s.slice(0,i),lab=s.slice(i+1); return `<option value="${val}"${cur===val?' selected':''}>${lab}</option>`; }).join('');
+  return `<div class="cedit-f"><label>${label}</label><select id="${id}">${blank?`<option value="">—</option>`:''}${o}</select></div>`;
+}
+function openClinicEditor(key){
+  const idx=clinics.findIndex(c=>clinicKey(c)===key); if(idx<0) return;
+  const c=clinics[idx], o=getOverrides()[key]||{}, esc=_ceEsc;
+  const owner = o.pe!=null ? o.pe : (c.pe?c.pe.owner:'');
+  const kind  = o.kind || c._kind || (typeof clinicCategory==='function'?clinicCategory(c.name):'small') || 'small';
+  const status= o.status||'operating', size=o.size||'';
+  const rating= o.ratingOv!=null?o.ratingOv:(typeof c.rating==='number'?c.rating:'');
+  const reviews=o.reviewsOv!=null?o.reviewsOv:(c.reviews!=null?c.reviews:'');
+  const mult  = o.mult!=null?o.mult:(c.mult!=null?c.mult:1);
+  const firms = _knownPEFirms().map(f=>`<option value="${esc(f)}">`).join('');
+  let root=document.getElementById('clinic-editor-root');
+  if(!root){ root=document.createElement('div'); root.id='clinic-editor-root'; document.body.appendChild(root); }
+  root.innerHTML=`<div class="cedit-overlay show" onclick="if(event.target===this)closeClinicEditor()">
+    <div class="cedit" role="dialog" aria-modal="true" aria-label="Edit location">
+      <div class="cedit-head">
+        <div><div class="cedit-title">Edit location</div><div class="cedit-sub">${esc(c.name)} · ${c.lat.toFixed(4)}, ${c.lon.toFixed(4)}</div></div>
+        <button class="cedit-x" onclick="closeClinicEditor()" aria-label="Close">✕</button>
+      </div>
+      <div class="cedit-body">
+        <datalist id="ce-firms">${firms}</datalist>
+        <div class="cedit-sec"><div class="cedit-sec-h">Identity</div><div class="cedit-grid">
+          <div class="cedit-f full"><label>Clinic name</label><input id="ce-name" value="${esc(c.name)}"></div>
+          ${_ceSel('ce-status','Pipeline status',status,['operating:Operating','prospect:Prospect','target:Target','loi:Under LOI','dd:In diligence','acquired:Acquired','closed:Closed'])}
+          ${_ceSel('ce-size','Practice size',size,['solo:Solo (1 DVM)','small:2–3 DVM','mid:4–6 DVM','large:7+ DVM','hospital:Hospital / ER'],true)}
+        </div></div>
+        <div class="cedit-sec"><div class="cedit-sec-h">Ownership &amp; competition</div><div class="cedit-grid">
+          <div class="cedit-f full"><label>PE firm / owner — leave blank for independent</label><input id="ce-pe" list="ce-firms" value="${esc(owner)}" placeholder="e.g. Mars, Shore Capital Partners…"></div>
+          ${_ceSel('ce-kind','Clinic type',kind,['small:Small animal','large:Large animal / equine','specialty:Specialty / ER','mobile:Mobile / house-call'])}
+          <div class="cedit-f"><label>Competition weight × (0–5)</label><input id="ce-mult" type="number" min="0" max="5" step="0.1" value="${mult}"></div>
+          <div class="cedit-f full"><label class="cedit-check"><input type="checkbox" id="ce-exclude"${o.exclude?' checked':''}> Exclude from all scoring &amp; competition (keeps the pin, mutes its market impact)</label></div>
+        </div></div>
+        <div class="cedit-sec"><div class="cedit-sec-h">Market data &amp; estimates</div><div class="cedit-grid">
+          <div class="cedit-f"><label>Rating (★)</label><input id="ce-rating" type="number" min="0" max="5" step="0.1" value="${rating}"></div>
+          <div class="cedit-f"><label>Reviews</label><input id="ce-reviews" type="number" min="0" step="1" value="${reviews}"></div>
+          <div class="cedit-f"><label>Est. annual revenue ($)</label><input id="ce-rev" type="number" min="0" step="10000" value="${o.revenue!=null?o.revenue:''}" placeholder="e.g. 1800000"></div>
+          <div class="cedit-f"><label>Est. EBITDA multiple (×)</label><input id="ce-mx" type="number" min="0" step="0.5" value="${o.multiple!=null?o.multiple:''}" placeholder="e.g. 8"></div>
+        </div></div>
+        <div class="cedit-sec"><div class="cedit-sec-h">Contact &amp; location</div><div class="cedit-grid">
+          <div class="cedit-f full"><label>Address</label><input id="ce-addr" value="${esc(o.addr!=null?o.addr:(c.addr||''))}"></div>
+          <div class="cedit-f"><label>Phone</label><input id="ce-tel" value="${esc(o.tel!=null?o.tel:(c.tel||''))}"></div>
+          <div class="cedit-f"><label>Website</label><input id="ce-web" value="${esc(o.web!=null?o.web:(c.website||''))}"></div>
+        </div></div>
+        <div class="cedit-sec"><div class="cedit-sec-h">Analyst notes</div><div class="cedit-grid">
+          <div class="cedit-f full"><label>Tags (comma-separated)</label><input id="ce-tags" value="${esc(o.tags||'')}" placeholder="e.g. priority, multi-doctor, real-estate-owned"></div>
+          <div class="cedit-f full"><label>Notes</label><textarea id="ce-notes" placeholder="Diligence notes, key contacts, anything worth remembering…">${esc(o.notes||'')}</textarea></div>
+        </div></div>
+      </div>
+      <div class="cedit-foot">
+        <button class="cedit-btn save" onclick="saveClinicEditor('${key}')">Save changes</button>
+        <button class="cedit-btn ghost" onclick="closeClinicEditor()">Cancel</button>
+        <button class="cedit-btn ghost" onclick="resetClinicEditor('${key}')">Reset to default</button>
+        <div class="cedit-spacer"></div>
+        <button class="cedit-btn danger" onclick="if(confirm('Remove this location from the map?')){deleteClinic('${key}');closeClinicEditor();}">Delete</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.style.overflow='hidden';
+}
+function closeClinicEditor(){ const r=document.getElementById('clinic-editor-root'); if(r) r.innerHTML=''; document.body.style.overflow=''; }
+function _ceNum(id){ const x=parseFloat(document.getElementById(id)?.value); return isFinite(x)?x:null; }
+function saveClinicEditor(key){
+  const g=id=>document.getElementById(id);
+  let mult=parseFloat(g('ce-mult')?.value); if(!isFinite(mult)||mult<0) mult=1;
+  const o=getOverrides();
+  o[key]={
+    name:(g('ce-name')?.value||'').trim(),
+    pe:(g('ce-pe')?.value||'').trim()||null,
+    mult, kind:g('ce-kind')?.value||'small',
+    status:g('ce-status')?.value||'operating',
+    size:g('ce-size')?.value||'',
+    exclude:!!(g('ce-exclude')&&g('ce-exclude').checked),
+    ratingOv:_ceNum('ce-rating'), reviewsOv:_ceNum('ce-reviews'),
+    revenue:_ceNum('ce-rev'), multiple:_ceNum('ce-mx'),
+    addr:(g('ce-addr')?.value||'').trim(), tel:(g('ce-tel')?.value||'').trim(), web:(g('ce-web')?.value||'').trim(),
+    tags:(g('ce-tags')?.value||'').trim(), notes:(g('ce-notes')?.value||'').trim()
+  };
+  setStore('vf_overrides',o);
+  _applyClinicOverride(key);
+  _acqIndKey=''; _hexClinicIndex=null; _hexBuiltKey='';   // overrides feed acquisitions + surface competition → invalidate
+  if(typeof evalActive!=='undefined' && evalActive && typeof _evalComputeAndRender==='function') _evalComputeAndRender();
+  closeClinicEditor();
+  vfToast && vfToast('Saved');
+}
+function resetClinicEditor(key){
+  const o=getOverrides(); delete o[key]; setStore('vf_overrides',o);
+  _acqIndKey=''; _hexClinicIndex=null; _hexBuiltKey='';
+  closeClinicEditor();
+  if(typeof fetchClinics==='function') fetchClinics();   // refetch restores the original record
+}
+// Apply a stored override's FULL field set to the live clinic + marker (immediate, no refetch).
+function _applyClinicOverride(key){
+  const idx=clinics.findIndex(c=>clinicKey(c)===key); if(idx<0) return;
+  const c=clinics[idx], o=getOverrides()[key]||{};
+  if(o.name) c.name=o.name;
+  c.pe = o.pe ? {owner:o.pe, brand:'Manual override', manual:true} : null; c.peChecked=true;
+  if(o.mult!=null) c.mult=o.mult;
+  if(o.kind) c._kind=o.kind;
+  if(o.ratingOv!=null) c.rating=o.ratingOv;
+  if(o.reviewsOv!=null) c.reviews=o.reviewsOv;
+  if(o.addr) c.addr=o.addr;
+  if(o.tel) c.tel=o.tel;
+  if(o.web) c.website=o.web;
+  c._status=o.status||null; c._size=o.size||null; c._excluded=!!o.exclude;
+  c._revenue=(o.revenue!=null?o.revenue:null); c._multiple=(o.multiple!=null?o.multiple:null);
+  c._tags=o.tags||null; c._notes=o.notes||null;
+  if(markers[idx]){ markers[idx]._kind=_kindOf(c); markers[idx].setIcon(makeIcon(pinColor(c), pinTier(c))); if(markers[idx].setOpacity) markers[idx].setOpacity(c._excluded?0.45:1); markers[idx].setPopupContent(buildPopup(c)); markers[idx].openPopup(); }
+  applyTypeVisibility(); renderList();
+}
+// Analyst metadata block for the pin popup (status / size / revenue / tags / notes) — reads the override store so it survives refetch.
+function _analystPopupHTML(o){
+  o=o||{};
+  const stL={prospect:'Prospect',target:'Target',loi:'Under LOI',dd:'In diligence',acquired:'Acquired',closed:'Closed'};
+  const szL={solo:'Solo (1 DVM)',small:'2–3 DVM',mid:'4–6 DVM',large:'7+ DVM',hospital:'Hospital / ER'};
+  const pill=(bg,col,t)=>`<span style="display:inline-block;font-size:10px;font-weight:700;background:${bg};color:${col};border-radius:9px;padding:2px 8px;margin:0 4px 4px 0">${t}</span>`;
+  let bad='';
+  if(stL[o.status]) bad+=pill('#1e3a8a','#fff',stL[o.status]);
+  if(o.exclude) bad+=pill('#6b7280','#fff','Muted in analysis');
+  if(o.size&&szL[o.size]) bad+=pill('#eef2f7','#475569',szL[o.size]);
+  const lines=[];
+  if(o.revenue!=null||o.multiple!=null){ const s=[]; if(o.revenue!=null)s.push('Rev ~$'+Number(o.revenue).toLocaleString()); if(o.multiple!=null)s.push(o.multiple+'× EBITDA'); lines.push(s.join(' · ')); }
+  if(o.tags) lines.push('🏷 '+_ceEsc(o.tags));
+  if(o.notes) lines.push('<span style="color:#475569">'+_ceEsc(o.notes)+'</span>');
+  if(!bad && !lines.length) return '';
+  return `<div style="margin-top:9px;padding-top:9px;border-top:1px solid #eef2f7">${bad?`<div style="margin-bottom:2px">${bad}</div>`:''}${lines.map(l=>`<div style="font-size:11.5px;color:#334155;margin-top:3px">${l}</div>`).join('')}</div>`;
 }
 
 /*  List  */
@@ -3616,8 +3785,8 @@ function buildHexClinicIndex(){
   const overrides=getOverrides(), deleted=getDeleted(), byCell=new Map();
   const add=(la,lo,pe,reviews)=>{
     const k=Math.round(la*1000)+'_'+Math.round(lo*1000);    // 110m dedup — exactly _evalCompetitors
-    if(deleted[k]||byCell.has(k)) return;
-    byCell.set(k,{lat:la,lon:lo,pe:!!pe,reviews:(typeof reviews==='number'?reviews:null),mult:(overrides[k]&&overrides[k].mult)||1});
+    const _ov=overrides[k]; if(deleted[k]||(_ov&&_ov.exclude)||byCell.has(k)) return;
+    byCell.set(k,{lat:la,lon:lo,pe:!!pe,reviews:(_ov&&_ov.reviewsOv!=null)?_ov.reviewsOv:(typeof reviews==='number'?reviews:null),mult:(_ov&&_ov.mult)||1});
   };
   if(peLoaded && typeof PE_COORDS!=='undefined') for(const c of PE_COORDS){
     const enr=_vetEnrichAt(c[0],c[1]);                       // MUST be 'enr' (TDZ guard, CLAUDE.md)
@@ -4562,8 +4731,8 @@ function _areaClinicCount(){
   if(!drawnArea) return 0;
   const sig=(drawnArea.type==='rect'&&drawnArea.bounds&&drawnArea.bounds.toBBoxString?drawnArea.bounds.toBBoxString():JSON.stringify(drawnArea.points||[]))+'|'+(_vfIncludeMobile()?'m1':'m0');
   if(_areaClinCache.key===sig) return _areaClinCache.n;
-  const deleted=getDeleted(), seen=new Set(); let n=0;
-  const add=(la,lo)=>{ const k=Math.round(la*1000)+'_'+Math.round(lo*1000); if(deleted[k]||seen.has(k))return; seen.add(k); if(isInDrawnArea(la,lo)) n++; };
+  const deleted=getDeleted(), overrides=getOverrides(), seen=new Set(); let n=0;
+  const add=(la,lo)=>{ const k=Math.round(la*1000)+'_'+Math.round(lo*1000); if(deleted[k]||(overrides[k]&&overrides[k].exclude)||seen.has(k))return; seen.add(k); if(isInDrawnArea(la,lo)) n++; };
   if(peLoaded && typeof PE_COORDS!=='undefined') for(const c of PE_COORDS) add(c[0],c[1]);
   for(const v of _activeVetClinics()) add(v.lat,v.lon);
   _areaClinCache={key:sig,n}; return n;
@@ -4716,7 +4885,7 @@ function _evalZipAffluence(zip){
 function _evalCompetitors(feat, radiusMi){
   const {s,n,w,e}=_evalBuffer(feat, radiusMi);
   const deleted=getDeleted(), overrides=getOverrides(), byKey=new Map();
-  const add=(la,lo,pe,reviews,rating,name,owner)=>{ if(la<s||la>n||lo<w||lo>e) return; const k=`${Math.round(la*1000)}_${Math.round(lo*1000)}`; if(deleted[k]) return; if(!byKey.has(k)) byKey.set(k,{lat:la,lon:lo,pe:!!pe,reviews:(typeof reviews==='number'?reviews:null),rating:(typeof rating==='number'?rating:null),mult:(overrides[k]&&overrides[k].mult)||1,name:name||null,owner:owner||null}); }; // reviews/rating/name DISPLAY-only; mult is the per-clinic competition override (Settings → edit pin)
+  const add=(la,lo,pe,reviews,rating,name,owner)=>{ if(la<s||la>n||lo<w||lo>e) return; const k=`${Math.round(la*1000)}_${Math.round(lo*1000)}`; const _ov=overrides[k]; if(deleted[k]||(_ov&&_ov.exclude)) return; const _rev=(_ov&&_ov.reviewsOv!=null)?_ov.reviewsOv:(typeof reviews==='number'?reviews:null); if(!byKey.has(k)) byKey.set(k,{lat:la,lon:lo,pe:!!pe,reviews:_rev,rating:(typeof rating==='number'?rating:null),mult:(_ov&&_ov.mult)||1,name:name||null,owner:owner||null}); }; // reviews/rating/name DISPLAY-only; mult is the per-clinic competition override (Settings → edit pin)
   if(peLoaded && typeof PE_COORDS!=='undefined') for(const c of PE_COORDS){ if(c[0]<s||c[0]>n||c[1]<w||c[1]>e) continue; const enr=_vetEnrichAt(c[0],c[1]); add(c[0],c[1],true,enr&&enr.reviews,enr&&enr.rating, c[4]||(enr&&enr.name), c[2]); } // c[4]=clinic name, c[2]=owner/PE firm. NB: var must NOT be named 'e' — shadows the destructured east bound 'e' above → TDZ ReferenceError
   // SINGLE independent source: VET_CLINICS (Google Places, complete & not viewport-limited),
   // PE-typed via checkPE. Do NOT also fold in evalData.vets (Overpass) — that double-counted
