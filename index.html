@@ -747,6 +747,7 @@ body.vf-surface #zoom-msg{display:none!important;}
 
           <div class="set-h">Options</div>
           <label class="set-opt"><input type="checkbox" id="opt-mobile" onchange="toggleIncludeMobile(this.checked)"><span><b>Count mobile / traveling vets as competition</b><span class="set-opt-note">Off by default — a mobile vet's listed address is usually a home or PO box, not a clinic location, so it doesn't anchor a real trade area. Turn on to fold them into competition counts everywhere (map, opportunity, evaluate).</span></span></label>
+          <label class="set-opt"><input type="checkbox" id="opt-hidepins" onchange="toggleHidePins(this.checked)"><span><b>Auto-hide clinic pins when zoomed out</b><span class="set-opt-note">On by default — pins clear when you zoom out past city level (and reappear as you zoom back in), keeping the map fast and uncluttered. Turn off to keep pins visible at every zoom.</span></span></label>
 
           <div class="set-h">How the scores are computed</div>
           <div class="set-li"><b>Opportunity score</b> — four weighted factors (income, pet demand, low competition, population growth) are each scaled 0–100 across all North Texas ZIPs, blended by your sliders, and ranked. Two refinements are computed internally rather than exposed as dials: low competition is measured demand-relative (pet households per clinic, PE weighted heavier), so a small ZIP isn't "open" just because its raw clinic count is low; and population growth blends ACS population change with new-home construction (share of homes built 2010+).</div>
@@ -1121,6 +1122,7 @@ function vetricSignOut(){
 </script>
 <script src="pe-data.js" defer></script>
 <script src="vet-clinics.js" defer></script>
+<script src="vet-staff.js" defer onerror="window.VET_STAFF=window.VET_STAFF||{}"></script><!-- DVMs-on-staff (build-vets.mjs); optional, app degrades gracefully if absent -->
 <script>
 const NAVY='#1e3a8a', RED='#dc2626', AMBER='#f59e0b';
 // Set to true to revert to Overpass for independent clinics (one-line rollback)
@@ -1159,6 +1161,28 @@ function _vetEnrichAt(lat,lon){
     for(const v of a){ const d=Math.abs(v.lat-lat)+Math.abs(v.lon-lon); if(d<bestD){bestD=d;best=v;} }
   }
   return best;
+}
+// Veterinarians-on-staff for a clinic (from optional window.VET_STAFF, keyed by ~111m cell). Exact
+// cell first, then nearest within the ~330m window — so PE pins (PE_COORDS coords) match too.
+function _vetStaffAt(lat,lon){
+  if(typeof VET_STAFF==='undefined' || !VET_STAFF) return null;
+  const la=Math.round(lat*1000), lo=Math.round(lon*1000);
+  const exact=VET_STAFF[la+'_'+lo]; if(exact) return exact;
+  let best=null,bestD=Infinity;
+  for(let dla=-3;dla<=3;dla++) for(let dlo=-4;dlo<=4;dlo++){
+    const v=VET_STAFF[(la+dla)+'_'+(lo+dlo)]; if(!v) continue;
+    const d=Math.abs(dla)+Math.abs(dlo); if(d<bestD){bestD=d;best=v;}
+  }
+  return best;
+}
+// "DVMs on staff" popup block (optional — returns '' when no roster). Mirrors _analystPopupHTML's contract.
+function _staffPopupHTML(c){
+  const s=_vetStaffAt(c.lat,c.lon); if(!s||!s.n) return '';
+  const list=(s.vets||[]).slice(0,6).join(', ');
+  const extra=(s.vets&&s.vets.length>6)?` +${s.vets.length-6} more`:'';
+  return `<div style="margin-top:9px;padding-top:9px;border-top:1px solid #eef2f7">`
+    +`<div style="font-size:11px;font-weight:700;color:#0f172a">🩺 ${s.n} veterinarian${s.n!==1?'s':''} on staff</div>`
+    +(list?`<div style="font-size:11px;color:#475569;margin-top:2px;line-height:1.5">${list}${extra}</div>`:'')+`</div>`;
 }
 const MIN_ZOOM=10;
 
@@ -1255,6 +1279,23 @@ try{ if(localStorage.getItem('vf_authed')==='1') _vfRevealApp(); }catch(_){}
 
 const clusterGroup = L.layerGroup();
 map.addLayer(clusterGroup);
+// Auto-hide clinic pins when zoomed out (default ON; Settings → Data & Logic). Pins persist across pans,
+// so without this a far-out view shows a stale clump. We DETACH the whole layer below MIN_ZOOM (O(1), no
+// per-marker work) and re-attach on zoom-in. Toggle OFF to keep pins at every zoom.
+function _vfHidePins(){ try{ return localStorage.getItem('vf_hidepins')!=='0'; }catch(_){ return true; } }
+function _applyPinZoomVisibility(){
+  if(typeof clusterGroup==='undefined') return;
+  const below = map.getZoom() < MIN_ZOOM;
+  const hide = _vfHidePins() && below;
+  if(hide){ if(map.hasLayer(clusterGroup)) map.removeLayer(clusterGroup); }
+  else if(!map.hasLayer(clusterGroup)) map.addLayer(clusterGroup);
+  const zm=document.getElementById('zoom-msg');
+  if(zm){
+    if(document.body.classList.contains('vf-surface')) zm.style.display='none';
+    else zm.style.display = (below && (hide || !(typeof clinics!=='undefined' && clinics.length))) ? 'block' : 'none';
+  }
+}
+map.on('zoomend', _applyPinZoomVisibility);
 const propertyLayer = L.layerGroup(); // not added to map until toggled on
 
 function pinSVG(color, tier){
@@ -1387,7 +1428,7 @@ function buildPopup(c) {
       <div class="popup-name">${c.name}</div>
       <button class="gear-btn" onclick="openClinicEditor('${key}')" title="Edit this location" aria-label="Edit this location"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></button>
     </div>
-    ${starHTML}${kindHTML}${multHTML}${addrHTML}${telHTML}${webHTML}${peHTML}${_analystPopupHTML(getOverrides()[key])}
+    ${starHTML}${kindHTML}${multHTML}${addrHTML}${telHTML}${webHTML}${peHTML}${_staffPopupHTML(c)}${_analystPopupHTML(getOverrides()[key])}
     <div class="popup-disclaimer">Source: privateequityvet.org — Texas</div>
     <div class="settings-panel" id="sp-${key}">
       <div><div class="settings-label">Clinic name</div>
@@ -1474,6 +1515,13 @@ function openClinicEditor(key){
   const owner = o.pe!=null ? o.pe : (c.pe?c.pe.owner:'');
   const kind  = o.kind || c._kind || (typeof clinicCategory==='function'?clinicCategory(c.name):'small') || 'small';
   const status= o.status||'operating', size=o.size||'';
+  const _staff=_vetStaffAt(c.lat,c.lon);
+  const staffBucket=(_staff&&_staff.n)?(_staff.n>=7?'large':_staff.n>=4?'mid':_staff.n>=2?'small':'solo'):'';
+  const staffInfoHTML=(_staff&&_staff.n)?`<div class="cedit-f full"><label>Veterinarians on staff · auto-detected from website</label>`
+    +`<div style="border:1px solid var(--border);border-radius:8px;padding:9px 11px;background:#f8fafc;font-size:12.5px;color:#334155;line-height:1.55">`
+    +`<b style="color:#0f172a">${_staff.n} DVM${_staff.n!==1?'s':''}</b> — ${esc((_staff.vets||[]).join(', '))}`
+    +`${(_staff.years&&_staff.years.length)||(_staff.schools&&_staff.schools.length)?`<br><span style="color:#64748b;font-size:11px">${_staff.years&&_staff.years.length?'grad '+_staff.years.join(', '):''}${_staff.years&&_staff.years.length&&_staff.schools&&_staff.schools.length?' · ':''}${_staff.schools&&_staff.schools.length?esc(_staff.schools.join(', ')):''}</span>`:''}`
+    +`</div></div>`:'';
   const rating= o.ratingOv!=null?o.ratingOv:(typeof c.rating==='number'?c.rating:'');
   const reviews=o.reviewsOv!=null?o.reviewsOv:(c.reviews!=null?c.reviews:'');
   const mult  = o.mult!=null?o.mult:(c.mult!=null?c.mult:1);
@@ -1495,7 +1543,8 @@ function openClinicEditor(key){
         <div class="cedit-sec"><div class="cedit-sec-h">Identity</div><div class="cedit-grid">
           <div class="cedit-f full"><label>Clinic name</label><input id="ce-name" value="${esc(c.name)}"></div>
           ${_ceSel('ce-status','Pipeline status',status,['operating:Operating','prospect:Prospect','target:Target','loi:Under LOI','dd:In diligence','acquired:Acquired','closed:Closed'])}
-          ${_ceSel('ce-size','Practice size',size,['solo:Solo (1 DVM)','small:2–3 DVM','mid:4–6 DVM','large:7+ DVM','hospital:Hospital / ER'],true)}
+          ${_ceSel('ce-size','Practice size',size||staffBucket,['solo:Solo (1 DVM)','small:2–3 DVM','mid:4–6 DVM','large:7+ DVM','hospital:Hospital / ER'],true)}
+          ${staffInfoHTML}
         </div></div>
         <div class="cedit-sec"><div class="cedit-sec-h">Ownership &amp; competition</div><div class="cedit-grid">
           <div class="cedit-f full"><label>PE firm / owner — leave blank for independent</label><input id="ce-pe" list="ce-firms" value="${esc(owner)}" placeholder="e.g. Mars, Shore Capital Partners…"></div>
@@ -3010,14 +3059,13 @@ async function fetchClinics(){
   const zoom=map.getZoom();
   const zm=document.getElementById('zoom-msg');
   if(zoom<MIN_ZOOM){
-    // Don't wipe loaded pins when zooming out — only NEW fetching is gated by zoom.
-    // Keep what's already loaded (clustered) and just prompt to zoom in for more; show
-    // the big overlay only when nothing is loaded yet.
-    zm.style.display = clinics.length ? 'none' : 'block';
+    // Don't fetch new pins when zoomed out. _applyPinZoomVisibility handles the pin layer (detach if
+    // the hide-when-zoomed-out setting is on) AND the "zoom in" prompt.
+    _applyPinZoomVisibility();
     setStatus(clinics.length ? 'Zoom in to load clinics for a new area' : 'Zoom in to see clinics');
     return;
   }
-  zm.style.display='none';
+  _applyPinZoomVisibility();   // re-attach the layer at this zoom + clear the prompt
   const b=map.getBounds();
   const {lat,lng}=map.getCenter();
   const s=b.getSouth(),w=b.getWest(),n=b.getNorth(),e=b.getEast();
@@ -3144,6 +3192,7 @@ async function fetchClinics(){
     batch.push(m);return m;
   });
   batch.forEach(m=>clusterGroup.addLayer(m));
+  _applyPinZoomVisibility();   // re-evaluate hide-when-zoomed-out after the rebuild
   renderList();
   applyTypeVisibility();           // honor an active clinic-type filter on freshly-drawn pins
 
@@ -4492,7 +4541,8 @@ function oppSelect(zip){
 function marketPickerNote(){ vfToast('Market presets are coming soon — search or pan to move around Texas for now.'); }
 
 /* ─── Settings modal ─────────────────────────────────────────────────────────*/
-function openSettings(){ const m=document.getElementById('opt-mobile'); if(m) m.checked=_vfIncludeMobile(); document.getElementById('settings-overlay').classList.add('show'); }
+function openSettings(){ const m=document.getElementById('opt-mobile'); if(m) m.checked=_vfIncludeMobile(); const h=document.getElementById('opt-hidepins'); if(h) h.checked=_vfHidePins(); document.getElementById('settings-overlay').classList.add('show'); }
+function toggleHidePins(on){ try{ localStorage.setItem('vf_hidepins', on?'1':'0'); }catch(_){}; _applyPinZoomVisibility(); }
 // Toggle whether mobile/traveling vets count as competition. Refreshes every consumer
 // of the competitor set so the change is immediate everywhere.
 function toggleIncludeMobile(on){
