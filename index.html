@@ -830,7 +830,7 @@ body.vf-surface #zoom-msg{display:none!important;}
   <div class="kpi"><div class="k-accent" style="background:#4338ca"></div>
     <div class="k-label">Saturation</div>
     <div class="k-val pending" id="kpi-sat">—</div>
-    <div class="k-foot" id="kpi-sat-foot">clinics per 10k dog HH</div>
+    <div class="k-foot" id="kpi-sat-foot">vets per 10k dog HH</div>
   </div>
   <div class="kpi" style="cursor:pointer" onclick="switchSection('opportunity')"><div class="k-accent" style="background:var(--purple)"></div>
     <div class="k-label">Top opportunity ZIP</div>
@@ -2217,7 +2217,7 @@ function applyZipSelection(){
 
   // 1. Filter clinic markers — show only those genuinely inside a selected ZIP
   const zipFeatMap = new Map([...selectedZips.entries()].map(([z,e])=>[z,e.feat]));
-  let shown = 0, pe = 0;
+  let shown = 0, pe = 0, dvmShown = 0;
   clinics.forEach((c, i) => {
     let inside = false;
     zipFeatMap.forEach((feat, z) => {
@@ -2225,7 +2225,7 @@ function applyZipSelection(){
       if(pointInGeoJSON(c.lat, c.lon, feat)) inside = true;
     });
     setMarkerVisible(markers[i], inside);
-    if(inside){ shown++; if(c.pe) pe++; }
+    if(inside){ shown++; if(c.pe) pe++; dvmShown += (_vetStaffAt(c.lat,c.lon)||{}).n || 2; }
   });
 
   // 2. Update KPI bar for selection
@@ -2278,9 +2278,9 @@ function applyZipSelection(){
       let dogSum = 0, count = 0;
       zips.forEach(z => { const d = dogData[z]; if(d){ dogSum += d.est; count++; } });
       if(dogSum>0){
-        const sat = shown/(dogSum/10000);
+        const sat = dvmShown/(dogSum/10000);
         sEl.textContent = sat.toFixed(1); sEl.classList.remove('pending');
-        sFoot.textContent = `${_satTag(sat)} · ${shown} clinic${shown!==1?'s':''} / ${dogSum>=1000?(dogSum/1000).toFixed(0)+'k':dogSum} dog HH`;
+        sFoot.textContent = `${_satTag(sat)} · ${dvmShown} DVM${dvmShown!==1?'s':''} / ${dogSum>=1000?(dogSum/1000).toFixed(0)+'k':dogSum} dog HH`;
       } else { sEl.textContent = '—'; sEl.classList.add('pending'); sFoot.textContent = 'No pet data'; }
     } else { sEl.textContent='…'; sEl.classList.add('pending'); sFoot.textContent='Calculating…'; ensureDogData().then(()=>{ if(selectedZips.size) applyZipSelection(); }).catch(()=>{}); }
   }
@@ -4786,7 +4786,7 @@ async function ensureGrowthData(){
 }
 // Clinics per 10k dog-HH → qualitative read (thresholds calibrated against real DFW values:
 // urban core/FW ~7, suburbs/exurbs ~12-13; dog-HH is modeled so absolute scale runs ~2x high).
-function _satTag(s){ return s<8?'underserved':(s<12?'balanced':'saturated'); }
+function _satTag(s){ return s<12?'underserved':(s<21?'balanced':'saturated'); }  // DVMs per 10k dog-HH; thresholds = tertiles of the DFW ZIP distribution
 // Area-weight income + clipped dog households for a drawn polygon, straight off the cached ZIP
 // geometry (no painted layer needed). bbox prefilter keeps it to the handful of ZIPs in the area.
 function _drawAreaDemo(drawPoly){
@@ -4815,16 +4815,16 @@ function _drawAreaDemo(drawPoly){
 }
 // Complete-set clinic count inside the drawn area (PE ∪ independents, 110m-deduped, mobile-aware) —
 // NOT viewport-limited like areaClinicKeys, so saturation is accurate for any drawn area. Memoized.
-let _areaClinCache={key:null,n:0};
+let _areaClinCache={key:null,n:0,dvm:0};
 function _areaClinicCount(){
-  if(!drawnArea) return 0;
+  if(!drawnArea) return {n:0,dvm:0};
   const sig=(drawnArea.type==='rect'&&drawnArea.bounds&&drawnArea.bounds.toBBoxString?drawnArea.bounds.toBBoxString():JSON.stringify(drawnArea.points||[]))+'|'+(_vfIncludeMobile()?'m1':'m0');
-  if(_areaClinCache.key===sig) return _areaClinCache.n;
-  const deleted=getDeleted(), overrides=getOverrides(), seen=new Set(); let n=0;
-  const add=(la,lo)=>{ const k=Math.round(la*1000)+'_'+Math.round(lo*1000); if(deleted[k]||(overrides[k]&&overrides[k].exclude)||seen.has(k))return; seen.add(k); if(isInDrawnArea(la,lo)) n++; };
+  if(_areaClinCache.key===sig) return _areaClinCache;
+  const deleted=getDeleted(), overrides=getOverrides(), seen=new Set(); let n=0, dvm=0;
+  const add=(la,lo)=>{ const k=Math.round(la*1000)+'_'+Math.round(lo*1000); if(deleted[k]||(overrides[k]&&overrides[k].exclude)||seen.has(k))return; seen.add(k); if(isInDrawnArea(la,lo)){ n++; dvm += (_vetStaffAt(la,lo)||{}).n || 2; } };
   if(peLoaded && typeof PE_COORDS!=='undefined') for(const c of PE_COORDS) add(c[0],c[1]);
   for(const v of _activeVetClinics()) add(v.lat,v.lon);
-  _areaClinCache={key:sig,n}; return n;
+  _areaClinCache={key:sig,n,dvm}; return _areaClinCache;
 }
 let _drawDemoLoading=false;
 async function _ensureDrawDemo(){
@@ -4851,13 +4851,13 @@ function updateDrawLayerKpis(drawPoly){
       gFoot.textContent=`area-weighted · ${demo.growth.count} ZIP${demo.growth.count!==1?'s':''}`;
     } else { gEl.textContent='—'; gEl.classList.add('pending'); gFoot.textContent='No ZIP data in area'; }
   }
-  // Saturation — clinics in the area per 10k dog-owning households (low = underserved)
+  // Saturation — veterinarians (DVMs) serving the area per 10k dog-owning households (high = saturated)
   if(dogReady && sEl){
     if(demo && demo.dogs && demo.dogs.sum>0){
-      const nClin=_areaClinicCount();
-      const sat=nClin/(demo.dogs.sum/10000), hh=Math.round(demo.dogs.sum);
+      const area=_areaClinicCount(), nDvm=area.dvm;
+      const sat=nDvm/(demo.dogs.sum/10000), hh=Math.round(demo.dogs.sum);
       sEl.textContent=sat.toFixed(1); sEl.classList.remove('pending');
-      sFoot.textContent=`${_satTag(sat)} · ${nClin} clinic${nClin!==1?'s':''} / ${hh>=1000?(hh/1000).toFixed(0)+'k':hh} dog HH`;
+      sFoot.textContent=`${_satTag(sat)} · ${nDvm} DVM${nDvm!==1?'s':''} / ${hh>=1000?(hh/1000).toFixed(0)+'k':hh} dog HH`;
     } else { sEl.textContent='—'; sEl.classList.add('pending'); sFoot.textContent='No demand data in area'; }
   }
 }
@@ -4885,10 +4885,10 @@ function updateLayerKpis(){
     if(dogLayer && Object.keys(dogData).length){
       const vals=inViewZipValues(dogLayer, z=>dogData[z]?dogData[z].est:null);
       const dogSum=vals.reduce((a,b)=>a+b,0);
-      const bnd=map.getBounds(); const nClin=clinics.filter(c=>bnd.contains([c.lat,c.lon])).length;
-      if(dogSum>0){ const sat=nClin/(dogSum/10000);
+      const bnd=map.getBounds(); let nDvm=0; for(const c of clinics){ if(bnd.contains([c.lat,c.lon])) nDvm += (_vetStaffAt(c.lat,c.lon)||{}).n || 2; }
+      if(dogSum>0){ const sat=nDvm/(dogSum/10000);
         sEl.textContent=sat.toFixed(1); sEl.classList.remove('pending');
-        sFoot.textContent=`${_satTag(sat)} · ${nClin} clinic${nClin!==1?'s':''} / ${dogSum>=1000?(dogSum/1000).toFixed(0)+'k':dogSum} dog HH`;
+        sFoot.textContent=`${_satTag(sat)} · ${nDvm} DVM${nDvm!==1?'s':''} / ${dogSum>=1000?(dogSum/1000).toFixed(0)+'k':dogSum} dog HH`;
       } else { sEl.textContent='—'; sEl.classList.add('pending'); sFoot.textContent='No ZIPs in view'; }
     } else { sEl.textContent='—'; sEl.classList.add('pending'); sFoot.textContent='Draw or select an area'; }
   }
