@@ -1509,6 +1509,7 @@ function _ceSel(id,label,cur,opts,blank){
   const o=opts.map(s=>{ const i=s.indexOf(':'),val=s.slice(0,i),lab=s.slice(i+1); return `<option value="${val}"${cur===val?' selected':''}>${lab}</option>`; }).join('');
   return `<div class="cedit-f"><label>${label}</label><select id="${id}">${blank?`<option value="">—</option>`:''}${o}</select></div>`;
 }
+let _ceAutoSize='', _ceOrigSize='';   // Practice-size auto-prefill vs the prior explicit size (see saveClinicEditor)
 function openClinicEditor(key){
   const idx=clinics.findIndex(c=>clinicKey(c)===key); if(idx<0) return;
   const c=clinics[idx], o=getOverrides()[key]||{}, esc=_ceEsc;
@@ -1517,6 +1518,7 @@ function openClinicEditor(key){
   const status= o.status||'operating', size=o.size||'';
   const _staff=_vetStaffAt(c.lat,c.lon);
   const staffBucket=(_staff&&_staff.n)?(_staff.n>=7?'large':_staff.n>=4?'mid':_staff.n>=2?'small':'solo'):'';
+  _ceAutoSize=staffBucket; _ceOrigSize=size;   // remember the auto-prefill + the prior explicit size so Save doesn't freeze a guess
   const staffInfoHTML=(_staff&&_staff.n)?`<div class="cedit-f full"><label>Veterinarians on staff · auto-detected from website</label>`
     +`<div style="border:1px solid var(--border);border-radius:8px;padding:9px 11px;background:#f8fafc;font-size:12.5px;color:#334155;line-height:1.55">`
     +`<b style="color:#0f172a">${_staff.n} DVM${_staff.n!==1?'s':''}</b> — ${esc((_staff.vets||[]).join(', '))}`
@@ -1588,12 +1590,15 @@ function saveClinicEditor(key){
   const g=id=>document.getElementById(id);
   let mult=parseFloat(g('ce-mult')?.value); if(!isFinite(mult)||mult<0) mult=1;
   const o=getOverrides();
+  // Practice size: don't persist the auto-detected staff prefill as if the analyst chose it — only save when
+  // the value differs from the auto bucket (or there was already an explicit size). Else keep it blank → stays live.
+  let _sizeVal=g('ce-size')?.value||''; if(_sizeVal && _sizeVal===_ceAutoSize && !_ceOrigSize) _sizeVal='';
   o[key]={
     name:(g('ce-name')?.value||'').trim(),
     pe:(g('ce-pe')?.value||'').trim()||null,
     mult, kind:g('ce-kind')?.value||'small',
     status:g('ce-status')?.value||'operating',
-    size:g('ce-size')?.value||'',
+    size:_sizeVal,
     exclude:!!(g('ce-exclude')&&g('ce-exclude').checked),
     ratingOv:_ceNum('ce-rating'), reviewsOv:_ceNum('ce-reviews'),
     revenue:_ceNum('ce-rev'), multiple:_ceNum('ce-mx'),
