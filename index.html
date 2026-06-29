@@ -1167,16 +1167,25 @@ function _vetEnrichAt(lat,lon){
 }
 // Veterinarians-on-staff for a clinic (from optional window.VET_STAFF, keyed by ~111m cell). Exact
 // cell first, then nearest within the ~330m window — so PE pins (PE_COORDS coords) match too.
+// Cached, READ-ONLY analyst override of the DVM count (vf_overrides[cellKey].staffOv). Re-parses only when the
+// stored string changes, so the hot competition loops can call it per-clinic cheaply. Never mutated → no cache pollution.
+let _ovStaffRaw=null, _ovStaffObj={};
+function _vetStaffOv(la,lo){
+  const raw=localStorage.getItem('vf_overrides')||'{}';
+  if(raw!==_ovStaffRaw){ _ovStaffRaw=raw; try{_ovStaffObj=JSON.parse(raw);}catch(e){_ovStaffObj={};} }
+  const o=_ovStaffObj[la+'_'+lo];
+  return (o && o.staffOv!=null && o.staffOv!=='') ? +o.staffOv : null;
+}
 function _vetStaffAt(lat,lon){
-  if(typeof VET_STAFF==='undefined' || !VET_STAFF) return null;
   const la=Math.round(lat*1000), lo=Math.round(lon*1000);
-  const exact=VET_STAFF[la+'_'+lo]; if(exact) return exact;
-  let best=null,bestD=Infinity;
-  for(let dla=-3;dla<=3;dla++) for(let dlo=-4;dlo<=4;dlo++){
-    const v=VET_STAFF[(la+dla)+'_'+(lo+dlo)]; if(!v) continue;
-    const d=Math.abs(dla)+Math.abs(dlo); if(d<bestD){bestD=d;best=v;}
+  let base=null;
+  if(typeof VET_STAFF!=='undefined' && VET_STAFF){
+    base=VET_STAFF[la+'_'+lo];
+    if(!base){ let bestD=Infinity; for(let dla=-3;dla<=3;dla++) for(let dlo=-4;dlo<=4;dlo++){ const v=VET_STAFF[(la+dla)+'_'+(lo+dlo)]; if(!v) continue; const d=Math.abs(dla)+Math.abs(dlo); if(d<bestD){bestD=d;base=v;} } }
   }
-  return best;
+  const ov=_vetStaffOv(la,lo);                                // analyst correction wins (exact clinic cell)
+  if(ov!=null) return Object.assign({}, base||{}, {n:ov, _ovStaff:true});
+  return base||null;
 }
 // Competitive weight from DVM count — a bigger practice is a stronger competitor. Centered near a typical
 // 2-3 DVM clinic (≈1.0×) and sublinear (capture rises with size but with diminishing returns, like _revW).
@@ -1528,11 +1537,17 @@ function openClinicEditor(key){
   const _staff=_vetStaffAt(c.lat,c.lon);
   const staffBucket=(_staff&&_staff.n)?(_staff.n>=7?'large':_staff.n>=4?'mid':_staff.n>=2?'small':'solo'):'';
   _ceAutoSize=staffBucket; _ceOrigSize=size;   // remember the auto-prefill + the prior explicit size so Save doesn't freeze a guess
-  const staffInfoHTML=(_staff&&_staff.n)?`<div class="cedit-f full"><label>Veterinarians on staff · auto-detected from website</label>`
-    +`<div style="border:1px solid var(--border);border-radius:8px;padding:9px 11px;background:#f8fafc;font-size:12.5px;color:#334155;line-height:1.55">`
-    +`<b style="color:#0f172a">${_staff.n} DVM${_staff.n!==1?'s':''}</b> — ${esc((_staff.vets||[]).join(', '))}`
-    +`${(_staff.years&&_staff.years.length)||(_staff.schools&&_staff.schools.length)?`<br><span style="color:#64748b;font-size:11px">${_staff.years&&_staff.years.length?'grad '+_staff.years.join(', '):''}${_staff.years&&_staff.years.length&&_staff.schools&&_staff.schools.length?' · ':''}${_staff.schools&&_staff.schools.length?esc(_staff.schools.join(', ')):''}</span>`:''}`
-    +`</div></div>`:'';
+  const _staffOvCur=(o.staffOv!=null&&o.staffOv!=='')?o.staffOv:'';
+  const _staffNames=(_staff&&_staff.vets&&_staff.vets.length)?esc(_staff.vets.join(', ')):'';
+  const _staffMeta=(_staff&&((_staff.years&&_staff.years.length)||(_staff.schools&&_staff.schools.length)))
+    ?`${_staff.years&&_staff.years.length?'grad '+_staff.years.join(', '):''}${_staff.years&&_staff.years.length&&_staff.schools&&_staff.schools.length?' · ':''}${_staff.schools&&_staff.schools.length?esc(_staff.schools.join(', ')):''}`:'';
+  const staffInfoHTML=`<div class="cedit-f full"><label>Veterinarians on staff (DVMs) — feeds competition &amp; saturation</label>`
+    +`<input id="ce-staff" type="number" min="0" step="1" value="${_staffOvCur!==''?_staffOvCur:(_staff&&_staff.n!=null?_staff.n:'')}" placeholder="e.g. 4">`
+    +`<div style="font-size:11px;color:#64748b;margin-top:4px;line-height:1.5">`
+    +(_staff&&_staff.n!=null?`Auto-detected <b>${_staff.n}</b> from the clinic website${_staffNames?': '+_staffNames:''}. Web scrapes undercount JS-rendered team pages — correct it if it's wrong.`:`Not auto-detected from a website — enter the DVM count if you know it.`)
+    +(_staffOvCur!==''?` <span style="color:#7c3aed;font-weight:600">· analyst override</span>`:'')
+    +(_staffMeta?`<br><span style="color:#94a3b8">${_staffMeta}</span>`:'')
+    +`</div></div>`;
   const rating= o.ratingOv!=null?o.ratingOv:(typeof c.rating==='number'?c.rating:'');
   const reviews=o.reviewsOv!=null?o.reviewsOv:(c.reviews!=null?c.reviews:'');
   const mult  = o.mult!=null?o.mult:(c.mult!=null?c.mult:1);
@@ -1612,11 +1627,12 @@ function saveClinicEditor(key){
     ratingOv:_ceNum('ce-rating'), reviewsOv:_ceNum('ce-reviews'),
     revenue:_ceNum('ce-rev'), multiple:_ceNum('ce-mx'),
     addr:(g('ce-addr')?.value||'').trim(), tel:(g('ce-tel')?.value||'').trim(), web:(g('ce-web')?.value||'').trim(),
+    staffOv:_ceNum('ce-staff'),
     tags:(g('ce-tags')?.value||'').trim(), notes:(g('ce-notes')?.value||'').trim()
   };
   setStore('vf_overrides',o);
   _applyClinicOverride(key);
-  _acqIndKey=''; _hexClinicIndex=null; _hexBuiltKey='';   // overrides feed acquisitions + surface competition → invalidate
+  _acqIndKey=''; _hexClinicIndex=null; _hexBuiltKey=''; _areaClinCache={key:null,n:0,dvm:0}; oppBaseRows=[];   // overrides feed acquisitions + surface competition + saturation + the opp list → invalidate
   if(typeof evalActive!=='undefined' && evalActive && typeof _evalComputeAndRender==='function') _evalComputeAndRender();
   closeClinicEditor();
   vfToast && vfToast('Saved');
