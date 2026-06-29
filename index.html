@@ -379,6 +379,7 @@ body.vf-surface #zoom-msg{display:none!important;}
 .eval-sym{width:16px;flex-shrink:0;display:flex;align-items:center;justify-content:center;}
 .eval-sym-pin{width:15px;height:15px;border-radius:50%;background:var(--navy);border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.3);}
 .eval-sym-comp{width:11px;height:11px;border-radius:50%;background:#dc2626;border:1.5px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.12);}
+.eval-sym-comp-ind{width:11px;height:11px;border-radius:50%;background:#2563eb;border:1.5px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.12);}
 .eval-sym-ring{width:15px;height:15px;border-radius:50%;border:1.5px dashed #dc2626;}
 .eval-sym-hood{width:11px;height:11px;border-radius:50%;background:#22c55e;border:1px solid #15803d;}
 .eval-sym-retail{width:11px;height:11px;border-radius:50%;background:#3b82f6;border:1px solid #1d4ed8;}
@@ -3354,14 +3355,14 @@ function exitAcquisitions(){ acqMode=false; renderNormalSidebar(); }
      • pet demand  — dogData[zip].est
      • low comp    — inverse of weighted clinic count (PE counts more than indep)
 ──────────────────────────────────────────────────────────────────────────────*/
-const DFW_BOUNDS = L.latLngBounds([32.55, -97.55], [33.45, -96.55]); // North Texas region
-const DFW_MIN_LAT=32.55, DFW_MAX_LAT=33.45, DFW_MIN_LON=-97.55, DFW_MAX_LON=-96.55;
+const DFW_BOUNDS = L.latLngBounds([32.25, -97.95], [33.50, -96.20]); // full DFW metroplex
+const DFW_MIN_LAT=32.25, DFW_MAX_LAT=33.50, DFW_MIN_LON=-97.95, DFW_MAX_LON=-96.20;
 
 // Opportunity scoring regions — the 5 largest Texas metros. Each is a bounding box
 // (s/n/w/e) plus a centroid (lat/lon) used to place its marker on the pick-a-region map.
 // lblAbove: draw the label above the dot (avoids collisions with a nearby metro below).
 const OPP_REGIONS = [
-  {key:'dfw',        name:'Dallas–Fort Worth', s:32.55, n:33.45, w:-97.55, e:-96.55, lat:33.00, lon:-97.05},
+  {key:'dfw',        name:'Dallas–Fort Worth', s:32.25, n:33.50, w:-97.95, e:-96.20, lat:32.875, lon:-97.075},
   {key:'houston',    name:'Houston',           s:29.30, n:30.20, w:-95.90, e:-94.90, lat:29.76, lon:-95.37},
   {key:'austin',     name:'Austin',            s:30.00, n:30.70, w:-98.10, e:-97.40, lat:30.27, lon:-97.74, lblAbove:true},
   {key:'sanantonio', name:'San Antonio',       s:29.10, n:29.85, w:-98.90, e:-98.10, lat:29.45, lon:-98.50},
@@ -3486,6 +3487,24 @@ const HEX_PE_W = 1.6;            // PE competitor weight (calibrated; FIXED — 
 const HEX_MI = 1.0;              // column pitch, miles (~3,500 cells over DFW)
 const HEX_MI_PER_DEG_LAT = 69.0;
 const HEX_BUCKET = 0.02;         // spatial-index bucket size, degrees
+// Major DFW-metroplex open water + big parks — hexes here are NOT graded (you can't build on a lake).
+// Rough [s,w,n,e] boxes (slightly over-exclude irregular shorelines; reliable + no network dep).
+const HEX_NOGRADE = [
+  {s:33.05,w:-97.07,n:33.28,e:-96.92}, // Lewisville Lake
+  {s:32.93,w:-97.15,n:33.04,e:-97.01}, // Grapevine Lake
+  {s:33.32,w:-97.14,n:33.47,e:-96.96}, // Ray Roberts Lake + State Park
+  {s:32.98,w:-96.56,n:33.14,e:-96.41}, // Lake Lavon
+  {s:32.79,w:-96.58,n:32.98,e:-96.41}, // Lake Ray Hubbard
+  {s:32.55,w:-97.05,n:32.71,e:-96.92}, // Joe Pool Lake + Cedar Hill State Park
+  {s:32.83,w:-97.55,n:33.02,e:-97.38}, // Eagle Mountain Lake
+  {s:32.75,w:-97.55,n:32.86,e:-97.41}, // Lake Worth
+  {s:32.58,w:-97.52,n:32.72,e:-97.39}, // Benbrook Lake
+  {s:32.65,w:-97.27,n:32.77,e:-97.16}, // Lake Arlington
+  {s:32.79,w:-96.75,n:32.85,e:-96.70}, // White Rock Lake
+  {s:32.68,w:-97.02,n:32.77,e:-96.93}, // Mountain Creek Lake
+  {s:33.05,w:-97.92,n:33.28,e:-97.72}, // Lake Bridgeport (NW)
+];
+function _hexNoGrade(lat,lon){ for(const b of HEX_NOGRADE){ if(lat>=b.s&&lat<=b.n&&lon>=b.w&&lon<=b.e) return true; } return false; }
 // Module state
 let oppView='list';              // 'list' | 'surface'
 let hexStrategy='all';           // 'all' | 'build' | 'land' — surface strategy filter
@@ -3630,7 +3649,7 @@ async function buildHexBaseInputs(){
   const winB=Math.ceil(HEX_R/(HEX_BUCKET*HEX_MI_PER_DEG_LON*1609.344));
   for(const h of hexBaseRows){
     const f=_hexZipAt(h.cLat,h.cLon);
-    if(!f){ h.zip=null; continue; }
+    if(!f || _hexNoGrade(h.cLat,h.cLon)){ h.zip=null; continue; }   // outside TX ZIPs OR on a lake/park → don't grade
     h.zip=f.properties.zip; h.feat=f; h.city=f.properties.city||f.properties.po_name||'';
     const z=h.zip;
     h.inc = incSrc[z]!=null?incSrc[z]:(incomeData[z]!=null?incomeData[z]:null);
@@ -4693,17 +4712,17 @@ function _evalZipAffluence(zip){
 function _evalCompetitors(feat, radiusMi){
   const {s,n,w,e}=_evalBuffer(feat, radiusMi);
   const deleted=getDeleted(), overrides=getOverrides(), byKey=new Map();
-  const add=(la,lo,pe,reviews,rating)=>{ if(la<s||la>n||lo<w||lo>e) return; const k=`${Math.round(la*1000)}_${Math.round(lo*1000)}`; if(deleted[k]) return; if(!byKey.has(k)) byKey.set(k,{lat:la,lon:lo,pe:!!pe,reviews:(typeof reviews==='number'?reviews:null),rating:(typeof rating==='number'?rating:null),mult:(overrides[k]&&overrides[k].mult)||1}); }; // reviews/rating DISPLAY-only; mult is the per-clinic competition override (Settings → edit pin)
-  if(peLoaded && typeof PE_COORDS!=='undefined') for(const c of PE_COORDS){ if(c[0]<s||c[0]>n||c[1]<w||c[1]>e) continue; const enr=_vetEnrichAt(c[0],c[1]); add(c[0],c[1],true,enr&&enr.reviews,enr&&enr.rating); } // NB: var must NOT be named 'e' — shadows the destructured east bound 'e' above → TDZ ReferenceError
+  const add=(la,lo,pe,reviews,rating,name,owner)=>{ if(la<s||la>n||lo<w||lo>e) return; const k=`${Math.round(la*1000)}_${Math.round(lo*1000)}`; if(deleted[k]) return; if(!byKey.has(k)) byKey.set(k,{lat:la,lon:lo,pe:!!pe,reviews:(typeof reviews==='number'?reviews:null),rating:(typeof rating==='number'?rating:null),mult:(overrides[k]&&overrides[k].mult)||1,name:name||null,owner:owner||null}); }; // reviews/rating/name DISPLAY-only; mult is the per-clinic competition override (Settings → edit pin)
+  if(peLoaded && typeof PE_COORDS!=='undefined') for(const c of PE_COORDS){ if(c[0]<s||c[0]>n||c[1]<w||c[1]>e) continue; const enr=_vetEnrichAt(c[0],c[1]); add(c[0],c[1],true,enr&&enr.reviews,enr&&enr.rating, c[4]||(enr&&enr.name), c[2]); } // c[4]=clinic name, c[2]=owner/PE firm. NB: var must NOT be named 'e' — shadows the destructured east bound 'e' above → TDZ ReferenceError
   // SINGLE independent source: VET_CLINICS (Google Places, complete & not viewport-limited),
   // PE-typed via checkPE. Do NOT also fold in evalData.vets (Overpass) — that double-counted
   // the same clinics at slightly different coords (dedup is only ~110m) and inflated `comp`,
   // crushing capture share. Legacy path (clinics[] ∪ Overpass) kept only as the fallback.
   if(USE_VET_CLINICS && typeof VET_CLINICS!=='undefined' && VET_CLINICS.length){
-    for(const v of _activeVetClinics()){ const pe=checkPE(v.name,v.lat,v.lon,null,overrides); add(v.lat,v.lon,!!pe,v.reviews,v.rating); }
+    for(const v of _activeVetClinics()){ const pe=checkPE(v.name,v.lat,v.lon,null,overrides); add(v.lat,v.lon,!!pe,v.reviews,v.rating, v.name, null); }
   } else {
-    for(const c of clinics) add(c.lat,c.lon,c.pe);
-    for(const v of evalData.vets) add(v.lat,v.lon,false);
+    for(const c of clinics) add(c.lat,c.lon,c.pe,undefined,undefined,c.name,(c.pe&&c.pe.owner)||null);
+    for(const v of evalData.vets) add(v.lat,v.lon,false,undefined,undefined,v.name,null);
   }
   return [...byKey.values()];
 }
@@ -5338,12 +5357,14 @@ function _evalRenderLayers(){
     // Competitor dots always show during analysis; the range rings are opt-in.
     const comp=L.layerGroup(), R=evalRadiusMi*1609.344;
     if(evalShow.comp) for(const c of evalCompsCache)
-      L.circle([c.lat,c.lon],{radius:R,stroke:true,color:'#dc2626',weight:1.3,dashArray:'5 5',opacity:0.5,fill:false,interactive:false}).addTo(comp);
+      L.circle([c.lat,c.lon],{radius:R,stroke:true,color:c.pe?'#dc2626':'#2563eb',weight:1.3,dashArray:'5 5',opacity:0.5,fill:false,interactive:false}).addTo(comp);
     // dots sized by review strength (Huff attractiveness proxy) — display only; rings stay non-interactive
+    const _esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     for(const c of evalCompsCache){
       const rev=c.reviews||0, rad=4+Math.min(5, Math.log10(1+rev)*1.7);
-      const m=L.circleMarker([c.lat,c.lon],{radius:rad,color:'#fff',weight:1.5,fillColor:c.pe?'#b91c1c':'#dc2626',fillOpacity:0.92,interactive:true});
-      m.bindPopup(`<div style="font-size:12px;min-width:130px"><b>${c.pe?'PE / corporate':'Independent'} clinic</b>${typeof c.rating==='number'?`<br><span style="color:#b45309;font-weight:700">★ ${c.rating}</span> · ${rev.toLocaleString()} reviews`:(rev?`<br>${rev.toLocaleString()} reviews`:'<br><span style="color:#94a3b8">no rating</span>')}</div>`);
+      const m=L.circleMarker([c.lat,c.lon],{radius:rad,color:'#fff',weight:1.5,fillColor:c.pe?'#dc2626':'#2563eb',fillOpacity:0.92,interactive:true});
+      const typeLine=c.pe?(c.owner?'PE · '+_esc(c.owner):'PE / corporate'):'Independent';
+      m.bindPopup(`<div style="font-size:12px;min-width:150px"><b>${_esc(c.name||'Unnamed clinic')}</b><br><span style="color:${c.pe?'#dc2626':'#2563eb'};font-weight:700">${typeLine}</span>${typeof c.rating==='number'?`<br><span style="color:#b45309;font-weight:700">★ ${c.rating}</span> · ${rev.toLocaleString()} reviews`:(rev?`<br>${rev.toLocaleString()} reviews`:'<br><span style="color:#94a3b8">no rating</span>')}</div>`);
       m.addTo(comp);
     }
     comp.addTo(map); evalLayers.comp=comp;
@@ -5362,7 +5383,8 @@ function _evalRenderLegend(){
   if(!el){ el=document.createElement('div'); el.id='eval-legend'; el.className='eval-legend'; (document.querySelector('.main')||document.body).appendChild(el); }
   const rows=[];
   rows.push(`<div class="eval-leg-row"><span class="eval-sym"><span class="eval-sym-pin"></span></span>Recommended site (top ${evalTop.length||5})</div>`);
-  rows.push(`<div class="eval-leg-row"><span class="eval-sym"><span class="eval-sym-comp"></span></span>Existing clinic (competitor)</div>`);
+  rows.push(`<div class="eval-leg-row"><span class="eval-sym"><span class="eval-sym-comp-ind"></span></span>Independent clinic</div>`);
+  rows.push(`<div class="eval-leg-row"><span class="eval-sym"><span class="eval-sym-comp"></span></span>PE / corporate clinic</div>`);
   if(evalShow.comp) rows.push(`<div class="eval-leg-row"><span class="eval-sym"><span class="eval-sym-ring"></span></span>Competitor reach (${evalRadiusMi.toFixed(1)} mi)</div>`);
   if(evalShow.hoods) rows.push(`<div class="eval-leg-row"><span class="eval-sym"><span class="eval-sym-hood"></span></span>Neighborhood (demand)</div>`);
   if(evalShow.retail) rows.push(`<div class="eval-leg-row"><span class="eval-sym"><span class="eval-sym-retail"></span></span>Retail / commercial</div>`);
