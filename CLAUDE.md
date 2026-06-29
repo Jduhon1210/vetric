@@ -89,7 +89,7 @@ let lastIndependents = []; // Cache of last good Overpass result (Overpass fallb
 - `openOpportunity()`: auto-loads all three data layers, snapshots each into `oppIncomeSnap`, `oppDogSnap`, `oppGrowthSnap`, then tears down all choropleth fills so landing on a ZIP shows the plain base map
 - `buildOppBaseInputs()`: iterates TX GeoJSON features, uses `rawBBox()` for cheap bbox (no Leaflet objects), DFW region reject before any polygon math
 - `rescoreAndRender()`: min-max normalizes each factor 0–100, blends by weights, sorts descending
-- Competition score: `peCount × peMult + indCount`, inverted (less competition = higher score)
+- Competition / "Low competition" score = **underservice = `dogHH / (dvm + 1)`** — demand per VETERINARIAN, not per clinic (`_under`/`_oppUnder`). `dvm` is summed per ZIP in `buildOppBaseInputs` = Σ over the ZIP's clinics of (real scraped `staffN` via `_vetStaffAt`, else **2** = observed median). Capacity is per-DVM (a 6-vet hospital serves far more than a solo); min-max normalized 0–100 → `fComp`. **Pure HH/DVM (no PE weighting)** — the old `peMult` / "PE competition weight" slider was REMOVED (the weighting panel is now 4 factors: income/demand/comp/growth; `getOppWeights` no longer returns `peMult`). Distinct from the Surface/Evaluate gravity-Huff capture and the Saturation KPI.
 - `oppSelect(zip)`: shows overlay on opportunity screen while map prepares behind it, then reveals finished map
 
 ### Hex Opportunity Surface (the "Surface" view in Opportunity)
