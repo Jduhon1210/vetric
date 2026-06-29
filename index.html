@@ -434,15 +434,23 @@ body.vf-surface #zoom-msg{display:none!important;}
 .gear-btn{background:none;border:none;cursor:pointer;padding:2px 6px;border-radius:var(--radius);color:var(--subtle);font-size:13px;line-height:1;flex-shrink:0;margin-left:8px;transition:all .15s;font-family:inherit;}
 .gear-btn:hover{background:var(--bg2);color:var(--text);}
 /* Full-screen clinic editor (analyst location editor) */
-.cedit-overlay{position:fixed;inset:0;z-index:4000;background:rgba(15,23,42,.55);display:none;align-items:flex-start;justify-content:center;padding:36px 16px;overflow:auto;}
+.cedit-overlay{position:fixed;inset:0;z-index:4000;background:rgba(15,23,42,.55);display:none;align-items:stretch;justify-content:stretch;padding:0;overflow:hidden;}
 .cedit-overlay.show{display:flex;}
-.cedit{background:#fff;border-radius:16px;width:100%;max-width:780px;box-shadow:0 24px 70px rgba(0,0,0,.42);display:flex;flex-direction:column;max-height:88vh;}
+.cedit{background:#fff;border-radius:0;width:100vw;height:100vh;max-width:none;max-height:none;box-shadow:none;display:flex;flex-direction:column;}
 .cedit-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:18px 22px;border-bottom:1px solid var(--border);}
 .cedit-title{font-size:18px;font-weight:800;color:var(--text);}
 .cedit-sub{font-size:12px;color:var(--muted);margin-top:3px;}
 .cedit-x{background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted);line-height:1;padding:4px 6px;border-radius:8px;}
 .cedit-x:hover{background:var(--bg2);}
 .cedit-body{padding:4px 22px;overflow:auto;}
+.cedit-cols{display:flex;flex:1;min-height:0;}
+.cedit-main{flex:1.7;overflow:auto;padding:2px 26px 22px;min-width:0;}
+.cedit-notes{flex:1;min-width:300px;max-width:480px;background:#f8fafc;border-left:1px solid var(--border);display:flex;flex-direction:column;padding:20px 22px;overflow:auto;}
+.cedit-notes-h{font-size:14px;font-weight:800;color:var(--text);}
+.cedit-notes-sub{font-size:11.5px;color:var(--muted);margin:3px 0 14px;line-height:1.5;}
+.cedit-notes textarea{flex:1;min-height:300px;resize:none;border:1px solid var(--border);border-radius:10px;padding:12px 13px;font-size:13.5px;line-height:1.65;font-family:inherit;color:var(--text);background:#fff;}
+.cedit-notes textarea:focus{outline:none;border-color:var(--navy);box-shadow:0 0 0 3px rgba(30,58,95,.12);}
+@media(max-width:860px){.cedit-cols{flex-direction:column;}.cedit-notes{max-width:none;border-left:none;border-top:1px solid var(--border);}.cedit-notes textarea{min-height:180px;}}
 .cedit-sec{padding:15px 0;border-bottom:1px solid #f1f5f9;}
 .cedit-sec:last-child{border-bottom:none;}
 .cedit-sec-h{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:#64748b;margin-bottom:11px;}
@@ -1467,7 +1475,8 @@ function openClinicEditor(key){
         <div><div class="cedit-title">Edit location</div><div class="cedit-sub">${esc(c.name)} · ${c.lat.toFixed(4)}, ${c.lon.toFixed(4)}</div></div>
         <button class="cedit-x" onclick="closeClinicEditor()" aria-label="Close">✕</button>
       </div>
-      <div class="cedit-body">
+      <div class="cedit-cols">
+        <div class="cedit-main">
         <datalist id="ce-firms">${firms}</datalist>
         <div class="cedit-sec"><div class="cedit-sec-h">Identity</div><div class="cedit-grid">
           <div class="cedit-f full"><label>Clinic name</label><input id="ce-name" value="${esc(c.name)}"></div>
@@ -1491,10 +1500,13 @@ function openClinicEditor(key){
           <div class="cedit-f"><label>Phone</label><input id="ce-tel" value="${esc(o.tel!=null?o.tel:(c.tel||''))}"></div>
           <div class="cedit-f"><label>Website</label><input id="ce-web" value="${esc(o.web!=null?o.web:(c.website||''))}"></div>
         </div></div>
-        <div class="cedit-sec"><div class="cedit-sec-h">Analyst notes</div><div class="cedit-grid">
-          <div class="cedit-f full"><label>Tags (comma-separated)</label><input id="ce-tags" value="${esc(o.tags||'')}" placeholder="e.g. priority, multi-doctor, real-estate-owned"></div>
-          <div class="cedit-f full"><label>Notes</label><textarea id="ce-notes" placeholder="Diligence notes, key contacts, anything worth remembering…">${esc(o.notes||'')}</textarea></div>
-        </div></div>
+        </div>
+        <div class="cedit-notes">
+          <div class="cedit-notes-h">Notes &amp; diligence</div>
+          <div class="cedit-notes-sub">Tags and free-text notes for this location — saved with the record and shown in its pin popup.</div>
+          <div class="cedit-f" style="margin-bottom:14px"><label>Tags (comma-separated)</label><input id="ce-tags" value="${esc(o.tags||'')}" placeholder="e.g. priority, multi-doctor, real-estate-owned"></div>
+          <textarea id="ce-notes" placeholder="Diligence notes, key contacts, deal context, next steps — anything worth remembering about this location…">${esc(o.notes||'')}</textarea>
+        </div>
       </div>
       <div class="cedit-foot">
         <button class="cedit-btn save" onclick="saveClinicEditor('${key}')">Save changes</button>
