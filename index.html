@@ -1184,6 +1184,12 @@ function _vetStaffAt(lat,lon){
   }
   return best;
 }
+// Competitive weight from DVM count — a bigger practice is a stronger competitor. Centered near a typical
+// 2-3 DVM clinic (≈1.0×) and sublinear (capture rises with size but with diminishing returns, like _revW).
+// Range is deliberately GENTLE [0.8×–1.8×]: the web scrape UNDERCOUNTS (JS/corporate sites fall back to the
+// homepage → "1"), which would otherwise wrongly weaken real multi-vet hospitals; the 0.8 floor caps that
+// damage. Unknown roster → neutral 1.0 (no penalty). solo ≈ 0.8×, ~5 DVMs ≈ 1.4×, big hospital up to 1.8×.
+function _staffW(n){ if(!n||n<1) return 1; return Math.min(1.8, Math.max(0.8, Math.sqrt(n/2.5))); }
 // "DVMs on staff" popup block (optional — returns '' when no roster). Mirrors _analystPopupHTML's contract.
 function _staffPopupHTML(c){
   const s=_vetStaffAt(c.lat,c.lon); if(!s||!s.n) return '';
@@ -3875,7 +3881,7 @@ function buildHexClinicIndex(){
   const add=(la,lo,pe,reviews)=>{
     const k=Math.round(la*1000)+'_'+Math.round(lo*1000);    // 110m dedup — exactly _evalCompetitors
     const _ov=overrides[k]; if(deleted[k]||(_ov&&_ov.exclude)||byCell.has(k)) return;
-    byCell.set(k,{lat:la,lon:lo,pe:!!pe,reviews:(_ov&&_ov.reviewsOv!=null)?_ov.reviewsOv:(typeof reviews==='number'?reviews:null),mult:(_ov&&_ov.mult)||1});
+    byCell.set(k,{lat:la,lon:lo,pe:!!pe,reviews:(_ov&&_ov.reviewsOv!=null)?_ov.reviewsOv:(typeof reviews==='number'?reviews:null),mult:(_ov&&_ov.mult)||1,staffN:(_vetStaffAt(la,lo)||{}).n||null});
   };
   if(peLoaded && typeof PE_COORDS!=='undefined') for(const c of PE_COORDS){
     const enr=_vetEnrichAt(c[0],c[1]);                       // MUST be 'enr' (TDZ guard, CLAUDE.md)
@@ -3925,7 +3931,7 @@ async function buildHexBaseInputs(){
     for(let di=-winB;di<=winB;di++) for(let dj=-winB;dj<=winB;dj++){
       const arr=_hexClinicIndex.get((bi+di)+'_'+(bj+dj)); if(!arr) continue;
       for(const c of arr){ const d=hav(h.cLat,h.cLon,c.lat,c.lon); if(d>=HEX_R) continue;
-        comp += (c.pe?HEX_PE_W:1)*_revW(c.reviews,_hexCompMedRev)*(c.mult||1)*_grav(d,HEX_R);
+        comp += (c.pe?HEX_PE_W:1)*_revW(c.reviews,_hexCompMedRev)*_staffW(c.staffN)*(c.mult||1)*_grav(d,HEX_R);
         if(c.pe && d<nearPE) nearPE=d; }
     }
     h.comp=comp; h.nearPE=nearPE;
@@ -4975,7 +4981,7 @@ function _evalZipAffluence(zip){
 function _evalCompetitors(feat, radiusMi){
   const {s,n,w,e}=_evalBuffer(feat, radiusMi);
   const deleted=getDeleted(), overrides=getOverrides(), byKey=new Map();
-  const add=(la,lo,pe,reviews,rating,name,owner)=>{ if(la<s||la>n||lo<w||lo>e) return; const k=`${Math.round(la*1000)}_${Math.round(lo*1000)}`; const _ov=overrides[k]; if(deleted[k]||(_ov&&_ov.exclude)) return; const _rev=(_ov&&_ov.reviewsOv!=null)?_ov.reviewsOv:(typeof reviews==='number'?reviews:null); if(!byKey.has(k)) byKey.set(k,{lat:la,lon:lo,pe:!!pe,reviews:_rev,rating:(typeof rating==='number'?rating:null),mult:(_ov&&_ov.mult)||1,name:name||null,owner:owner||null}); }; // reviews/rating/name DISPLAY-only; mult is the per-clinic competition override (Settings → edit pin)
+  const add=(la,lo,pe,reviews,rating,name,owner)=>{ if(la<s||la>n||lo<w||lo>e) return; const k=`${Math.round(la*1000)}_${Math.round(lo*1000)}`; const _ov=overrides[k]; if(deleted[k]||(_ov&&_ov.exclude)) return; const _rev=(_ov&&_ov.reviewsOv!=null)?_ov.reviewsOv:(typeof reviews==='number'?reviews:null); if(!byKey.has(k)) byKey.set(k,{lat:la,lon:lo,pe:!!pe,reviews:_rev,rating:(typeof rating==='number'?rating:null),mult:(_ov&&_ov.mult)||1,name:name||null,owner:owner||null,staffN:(_vetStaffAt(la,lo)||{}).n||null}); }; // reviews/rating/name DISPLAY-only; mult is the per-clinic competition override (Settings → edit pin)
   if(peLoaded && typeof PE_COORDS!=='undefined') for(const c of PE_COORDS){ if(c[0]<s||c[0]>n||c[1]<w||c[1]>e) continue; const enr=_vetEnrichAt(c[0],c[1]); add(c[0],c[1],true,enr&&enr.reviews,enr&&enr.rating, c[4]||(enr&&enr.name), c[2]); } // c[4]=clinic name, c[2]=owner/PE firm. NB: var must NOT be named 'e' — shadows the destructured east bound 'e' above → TDZ ReferenceError
   // SINGLE independent source: VET_CLINICS (Google Places, complete & not viewport-limited),
   // PE-typed via checkPE. Do NOT also fold in evalData.vets (Overpass) — that double-counted
@@ -5483,7 +5489,7 @@ function _evalComputeAndRender(){
       // retail access (co-tenancy / visibility)
       let ret=0; for(const r of evalData.retail){ if(Math.abs(r.lat-la)>bRet) continue; const d=hav(la,lo,r.lat,r.lon); if(d<RET_R) ret+=(r.area?0.6:1)*_grav(d,RET_R); }
       // competition (border-aware gravity); scan all comps for the true nearest readout
-      let comp=0, nearC=Infinity, nearPE=Infinity; for(const c of comps){ const d=hav(la,lo,c.lat,c.lon); if(d<nearC)nearC=d; if(d<R){ comp+=(c.pe?1.6:1)*_revW(c.reviews,compMedRev)*(c.mult||1)*_grav(d,R); if(c.pe && d<nearPE) nearPE=d; } }
+      let comp=0, nearC=Infinity, nearPE=Infinity; for(const c of comps){ const d=hav(la,lo,c.lat,c.lon); if(d<nearC)nearC=d; if(d<R){ comp+=(c.pe?1.6:1)*_revW(c.reviews,compMedRev)*_staffW(c.staffN)*(c.mult||1)*_grav(d,R); if(c.pe && d<nearPE) nearPE=d; } }
       const affl=_cellAffl(la,lo); // per-cell ZIP demographics in area mode; constant in ZIP mode
       grid.push({la,lo,dem,ret,comp,nearC,nearPE,affl,nearRoad,nearCls,aadt,aadtRoad,stepLa,stepLo,zone:zinfo?zinfo.label:null,zcity:zinfo?zinfo.city:null});
     }
