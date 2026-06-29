@@ -1047,12 +1047,6 @@ body.vf-surface #zoom-msg{display:none!important;}
           <div class="weight-desc">Faster-growing ZIPs score higher — population change plus new-home construction (where demand is heading)</div>
           <input type="range" class="opp-slider" id="w-growth" min="0" max="100" value="25" oninput="onWeightChange()"/>
         </div>
-        <div class="opp-divider"></div>
-        <div class="weight-row">
-          <div class="weight-head"><span class="weight-name">PE competition weight</span><span class="weight-val" id="w-pe-val">2.0×</span></div>
-          <div class="weight-desc">How much more a corporate/PE clinic counts as competition vs. an independent</div>
-          <input type="range" class="opp-slider" id="w-pe" min="10" max="40" value="20" oninput="onWeightChange()"/>
-        </div>
       </div>
       <div class="opp-list-wrap" id="opp-list-wrap">
         <div class="opp-loading">Loading regional data…</div>
@@ -3693,8 +3687,7 @@ function getOppWeights(){
     income: wi/sum,
     demand: wd/sum,
     comp:   wc/sum,
-    growth: wg/sum,
-    peMult: (+document.getElementById('w-pe').value)/10 // 1.0×–4.0×
+    growth: wg/sum
   };
 }
 
@@ -3708,7 +3701,6 @@ function onWeightChange(){
   document.getElementById('w-demand-val').textContent=Math.round(wd/sum*100)+'%';
   document.getElementById('w-comp-val').textContent=Math.round(wc/sum*100)+'%';
   document.getElementById('w-growth-val').textContent=Math.round(wg/sum*100)+'%';
-  document.getElementById('w-pe-val').textContent=((+document.getElementById('w-pe').value)/10).toFixed(1)+'×';
   rescoreAndRender();
   if(oppView==='surface' && hexBaseRows.length) rescoreHexes(); // recolor the surface live (presets route through here too)
 }
@@ -4346,20 +4338,20 @@ function buildOppBaseInputs(){
     if(inc==null && dog==null && grow==null) continue; // no data — skip
 
     // Count clinics inside this ZIP polygon (bbox pre-filter for speed)
-    let peCount=0, indCount=0;
+    let peCount=0, indCount=0, dvm=0;   // dvm = total veterinarians serving the ZIP (real roster where scraped, else 2 = observed median)
     if(peLoaded && typeof PE_COORDS!=='undefined'){
       for(const coord of PE_COORDS){
         const plat=coord[0], plon=coord[1];
         if(plat<bb.minLat||plat>bb.maxLat||plon<bb.minLon||plon>bb.maxLon) continue;
-        if(pointInGeoJSON(plat,plon,f)) peCount++;
+        if(pointInGeoJSON(plat,plon,f)){ peCount++; dvm += (_vetStaffAt(plat,plon)||{}).n || 2; }
       }
     }
     for(const cl of indSrc){
       if(cl.lat<bb.minLat||cl.lat>bb.maxLat||cl.lon<bb.minLon||cl.lon>bb.maxLon) continue;
-      if(pointInGeoJSON(cl.lat,cl.lon,f)) indCount++;
+      if(pointInGeoJSON(cl.lat,cl.lon,f)){ indCount++; dvm += (_vetStaffAt(cl.lat,cl.lon)||{}).n || 2; }
     }
 
-    rows.push({ zip, feat:f, city:(f.properties.city||f.properties.po_name||''), inc, dog, grow, cons, peCount, indCount });
+    rows.push({ zip, feat:f, city:(f.properties.city||f.properties.po_name||''), inc, dog, grow, cons, peCount, indCount, dvm });
   }
   oppBaseRows=rows;
 }
@@ -4378,10 +4370,10 @@ function rescoreAndRender(){
   const dogs=oppBaseRows.map(r=>r.dog).filter(v=>v!=null);
   const grows=oppBaseRows.map(r=>r.grow).filter(v=>v!=null);
   const conss=oppBaseRows.map(r=>r.cons).filter(v=>v!=null);
-  // Underservice = pet households per (PE-weighted) clinic — high means demand the
-  // market can't yet serve. Demand-relative, so a small ZIP with few clinics no longer
-  // looks "open" just because the raw count is low.
-  const _under=r=> r.dog!=null ? r.dog/(r.peCount*w.peMult + r.indCount + 1) : null;
+  // Underservice = pet households per DVM (veterinarian) — high means demand the market can't yet
+  // serve. Per-VET, not per-clinic: a 6-DVM hospital serves far more than a solo, so capacity is the
+  // unit (industry vets-per-capita). dvm sums real scraped rosters, defaulting to 2 (median) where unknown.
+  const _under=r=> r.dog!=null ? r.dog/((r.dvm||0) + 1) : null;   // demand per DVM (vets serving the ZIP, real where scraped else 2)
   const unders=oppBaseRows.map(_under).filter(v=>v!=null);
 
   const mm=arr=>{ const mn=Math.min(...arr), mx=Math.max(...arr); return {mn,mx,rng:(mx-mn)||1}; };
@@ -4417,7 +4409,7 @@ function oppScoreColor(s){ return s>=80?'#14532d':s>=65?'#166534':s>=50?'#15803d
 
 const _fmtMoney=v=>v==null?'—':'$'+Math.round(v).toLocaleString();
 const _fmtPct=v=>v==null?'—':(v>=0?'+':'')+(v*100).toFixed(1)+'%';
-function _oppUnder(r){ const w=getOppWeights(); return r.dog!=null ? r.dog/(r.peCount*w.peMult + r.indCount + 1) : null; }
+function _oppUnder(r){ return r.dog!=null ? r.dog/((r.dvm||0) + 1) : null; }   // demand per DVM
 // Per-ZIP drill-down with the REAL underlying numbers (not just the 0-100 bars) + region-relative caveat.
 function renderOppDetail(r){
   const u=_oppUnder(r);
@@ -4428,7 +4420,8 @@ function renderOppDetail(r){
     ${line('Population growth ’21→’24', _fmtPct(r.grow))}
     ${line('New construction (2010+)', r.cons!=null?(r.cons*100).toFixed(0)+'%':'—')}
     ${line('Clinics', (r.peCount+r.indCount), `${r.peCount} PE / ${r.indCount} indep`)}
-    ${line('Underservice', u!=null?Math.round(u).toLocaleString():'—','HH / weighted clinic')}
+    ${line('Veterinarians (DVMs)', r.dvm!=null?r.dvm:'—','scraped where known, else ~2/clinic')}
+    ${line('Underservice', u!=null?Math.round(u).toLocaleString():'—','HH per DVM — higher = more underserved')}
     <div style="height:1px;background:var(--border);margin:6px 0"></div>
     ${line('Income · Demand · LowComp · Growth', `${r.fIncome.toFixed(0)} · ${r.fDemand.toFixed(0)} · ${r.fComp.toFixed(0)} · ${(r.fGrowth||0).toFixed(0)}`)}
     ${line('Composite score', Math.round(r.score))}
