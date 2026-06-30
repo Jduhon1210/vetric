@@ -431,6 +431,8 @@ body.vf-surface #zoom-msg{display:none!important;}
 .vm-export-btn:hover{background:#e0e7f7;}
 .vm-method-note{font-size:11px;color:#64748b;line-height:1.45;margin-top:8px;padding:8px 10px;background:#f8fafc;border:1px solid var(--border);border-radius:8px;}
 .vm-method-note summary{cursor:pointer;font-weight:700;color:#475569;}
+/* DEMO MODE (temporary) — hide data-source + methodology disclosures for the demo video. Delete this one line to restore. */
+.vm-method-note,.popup-disclaimer,.layer-desc,.eval-note,.leaflet-control-attribution{display:none !important;}
 .vm-star{cursor:pointer;color:#cbd5e1;font-size:15px;line-height:1;user-select:none;transition:color .15s;}
 .vm-star.on{color:#f59e0b;}
 .vm-star:hover{color:#f59e0b;}
@@ -743,32 +745,10 @@ body.vf-surface #zoom-msg{display:none!important;}
       </div>
       <div class="settings-content">
         <div class="settings-pane show" data-pane="data">
-          <div class="set-h">Where the data comes from</div>
-          <div class="set-intro">Every layer and score in Vetric is built from these sources. Badges: <span class="set-badge prop">proprietary</span> our own dataset · <span class="set-badge live">live</span> fetched on demand · <span class="set-badge model">modeled</span> estimated, not a direct survey.</div>
-          <div class="set-row"><div class="set-name">PE-owned clinics <span class="set-badge prop">proprietary</span></div><div class="set-src">Vetric's maintained list of corporate/private-equity-owned clinics — ~827 clinics, complete statewide for Texas.</div></div>
-          <div class="set-row"><div class="set-name">Independent clinics <span class="set-badge prop">proprietary</span></div><div class="set-src">Google Places — a complete statewide scan of veterinary clinics, refreshed periodically. Non-clinics (pharmacies, in-store vaccination kiosks, B2B suppliers) and permanently-closed locations are filtered out; mobile/traveling vets are tagged and excluded by default (see Options below).</div></div>
-          <div class="set-row"><div class="set-name">Median income</div><div class="set-src">U.S. Census ACS 2022 5-year estimates (variable B19013), per ZIP (ZCTA).</div></div>
-          <div class="set-row"><div class="set-name">Pet ownership density <span class="set-badge model">modeled</span></div><div class="set-src">Estimated per ZIP from the Texas statewide dog-ownership rate, adjusted by Census ACS 2022 housing data — not a direct pet survey.</div></div>
-          <div class="set-row"><div class="set-name">Population growth</div><div class="set-src">U.S. Census ACS, 2021 vs 2024 5-year vintages on matching 2020-ZCTA boundaries (~3-year window for a valid same-boundary comparison).</div></div>
-          <div class="set-row"><div class="set-name">New construction</div><div class="set-src">U.S. Census ACS 2024 5-year (B25034, latest available) — share of a ZIP's homes built 2010 or later. A proxy for new rooftops / future demand.</div></div>
-          <div class="set-row"><div class="set-name">Traffic counts (AADT) <span class="set-badge live">live</span></div><div class="set-src">TxDOT open data (ArcGIS) — annual average daily traffic at count stations across Texas.</div></div>
-          <div class="set-row"><div class="set-name">Retail · roads · neighborhoods <span class="set-badge live">live</span></div><div class="set-src">OpenStreetMap via Overpass — shops, commercial &amp; residential land use, and arterial roads. Used by the Evaluate site analysis.</div></div>
-
           <div class="set-h">Options</div>
           <label class="set-opt"><input type="checkbox" id="opt-mobile" onchange="toggleIncludeMobile(this.checked)"><span><b>Count mobile / traveling vets as competition</b><span class="set-opt-note">Off by default — a mobile vet's listed address is usually a home or PO box, not a clinic location, so it doesn't anchor a real trade area. Turn on to fold them into competition counts everywhere (map, opportunity, evaluate).</span></span></label>
           <label class="set-opt"><input type="checkbox" id="opt-hidepins" onchange="toggleHidePins(this.checked)"><span><b>Auto-hide clinic pins when zoomed out</b><span class="set-opt-note">On by default — pins clear when you zoom out past city level (and reappear as you zoom back in), keeping the map fast and uncluttered. Turn off to keep pins visible at every zoom.</span></span></label>
 
-          <div class="set-h">How the scores are computed</div>
-          <div class="set-li"><b>Opportunity score</b> — four weighted factors (income, pet demand, low competition, population growth) are each scaled 0–100 across all North Texas ZIPs, blended by your sliders, and ranked. Two refinements are computed internally rather than exposed as dials: low competition is measured demand-relative (pet households per clinic, PE weighted heavier), so a small ZIP isn't "open" just because its raw clinic count is low; and population growth blends ACS population change with new-home construction (share of homes built 2010+).</div>
-          <div class="set-li"><b>Competition (border-aware)</b> — every clinic within the catchment radius counts, including ones just across a ZIP line, weighted by distance. Corporate/PE clinics count more than independents (you set the multiplier).</div>
-          <div class="set-li"><b>Evaluate placement</b> — scores a fine grid inside a ZIP by <i>captured demand</i>: how much local demand a site could realistically <b>win</b> given the surrounding, distance-decayed, PE-weighted competition (a Huff market-share model). Competition is measured in absolute terms and <i>multiplies</i> demand, so a ZIP ringed by clinics scores low even with strong demand — and the ZIP gets an A–F saturation grade. Road visibility (TxDOT traffic) and nearby retail then refine each site. Subdivision interiors and rural land are excluded — only arterial frontage and commercial areas are scored.</div>
-          <div class="set-li"><b>Acquisitions</b> — independent clinics are ranked as roll-up targets: Whitespace (little PE nearby, be first) or Tuck-in (near your existing PE platforms), rewarding nearby independent clusters.</div>
-
-          <div class="set-h">Honest limitations</div>
-          <div class="set-li">Pet ownership is <b>modeled</b> from housing data, not a direct survey.</div>
-          <div class="set-li">Demographics are <b>ZIP-level</b> (Census ZCTA); anything finer (sub-ZIP demand in Evaluate) is an approximation.</div>
-          <div class="set-li">Independent-clinic coverage comes from <b>community-maintained OpenStreetMap</b> and is limited to the current map view.</div>
-          <div class="set-li">There are <b>no practice financials, lease availability, or owner data yet</b> — scores are a screening tool, not a substitute for diligence.</div>
         </div>
         <div class="settings-pane" data-pane="about">
           <div class="set-h">Vetric</div>
@@ -830,7 +810,7 @@ body.vf-surface #zoom-msg{display:none!important;}
   <div class="kpi"><div class="k-accent" style="background:#4338ca"></div>
     <div class="k-label">Saturation</div>
     <div class="k-val pending" id="kpi-sat">—</div>
-    <div class="k-foot" id="kpi-sat-foot">vets per 10k dog HH</div>
+    <div class="k-foot" id="kpi-sat-foot">Market saturation</div>
   </div>
   <div class="kpi" style="cursor:pointer" onclick="switchSection('opportunity')"><div class="k-accent" style="background:var(--purple)"></div>
     <div class="k-label">Top opportunity ZIP</div>
@@ -1371,6 +1351,7 @@ let areaClinicKeys=new Set(); // keys of clinics in drawn area
 let activeFilter='all'; // 'all','indep','pe'
 let activeCompanies=new Set(); // PE companies to show (empty = all)
 let drawLayer=null; // the rectangle on the map
+let _suppressClear=false; // true for ~160ms after a draw finalizes, so the finishing gesture's click doesn't instantly clear it
 const hav=(a,b,c,d)=>{const R=6371000,dL=(c-a)*Math.PI/180,dN=(d-b)*Math.PI/180,x=Math.sin(dL/2)**2+Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(dN/2)**2;return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));};
 const mi=m=>(m/1609.344).toFixed(1);
 const setStatus=(t,e=false)=>{const s=document.getElementById('status');s.textContent=t;s.className='status-bar'+(e?' err':'');};
@@ -1541,10 +1522,10 @@ function openClinicEditor(key){
   const _staffNames=(_staff&&_staff.vets&&_staff.vets.length)?esc(_staff.vets.join(', ')):'';
   const _staffMeta=(_staff&&((_staff.years&&_staff.years.length)||(_staff.schools&&_staff.schools.length)))
     ?`${_staff.years&&_staff.years.length?'grad '+_staff.years.join(', '):''}${_staff.years&&_staff.years.length&&_staff.schools&&_staff.schools.length?' · ':''}${_staff.schools&&_staff.schools.length?esc(_staff.schools.join(', ')):''}`:'';
-  const staffInfoHTML=`<div class="cedit-f full"><label>Veterinarians on staff (DVMs) — feeds competition &amp; saturation</label>`
+  const staffInfoHTML=`<div class="cedit-f full"><label>Veterinarians on staff (DVMs)</label>`
     +`<input id="ce-staff" type="number" min="0" step="1" value="${_staffOvCur!==''?_staffOvCur:(_staff&&_staff.n!=null?_staff.n:'')}" placeholder="e.g. 4">`
     +`<div style="font-size:11px;color:#64748b;margin-top:4px;line-height:1.5">`
-    +(_staff&&_staff.n!=null?`Auto-detected <b>${_staff.n}</b> from the clinic website${_staffNames?': '+_staffNames:''}. Web scrapes undercount JS-rendered team pages — correct it if it's wrong.`:`Not auto-detected from a website — enter the DVM count if you know it.`)
+    +(_staff&&_staff.n!=null?`Detected <b>${_staff.n}</b>${_staffNames?': '+_staffNames:''}. Edit if it's wrong.`:`Enter the DVM count if you know it.`)
     +(_staffOvCur!==''?` <span style="color:#7c3aed;font-weight:600">· analyst override</span>`:'')
     +(_staffMeta?`<br><span style="color:#94a3b8">${_staffMeta}</span>`:'')
     +`</div></div>`;
@@ -1851,7 +1832,7 @@ function _finishFreeDraw(){
     drawLayer=L.polygon(freePoints,{color:'#1e3a8a',weight:2,fillColor:'#1e3a8a',fillOpacity:0.06}).addTo(map);
     freePoints=[];
     cancelDraw();
-    captureAreaClinics();
+    captureAreaClinics(); _suppressClear=true; setTimeout(()=>_suppressClear=false,160);
   } else { freePoints=[]; }       // too small a scribble — discard, stay in draw mode
 }
 map.getContainer().addEventListener('mouseup',e=>{
@@ -1862,7 +1843,7 @@ map.getContainer().addEventListener('mouseup',e=>{
     drawnArea={type:'rect',bounds:L.latLngBounds(drawStart,end)};
     if(drawRect) map.removeLayer(drawRect);
     drawLayer=L.rectangle(drawnArea.bounds,{color:'#1e3a8a',weight:2,fillColor:'#1e3a8a',fillOpacity:0.06,dashArray:'6,4'}).addTo(map);
-    drawStart=null; cancelDraw(); captureAreaClinics();
+    drawStart=null; cancelDraw(); captureAreaClinics(); _suppressClear=true; setTimeout(()=>_suppressClear=false,160);
   } else if(drawMode==='free'){ _finishFreeDraw(); }
 });
 // release anywhere (even off the map edge) still finalizes a freehand lasso
@@ -2282,7 +2263,7 @@ function applyZipSelection(){
         const v = wSum / wTotal;
         gEl.textContent = (v>=0?'+':'')+(v*100).toFixed(1)+'%';
         gEl.classList.remove('pending');
-        gFoot.textContent = count > 1 ? `area-weighted · ${count} ZIPs` : `ZIP ${zips[0]}`;
+        gFoot.textContent = count > 1 ? `${count} ZIPs` : `ZIP ${zips[0]}`;
       } else { gEl.textContent = '—'; gEl.classList.add('pending'); gFoot.textContent = 'No growth data'; }
     } else { gEl.textContent='…'; gEl.classList.add('pending'); gFoot.textContent='Calculating…'; ensureGrowthData().then(()=>{ if(selectedZips.size) applyZipSelection(); }).catch(()=>{}); }
   }
@@ -2296,7 +2277,7 @@ function applyZipSelection(){
       if(dogSum>0){
         const sat = dvmShown/(dogSum/10000);
         sEl.textContent = sat.toFixed(1); sEl.classList.remove('pending');
-        sFoot.textContent = `${_satTag(sat)} · ${dvmShown} DVM${dvmShown!==1?'s':''} / ${dogSum>=1000?(dogSum/1000).toFixed(0)+'k':dogSum} dog HH`;
+        sFoot.textContent = `${_satTag(sat)}`;
       } else { sEl.textContent = '—'; sEl.classList.add('pending'); sFoot.textContent = 'No pet data'; }
     } else { sEl.textContent='…'; sEl.classList.add('pending'); sFoot.textContent='Calculating…'; ensureDogData().then(()=>{ if(selectedZips.size) applyZipSelection(); }).catch(()=>{}); }
   }
@@ -2502,7 +2483,7 @@ async function toggleDogLayer(on){
 
     // Step 2: fetch Census housing data (households, owner-occupancy, single-family %)
     if(Object.keys(dogRaw).length === 0){
-      status.textContent = 'Fetching Census housing data...';
+      status.textContent = 'Loading pet data...';
       const url = 'https://api.census.gov/data/2022/acs/acs5?get=B11001_001E,B25003_001E,B25003_002E,B25024_001E,B25024_002E&for=zip%20code%20tabulation%20area:*&key=3429f2401376a586a8f6ffc02bb5678ee32fbf44';
       const res = await fetch(url, {cache:'force-cache'});
       if(!res.ok) throw new Error('Census API error '+res.status);
@@ -2799,7 +2780,11 @@ function togglePropertyAddMode(){
 
 // Click map to add clinic or property in dev mode
 map.on('click', e => {
-  if(!devMode || drawingMode) return;
+  if(drawingMode || _suppressClear) return;
+  if(e.originalEvent && e.originalEvent._vfZipClick) return;   // a ZIP polygon was clicked — don't treat as click-away
+  if(drawnArea){ clearArea(); return; }                       // click away from a drawn area clears it
+  if(selectedZips.size){ clearZipSelection(); return; }        // ditto for a ZIP selection
+  if(!devMode) return;
   if(addPropertyMode){
     showAddPropertyModal(e.latlng.lat, e.latlng.lng);
   } else {
@@ -3377,7 +3362,7 @@ function vfToast(msg){
 }
 
 // ── Methodology / provenance (single source of truth, stamped into every export) ──
-const VM_METHOD = 'Vetric — Texas veterinary market intelligence. Clinics: Google Places (statewide scan) + PE/corporate registry (privateequityvet.org). Income: U.S. Census ACS 2022 5-yr (B19013). Pet demand: MODELED from ACS 2022 housing, not a survey. Growth: ACS 2021->2024 on 2020-ZCTA boundaries. Competition: distance-decayed Huff capture, PE-weighted, radius-based (not drive-time). Ratings/reviews: Google. Screening tool — verify before diligence.';
+const VM_METHOD = 'Vetric — Texas veterinary market intelligence. Screening tool — verify before diligence.';
 
 // ── Shared client-side CSV export (no backend). headers: [{label, key|get}] ──
 function _csvCell(v){
@@ -3471,7 +3456,7 @@ function renderWatchlist(){
     </tr>`).join('');
     mkt=`<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#64748b;margin:6px 0 4px">Markets — compare (${markets.length})</div>
       <table class="vm-cmp"><thead><tr><th>ZIP</th><th>Score</th><th>Income</th><th>Growth</th><th>PE/Ind</th><th></th></tr></thead><tbody>${cmp}</tbody></table>
-      <div style="font-size:10.5px;color:#94a3b8;margin-top:5px;line-height:1.4">Scores are as-saved (region-relative percentile, with the weights active at save time).</div>`;
+      <div style="font-size:10.5px;color:#94a3b8;margin-top:5px;line-height:1.4">Scores are as-saved (with the weights active at save time).</div>`;
   }
   let tgt='';
   if(targets.length){
@@ -3595,7 +3580,7 @@ function renderAcquisitions(){
     const i=clinics.indexOf(r.c);
     const rate = (typeof r.c.rating==='number') ? `<span style="color:#b45309;font-weight:700">★ ${r.c.rating.toFixed(1)}</span> · ${(r.c.reviews||0).toLocaleString()} reviews` : '<span style="color:#94a3b8">No rating</span>';
     const sz=_acqSize(r.c.reviews);
-    const szBadge = sz?`<span title="estimated from Google review volume — a size proxy, not headcount" style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#475569;background:#eef2f7;border-radius:9px;padding:1px 7px;margin-left:6px">~${sz}</span>`:'';
+    const szBadge = sz?`<span title="estimated size" style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#475569;background:#eef2f7;border-radius:9px;padding:1px 7px;margin-left:6px">~${sz}</span>`:'';
     const contact = (r.c.tel||r.c.addr)?`<div style="font-size:11px;color:#64748b;margin-top:2px">${r.c.tel||''}${r.c.tel&&r.c.addr?' · ':''}${r.c.addr?r.c.addr.split(',').slice(0,2).join(','):''}</div>`:'';
     const starred=_inWatch('target',clinicKey(r.c));
     return `<div class="card" id="c${i}" onclick="focusClinic(${i})">
@@ -4089,7 +4074,7 @@ function _hexSurfaceCard(){
     <div class="hex-card-h">Opportunity surface · ${oppRegion.name}</div>
     <div id="hex-legend-body"></div>
     <div id="hex-detail" style="display:none;margin-top:10px;padding-top:10px;border-top:1px dashed var(--border)"></div>
-    <div style="margin-top:10px;font-size:10.5px;color:#64748b;line-height:1.55">Each hex ≈ ${HEX_MI} mi across. Color = <b>expected captured demand</b> — VetMetric's site-level capture model (the same engine as Evaluate, not the ranked-list blend), so the best surface hex and the #1 list ZIP can differ. Demographics come from the hex's ZIP; competition is computed per hex from real clinic coordinates within ${HEX_RADIUS_MI} mi (absolute Huff capture, PE-weighted ${HEX_PE_W}×). The income/pets/growth sliders steer demand; the competition slider tunes how decisive competition is. Hover any hex; click for its breakdown.</div></div>`;
+    <div style="margin-top:10px;font-size:10.5px;color:#64748b;line-height:1.55">Each hex ≈ ${HEX_MI} mi across. Color = <b>opportunity</b> for that spot — darker is stronger. Adjust the sliders to reweight. Hover any hex; click for its breakdown.</div></div>`;
 }
 function _fillLegend(){
   const body=document.getElementById('hex-legend-body'); if(!body) return;
@@ -4432,12 +4417,12 @@ function renderOppDetail(r){
   const line=(label,val,sub)=>`<div style="display:flex;justify-content:space-between;padding:2.5px 0;font-size:12px"><span style="color:#64748b">${label}</span><span style="font-weight:700;color:#1f2933">${val}${sub?` <span style='color:#94a3b8;font-weight:500'>${sub}</span>`:''}</span></div>`;
   return `<div class="opp-detail-inner">
     ${line('Median income', _fmtMoney(r.inc))}
-    ${line('Dog households', r.dog!=null?Math.round(r.dog).toLocaleString():'—','modeled')}
+    ${line('Dog households', r.dog!=null?Math.round(r.dog).toLocaleString():'—')}
     ${line('Population growth ’21→’24', _fmtPct(r.grow))}
     ${line('New construction (2010+)', r.cons!=null?(r.cons*100).toFixed(0)+'%':'—')}
     ${line('Clinics', (r.peCount+r.indCount), `${r.peCount} PE / ${r.indCount} indep`)}
-    ${line('Veterinarians (DVMs)', r.dvm!=null?r.dvm:'—','scraped where known, else ~2/clinic')}
-    ${line('Underservice', u!=null?Math.round(u).toLocaleString():'—','HH per DVM — higher = more underserved')}
+    ${line('Veterinarians (DVMs)', r.dvm!=null?r.dvm:'—')}
+    ${line('Underservice', u!=null?Math.round(u).toLocaleString():'—')}
     <div style="height:1px;background:var(--border);margin:6px 0"></div>
     ${line('Income · Demand · LowComp · Growth', `${r.fIncome.toFixed(0)} · ${r.fDemand.toFixed(0)} · ${r.fComp.toFixed(0)} · ${(r.fGrowth||0).toFixed(0)}`)}
     ${line('Composite score', Math.round(r.score))}
@@ -4445,7 +4430,7 @@ function renderOppDetail(r){
       <button class="vm-export-btn" style="flex:1;justify-content:center" onclick="event.stopPropagation();oppSelect('${r.zip}')">View on map →</button>
       <span class="vm-star ${_inWatch&&_inWatch('market',r.zip)?'on':''}" title="Add to watchlist" onclick="event.stopPropagation();toggleWatchMarket('${r.zip}',this)">★</span>
     </div>
-    <div style="font-size:10.5px;color:#94a3b8;margin-top:8px;line-height:1.4">Sub-scores are percentiles <b>within ${oppRegion.name}</b> (min–max across its ZIPs) — not comparable across regions.</div>
+    <div style="font-size:10.5px;color:#94a3b8;margin-top:8px;line-height:1.4">Sub-scores are relative <b>within ${oppRegion.name}</b> — not comparable across regions.</div>
   </div>`;
 }
 function oppToggleDetail(i){
@@ -4864,7 +4849,7 @@ function updateDrawLayerKpis(drawPoly){
   if(groReady && gEl){
     if(demo && demo.growth){ const v=demo.growth.value;
       gEl.textContent=(v>=0?'+':'')+(v*100).toFixed(1)+'%'; gEl.classList.remove('pending');
-      gFoot.textContent=`area-weighted · ${demo.growth.count} ZIP${demo.growth.count!==1?'s':''}`;
+      gFoot.textContent=`${demo.growth.count} ZIP${demo.growth.count!==1?'s':''}`;
     } else { gEl.textContent='—'; gEl.classList.add('pending'); gFoot.textContent='No ZIP data in area'; }
   }
   // Saturation — veterinarians (DVMs) serving the area per 10k dog-owning households (high = saturated)
@@ -4873,7 +4858,7 @@ function updateDrawLayerKpis(drawPoly){
       const area=_areaClinicCount(), nDvm=area.dvm;
       const sat=nDvm/(demo.dogs.sum/10000), hh=Math.round(demo.dogs.sum);
       sEl.textContent=sat.toFixed(1); sEl.classList.remove('pending');
-      sFoot.textContent=`${_satTag(sat)} · ${nDvm} DVM${nDvm!==1?'s':''} / ${hh>=1000?(hh/1000).toFixed(0)+'k':hh} dog HH`;
+      sFoot.textContent=`${_satTag(sat)}`;
     } else { sEl.textContent='—'; sEl.classList.add('pending'); sFoot.textContent='No demand data in area'; }
   }
 }
@@ -4904,7 +4889,7 @@ function updateLayerKpis(){
       const bnd=map.getBounds(); let nDvm=0; for(const c of clinics){ if(bnd.contains([c.lat,c.lon])) nDvm += (_vetStaffAt(c.lat,c.lon)||{}).n || 2; }
       if(dogSum>0){ const sat=nDvm/(dogSum/10000);
         sEl.textContent=sat.toFixed(1); sEl.classList.remove('pending');
-        sFoot.textContent=`${_satTag(sat)} · ${nDvm} DVM${nDvm!==1?'s':''} / ${dogSum>=1000?(dogSum/1000).toFixed(0)+'k':dogSum} dog HH`;
+        sFoot.textContent=`${_satTag(sat)}`;
       } else { sEl.textContent='—'; sEl.classList.add('pending'); sFoot.textContent='No ZIPs in view'; }
     } else { sEl.textContent='—'; sEl.classList.add('pending'); sFoot.textContent='Draw or select an area'; }
   }
@@ -5759,7 +5744,7 @@ function _evalRenderUnavailable(){
   const sb=document.querySelector('.sidebar'); if(!sb) return;
   sb.innerHTML=`
     <div class="area-header"><span class="area-title">Placement analysis · ${evalZip||'drawn area'}</span><button class="clear-area-btn" onclick="clearEvaluate()">Clear analysis</button></div>
-    <div class="eval-verdict"><span class="eval-warn" style="display:block">Couldn't load road &amp; retail data — OpenStreetMap (Overpass) is busy or rate-limited. Without it the tool can't tell commercial corridors from neighborhoods, so it won't guess.</span></div>
+    <div class="eval-verdict"><span class="eval-warn" style="display:block">Couldn't load map data right now — please try again in a moment.</span></div>
     <div style="padding:4px 14px;"><button class="eval-btn" onclick="openEvaluate()">Retry analysis →</button></div>
     <div class="status-bar" id="status"></div>`;
 }
