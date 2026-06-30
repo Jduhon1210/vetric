@@ -3881,13 +3881,21 @@ function _zipAreaMi(feat){
   const areaMi=aDeg*69.0*(69.0*Math.cos(latMid*Math.PI/180));   // deg² → mi² at the ZIP's latitude
   _zipAreaCache.set(z,areaMi); return areaMi;
 }
-// Development stage from housing density + growth trajectory — distinguishes already-DEVELOPED built-up areas
-// from EMERGING up-and-coming growth areas (which absorbs the former "land-bank"). Display-only (NOT scored).
-function _hexStage(dens, traj){
-  const dev = dens!=null ? clamp01(dens/1400) : 0.5;            // developed-ness 0..1
-  const g   = traj!=null ? traj : 0.5;
-  if(dev>=0.5) return {key:'build',  label:'Developed', color:'#15803d', land:dev>0.78?'Premium land':'Moderate land'};
-  if(dev>=0.28 || g>=0.42) return {key:'emerge', label:'Emerging', color:'#0d9488', land:'Value land'};
+// Development stage from housing density + new-construction share + growth trajectory. "Developed" means
+// genuinely BUILT-UP (a real density reading); a place that's still building out — high share of homes built
+// 2010+, or a hot growth trajectory — is "Emerging" even with substantial rooftops. Display-only (NOT scored).
+// IMPORTANT: unknown density (dens==null, e.g. a missing household reading) must NEVER fall through to
+// "Developed" — that bug tagged whole regions developed on a data gap. null density -> dev stays null.
+function _hexStage(dens, traj, cons){
+  const g   = traj!=null ? traj : 0.5;                          // blended growth trajectory 0..1
+  const nc  = cons!=null ? clamp01(cons) : null;               // new-construction share 0..1 (homes built 2010+)
+  const dev = dens!=null ? clamp01(dens/1400) : null;          // developed-ness 0..1; null = UNKNOWN (do NOT assume developed)
+  const dense = dev!=null && dev>=0.5;                          // genuinely built-up (~700+ households/mi²)
+  if(dense) return {key:'build', label:'Developed', color:'#15803d', land:dev>0.78?'Premium land':'Moderate land'};
+  // not (known-)dense: EMERGING if it's actively building out — lots of new homes, or a hot growth trajectory.
+  if((nc!=null && nc>=0.33) || g>=0.50) return {key:'emerge', label:'Emerging', color:'#0d9488', land:'Value land'};
+  // an established lower-density suburb that's stopped growing/building is still Developed (mature, not emerging).
+  if(dev!=null && dev>=0.25) return {key:'build', label:'Developed', color:'#15803d', land:'Moderate land'};
   return {key:'quiet', label:'Rural / quiet', color:'#94a3b8', land:'Cheap land'};
 }
 
@@ -3975,7 +3983,7 @@ function rescoreHexes(){
     let capTerm=Math.pow(share,shareExp);
     if(h.nearPE<PE_NEAR_HARD) capTerm=Math.min(capTerm,0.20);      // hard-cap the contribution too — de-weighting competition can't revive a PE-adjacent site
     const score=clamp01(demand*capTerm);                          // expected captured demand 0..1
-    const _stage=_hexStage(h.dens, trajIdx);
+    const _stage=_hexStage(h.dens, trajIdx, h.cons);
     return {...h, demand, share, spendIdx, volIdx, trajIdx, score, _stage, _color:_evalColor(Math.pow(score,0.7))};
   });
   redrawHexCanvas();
@@ -4104,7 +4112,7 @@ function _fillLegend(){
   const match=[...hexScored].filter(h=>h.score!=null && _hexStageMatch(h._stage&&h._stage.key)).sort((a,b)=>b.score-a.score);
   const seen=new Set(), best=[];                                  // top DISTINCT ZIPs (one hex per ZIP)
   for(const h of match){ if(seen.has(h.zip)) continue; seen.add(h.zip); best.push(h); if(best.length>=6) break; }
-  const top=best.map(h=>{ const st=h._stage||_hexStage(h.dens,h.trajIdx); return `<div class="hex-top-row" onclick="_hexOpenDetailByCell(${h.q},${h.r})">`+
+  const top=best.map(h=>{ const st=h._stage||_hexStage(h.dens,h.trajIdx,h.cons); return `<div class="hex-top-row" onclick="_hexOpenDetailByCell(${h.q},${h.r})">`+
        `<span style="color:${h._color};font-weight:800;min-width:22px;text-align:right">${Math.round(h.score*100)}</span>`+
        `<span style="flex:1">${h.zip}${h.city?' · '+h.city:''}</span>`+
        `<span style="font-size:9px;font-weight:700;color:${st.color};white-space:nowrap">${st.label}</span></div>`; }).join('');
@@ -4146,7 +4154,7 @@ function _hexFocus(h, doZoom){
 function _hexOpenDetail(h){
   const box=document.getElementById('hex-detail'); if(!box) return;
   box.style.display='block';
-  const st=h._stage||_hexStage(h.dens,h.trajIdx);
+  const st=h._stage||_hexStage(h.dens,h.trajIdx,h.cons);
   const bar=(lbl,v,col)=>`<div style="display:flex;align-items:center;gap:6px;margin:2px 0"><span style="width:62px;font-size:10px;color:#64748b">${lbl}</span><div style="flex:1;height:7px;background:#eef2f7;border-radius:4px;overflow:hidden"><i style="display:block;height:100%;width:${Math.round(clamp01(v)*100)}%;background:${col}"></i></div></div>`;
   box.innerHTML=`<div style="font-weight:800;font-size:13px">${h.zip}${h.city?' · '+h.city:''}
       <span style="font-size:10px;font-weight:700;color:#fff;background:${st.color};padding:1px 7px;border-radius:10px;margin-left:4px;vertical-align:1px">${st.label}</span></div>
