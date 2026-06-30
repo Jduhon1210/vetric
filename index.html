@@ -3142,7 +3142,17 @@ async function fetchClinics(){
       if(clat<s||clat>n||clon<w||clon>e) continue;
       const ck=`${Math.round(clat*1000)}_${Math.round(clon*1000)}`;
       if(deleted[ck]) continue;
-      const dupe=local.some(c=>Math.abs(c.lat-clat)<0.003&&Math.abs(c.lon-clon)<0.004);
+      // Drop only TRUE duplicates (the same clinic appearing in both PE_COORDS and VET_CLINICS). Within ~330m,
+      // require the NAMES to match too — otherwise a distinct independent that merely sits near a PE clinic
+      // (e.g. Vetsavers next to a VCA) was being silently hidden from the map. Essentially-same-point = same clinic.
+      const _vn=String(vc.name||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+      const dupe=local.some(c=>{
+        const dl=Math.abs(c.lat-clat), dn=Math.abs(c.lon-clon);
+        if(dl>=0.003||dn>=0.004) return false;          // far apart → distinct clinics
+        if(dl<0.0002&&dn<0.0002) return true;            // coordinate-identical (~20m) → same point
+        const cn=String(c.name||'').toLowerCase().replace(/[^a-z0-9]/g,'');   // close-ish → only a dupe if the NAMES match
+        return !!cn&&!!_vn&&(cn===_vn||(cn.length>=6&&_vn.length>=6&&(cn.includes(_vn)||_vn.includes(cn))));
+      });
       if(dupe) continue;
       const pe=checkPE(vc.name,clat,clon,ck,overrides);
       const nm=overrides[ck]?.name||vc.name||'Veterinary Clinic';
@@ -3231,6 +3241,7 @@ async function fetchClinics(){
   });
   batch.forEach(m=>clusterGroup.addLayer(m));
   _applyPinZoomVisibility();   // re-evaluate hide-when-zoomed-out after the rebuild
+  _tryOpenPendingClinic();     // if a search just flew us to a clinic, open its popup now that its pin exists
   renderList();
   applyTypeVisibility();           // honor an active clinic-type filter on freshly-drawn pins
 
@@ -3323,6 +3334,60 @@ map.on('moveend',()=>{
   }, 900); // longer debounce so rapid zoom/pan settles before hitting Overpass
 });
 
+/*  Clinic + veterinarian name search (feeds the search bar alongside the place geocoder)  */
+// One cached index over PE (PE_COORDS) + independent (_activeVetClinics) clinics, each carrying its
+// scraped DVM roster (_vetStaffAt) so we can match BOTH clinic names and doctor names. Rebuilt only when
+// the mobile-toggle / overrides change (so per-keystroke search is a cheap array scan).
+let _clinicSearchIdx=null, _clinicSearchKey='';
+function _buildClinicSearchIdx(){
+  const key=(_vfIncludeMobile?(_vfIncludeMobile()?'m1':'m0'):'m')+'|'+(localStorage.getItem('vf_overrides')||'');
+  if(_clinicSearchIdx && _clinicSearchKey===key) return _clinicSearchIdx;
+  const arr=[], seen=new Set();
+  const cityOf=a=>{ const m=String(a||'').match(/,\s*([^,]+),\s*[A-Z]{2}\s*\d{5}/); return m?m[1].trim():''; };
+  const add=(name,lat,lon,pe,owner,addr)=>{
+    if(!name||lat==null||lon==null) return;
+    const k=Math.round(lat*1000)+'_'+Math.round(lon*1000); if(seen.has(k)) return; seen.add(k);
+    const st=_vetStaffAt(lat,lon), vets=(st&&st.vets)?st.vets:[];
+    arr.push({name, nl:name.toLowerCase(), lat, lon, pe:!!pe, owner:owner||'', loc:cityOf(addr), vets, vl:vets.map(v=>v.toLowerCase())});
+  };
+  const peAddr=(la,lo)=>{ try{ return (typeof _vetEnrichAt==='function')?((_vetEnrichAt(la,lo)||{}).addr||''):''; }catch(e){ return ''; } };
+  try{ if(typeof PE_COORDS!=='undefined') for(const c of PE_COORDS) add(c[4], c[0], c[1], true, c[2], peAddr(c[0],c[1])); }catch(e){}
+  try{ for(const v of _activeVetClinics()) add(v.name, v.lat, v.lon, false, '', v.addr); }catch(e){}
+  _clinicSearchIdx=arr; _clinicSearchKey=key; return arr;
+}
+function _clinicSuggest(q, lim){
+  q=String(q||'').toLowerCase().trim(); if(q.length<2) return [];
+  const idx=_buildClinicSearchIdx(), out=[];
+  for(const c of idx){
+    const ni=c.nl.indexOf(q);
+    if(ni>=0){ out.push({label:c.name, sub:(c.pe?(c.owner||'PE / corporate'):'Independent')+(c.loc?' · '+c.loc:''), lat:c.lat, lon:c.lon, clinic:true, pe:c.pe, rank:(c.nl.startsWith(q)?0:1000)+ni}); continue; }
+    let vi=-1, vname=''; for(let j=0;j<c.vl.length;j++){ const p=c.vl[j].indexOf(q); if(p>=0 && (vi<0||p<vi)){ vi=p; vname=c.vets[j]; } }
+    if(vi>=0){ out.push({label:c.name, sub:'Dr. '+vname+(c.loc?' · '+c.loc:''), lat:c.lat, lon:c.lon, clinic:true, pe:c.pe, viaVet:true, rank:2000+vi}); }
+  }
+  out.sort((a,b)=>a.rank-b.rank || a.label.length-b.label.length);
+  const dd=[], dk=new Set(); for(const o of out){ const k=o.lat+'_'+o.lon; if(dk.has(k)) continue; dk.add(k); dd.push(o); }   // a clinic matching by both name + vet appears once (name ranks first)
+  return dd.slice(0, lim||6);
+}
+// Fly to a clinic and open its popup once its pin loads (pins load async on moveend).
+let _pendingClinicPopup=null;
+function _gotoClinic(lat,lon,name){
+  _pendingClinicPopup={lat,lon,name:String(name||'').toLowerCase().trim()};
+  map.setView([lat,lon], Math.max(15, map.getZoom()), {animate:false});
+  let tries=0; const iv=setInterval(()=>{ if(_tryOpenPendingClinic()||++tries>22){ clearInterval(iv); } }, 320);
+}
+function _tryOpenPendingClinic(){
+  if(!_pendingClinicPopup) return false;
+  const {lat,lon,name}=_pendingClinicPopup;
+  // match the EXACT clinic — coords are from the same dataset the markers use, so the right one is ~0m away.
+  // Require a close coord match AND (if we have it) a name match, so we never open a co-located neighbor.
+  let best=-1,bd=Infinity;
+  for(let i=0;i<clinics.length;i++){ const c=clinics[i]; if(!c||c.lat==null) continue;
+    const d=Math.abs(c.lat-lat)+Math.abs(c.lon-lon);
+    if(d<0.0008 && (!name || String(c.name||'').toLowerCase().trim()===name) && d<bd){ bd=d; best=i; } }
+  if(best>=0 && markers[best]){ try{ markers[best].openPopup(); }catch(e){} _pendingClinicPopup=null; return true; }
+  return false;
+}
+
 /*  Autocomplete  */
 let acT=null,acF=-1,acI=[];
 document.getElementById('loc').addEventListener('input',e=>{
@@ -3340,18 +3405,35 @@ document.getElementById('loc').addEventListener('keydown',e=>{
 });
 document.addEventListener('click',e=>{if(!e.target.closest('.ac-wrap'))closeSugg();});
 async function fetchSugg(q){
+  const clinicHits=_clinicSuggest(q, 6);
+  acI=clinicHits.slice();
+  if(clinicHits.length) renderSugg();                       // show matching clinics/doctors instantly
   try{
     const r=await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=6&addressdetails=1&countrycodes=us&viewbox=-106.6,25.8,-93.5,36.5&bounded=1`,{headers:{'Accept-Language':'en'}});
+    if(document.getElementById('loc').value.trim()!==q) return;   // a newer keystroke superseded this fetch
     const data=await r.json();
-    acI=data.map(d=>{const a=d.address||{};const parts=[a.city||a.town||a.village||a.county,a.state].filter(Boolean);return{label:parts.join(', ')||d.display_name.split(',').slice(0,2).join(','),lat:parseFloat(d.lat),lon:parseFloat(d.lon)};});
+    const places=data.map(d=>{const a=d.address||{};const parts=[a.city||a.town||a.village||a.county,a.state].filter(Boolean);return{label:parts.join(', ')||d.display_name.split(',').slice(0,2).join(','),lat:parseFloat(d.lat),lon:parseFloat(d.lon)};});
+    acI=clinicHits.concat(places);                          // clinics first, then place results
     renderSugg();
-  }catch(e){closeSugg();}
+  }catch(e){ if(!clinicHits.length) closeSugg(); }          // on geocoder failure keep any clinic matches
 }
 function renderSugg(){
   const box=document.getElementById('sugg');
   if(!acI.length){closeSugg();return;}
   acF=-1;
-  box.innerHTML=acI.map((s,i)=>`<div class="sugg-item" onmousedown="selectSugg(${i})"><svg fill="none" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>${s.label}</div>`).join('');
+  box.innerHTML=acI.map((s,i)=>{
+    let icon;
+    if(s.clinic){
+      const col=s.pe?'#dc2626':'#2563eb';
+      icon = s.viaVet
+        ? `<svg fill="none" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="stroke:${col}"><circle cx="12" cy="8" r="3.3"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/></svg>`
+        : `<svg fill="none" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="stroke:${col}"><path d="M4 21h16"/><path d="M6 21V8l6-4 6 4v13"/><path d="M12 9v4M10 11h4"/></svg>`;
+    } else {
+      icon = `<svg fill="none" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>`;
+    }
+    const sub = s.sub ? `<span style="color:var(--subtle);font-weight:400"> · ${_ceEsc(s.sub)}</span>` : '';
+    return `<div class="sugg-item" onmousedown="selectSugg(${i})">${icon}${_ceEsc(s.label)}${sub}</div>`;
+  }).join('');
   box.classList.add('open');
 }
 function moveFocus(dir){
@@ -3360,10 +3442,12 @@ function moveFocus(dir){
   acF=Math.max(0,Math.min(acI.length-1,acF+dir));
   items[acF].classList.add('focused');
 }
-function selectSugg(i){document.getElementById('loc').value=acI[i].label;closeSugg();map.setView([acI[i].lat,acI[i].lon],13);}
+function selectSugg(i){const s=acI[i];if(!s)return;document.getElementById('loc').value=s.label;closeSugg();if(s.clinic)_gotoClinic(s.lat,s.lon,s.label);else map.setView([s.lat,s.lon],13);}
 function closeSugg(){document.getElementById('sugg').classList.remove('open');acF=-1;}
 async function jumpTo(){
   const loc=document.getElementById('loc').value.trim();if(!loc)return;closeSugg();
+  const ch=_clinicSuggest(loc,1);                            // a clinic / doctor name beats the geocoder
+  if(ch.length){ document.getElementById('loc').value=ch[0].label; _gotoClinic(ch[0].lat,ch[0].lon,ch[0].label); return; }
   try{
     const r=await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(loc)}&format=json&limit=1&countrycodes=us`,{headers:{'Accept-Language':'en'}});
     const d=await r.json();
