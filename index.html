@@ -4934,7 +4934,7 @@ function updateLayerKpis(){
    dropped. Degrades gracefully — any layer Overpass can't return is dropped and
    its weight redistributed; competition always works (statewide PE set). */
 let evalActive=false, evalZip=null, evalFeat=null, evalRadiusMi=3, evalZipAffluence=0.5, evalSat=null, evalAreaMode=false, evalAreaZips=null;
-let evalShow={heat:true, comp:true, retail:false, hoods:false, zoning:false}; // competitor range rings on by default — they show why border ZIPs are contested
+let evalShow={heat:true, comp:false, retail:false, hoods:false, zoning:false}; // competitor range rings OFF by default (opt-in via the "Competitor range" chip); the competitor dots still always show
 let evalLayers={heat:null, comp:null, retail:null, hoods:null, zoning:null, pins:null};
 let evalData={vets:[], retail:[], resid:[], roads:[], aadt:[], zoning:[], osmLU:[], parcels:[]};
 let evalDataOk={retail:false, roads:false, resid:false, aadt:false, zoning:false, parcels:false};
