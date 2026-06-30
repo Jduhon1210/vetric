@@ -35,6 +35,7 @@ const i = raw.lastIndexOf('window.VET_CLINICS'), j = raw.indexOf('[', i), k = ra
 const all = JSON.parse(raw.slice(j, k + 1));
 let clinics = all.filter(c => c.web);
 if (REGION === 'dfw') clinics = clinics.filter(c => c.lat >= DFW.s && c.lat <= DFW.n && c.lon >= DFW.w && c.lon <= DFW.e);
+if (args.name) clinics = clinics.filter(c => (c.name || '').toLowerCase().includes(String(args.name).toLowerCase())); // --name=<substr> test mode
 clinics = clinics.slice(0, LIMIT);
 console.log(`Crawling ${clinics.length} clinics (of ${all.length} total · ${all.filter(c => c.web).length} have a website)…\n`);
 
@@ -108,13 +109,32 @@ function cleanName(words) {
 function extractVets(text) {
   const NW = "(?!Dr\\b)[A-Z][A-Za-z'’-]*[a-z][A-Za-z'’-]*";   // a name word — caps start, has a lowercase letter, and is NEVER the title "Dr" (stops teaser merges like "Dr. McCall Dr. Scott McCall" → was producing "Mccall Scott")
   const MI = "(?:[A-Z]\\.?\\s+)?";                            // optional middle initial ("Kelly M. Watson")
+  const CRED = "(?:DVM|D\\.?V\\.?M\\.?|VMD)";
   const seen = new Map();                                     // lowercased "first last" -> display name (dedups "Name" vs "Name DVM")
-  const add = (a, b) => { const n = cleanName([a, b].filter(Boolean)); if (n) { const k = n.toLowerCase(); if (!seen.has(k)) seen.set(k, n); } };
+  const lasts = new Set();                                    // surnames already covered by a FULL name (so we don't double-count)
+  const add = (a, b) => { const n = cleanName([a, b].filter(Boolean)); if (n) { const k = n.toLowerCase(); if (!seen.has(k)) { seen.set(k, n); lasts.add(n.split(' ')[1].toLowerCase().replace(/[^a-z'’-]/g, '')); } } };
   let m;
   const reA = new RegExp(`\\bDr\\.?\\s+(${NW})\\s+${MI}(${NW})`, 'g');                          // Dr. First [M.] Last
   while ((m = reA.exec(text))) add(m[1], m[2]);
-  const reB = new RegExp(`\\b(${NW})\\s+${MI}(${NW}),?\\s+(?:DVM|D\\.?V\\.?M\\.?|VMD)\\b`, 'g'); // First [M.] Last, DVM
+  const reB = new RegExp(`\\b(${NW})\\s+${MI}(${NW}),?\\s+${CRED}\\b`, 'g');                    // First [M.] Last, DVM
   while ((m = reB.exec(text))) add(m[1], m[2]);
+
+  // SURNAME-ONLY doctors — last-name-only headings ("Dr. Howard") + single-name credentials ("Folsom, DVM").
+  // Guards: a "Dr. <Surname>" must appear >=2x (a heading + at least one bio mention) so a one-off reference to
+  // some other doctor doesn't count; a credentialed "<Surname> DVM" counts on first sight. De-duped against the
+  // full-name surnames in `lasts` so the same person isn't counted twice.
+  const SUR_STOP = new Set('pepper seuss strange phil drive street road avenue lane court circle trail parkway place highway suite google facebook'.split(' '));
+  const okSur = w => { const lw = w.toLowerCase().replace(/[^a-z'’-]/g, ''); return lw.length >= 3 && !STOP.has(lw) && !SUR_STOP.has(lw) && !lasts.has(lw); };
+  const surDisp = new Map(), drCount = new Map(), credSur = new Set();
+  // NOTE the `(?![A-Za-z'’-])` after each captured name: it forces the name to a FULL-WORD boundary so the NW
+  // can't backtrack to a prefix ("Courtney"→"Courtne", "Gary"→"Gar") when the trailing lookahead would otherwise let it.
+  const poss = w => w.replace(/['’]s$/, '');                                                     // strip a trailing possessive ("Hutchinson's" → "Hutchinson")
+  const reC = new RegExp(`\\bDr\\.?\\s+(${NW})(?![A-Za-z'’-])(?!\\s+${NW})`, 'g');                // "Dr. Surname" (complete word) not followed by another name word
+  while ((m = reC.exec(text))) { const w = poss(m[1]), lw = w.toLowerCase().replace(/[^a-z'’-]/g, ''); if (okSur(w)) { drCount.set(lw, (drCount.get(lw) || 0) + 1); if (!surDisp.has(lw)) surDisp.set(lw, w.charAt(0).toUpperCase() + w.slice(1)); } }
+  const reD = new RegExp(`(?:^|[^A-Za-z'’])(${NW})(?![A-Za-z'’-]),?\\s+${CRED}\\b`, 'g');          // "<Surname> DVM" — single complete name carrying a DVM credential
+  while ((m = reD.exec(text))) { const w = poss(m[1]), lw = w.toLowerCase().replace(/[^a-z'’-]/g, ''); if (okSur(w)) { credSur.add(lw); if (!surDisp.has(lw)) surDisp.set(lw, w.charAt(0).toUpperCase() + w.slice(1)); } }
+  const surVets = [];
+  for (const [lw, disp] of surDisp) if ((drCount.get(lw) || 0) >= 2 || credSur.has(lw)) surVets.push(disp);
 
   const years = new Set();
   const ctx = text.toLowerCase();
@@ -125,7 +145,7 @@ function extractVets(text) {
   }
   const schools = new Set();
   for (const s of VET_SCHOOLS) if (text.includes(s)) schools.add(s === 'LSU' ? 'Louisiana State' : s);
-  return { vets: [...seen.values()], years: [...years].sort(), schools: [...schools] };
+  return { vets: [...seen.values(), ...surVets], years: [...years].sort(), schools: [...schools] };
 }
 
 // Common team-page paths to PROBE when the discovered links come up thin — many sites bury or mislabel the
@@ -192,6 +212,7 @@ async function crawl(c) {
     hit++;
     result[key(c)] = { n: best.vets.length, vets: best.vets, ...(best.years.length ? { years: best.years } : {}), ...(best.schools.length ? { schools: best.schools } : {}), src: bestSrc };
   }
+  if (args.name) console.log(`  ${c.name}  →  n=${best.vets.length}  [${best.vets.join(', ')}]  (${bestSrc || 'no page'})`);  // --name test mode: show what was extracted
   if (done % 25 === 0 || done === clinics.length) console.log(`  ${done}/${clinics.length}  ·  ${hit} with a roster (${Math.round(100 * hit / done)}%)`);
 }
 
