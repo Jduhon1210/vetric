@@ -7,6 +7,9 @@
 //   node build-vets.mjs --region=dfw     # DFW metroplex bbox only
 //   node build-vets.mjs --limit=50       # quick test on the first 50
 //   node build-vets.mjs --concurrency=10 # parallel fetches (default 8)
+//   node build-vets.mjs --render         # ALSO render JS team pages (Wix/React) via a headless browser —
+//                                         #   needs `npm i playwright && npx playwright install chromium` (free, local).
+//                                         #   Graceful: falls back to static-only if Playwright isn't installed.
 //
 // Output → vet-staff.js:
 //   window.VET_STAFF = { "<round(lat*1000)>_<round(lon*1000)>": {n, vets:[names], years?, schools?, src} }
@@ -85,7 +88,9 @@ const STOP = new Set(('the our your new pet pets dog cat animal animals veterina
   + 'received attended completed practice practicing university college school dvm vmd dabvp dacvim ms bs ba phd dr us usa '
   + 'states state texas member members guest column partner partners also both has had was were her his their she he they '
   + 'community are and of in at to with for from this that here when where what who how new york county city area best top '
-  + 'cares loves enjoys husband wife children dogs cats horses years year experience board certified american').split(/\s+/));
+  + 'cares loves enjoys husband wife children dogs cats horses years year experience board certified american '
+  + 'special specialty specialties interests procedures culture dvms primary chief technician technicians assistant assistants '
+  + 'manager managers receptionist kennel groomer grooming intern interns resident').split(/\s+/));
 
 // build a clean "First Last" from up to 3 captured words (drop middle initial, credentials, junk)
 function cleanName(words) {
@@ -101,14 +106,15 @@ function cleanName(words) {
 }
 
 function extractVets(text) {
-  const W = "[A-Z][A-Za-z'’-]*[a-z][A-Za-z'’-]*";   // a name word: caps start, has a lowercase letter, no period (won't span sentences)
-  const seen = new Map();                            // lowercased "first last" -> display name (dedups "Name" vs "Name DVM")
-  const add = (a, b, c) => { const n = cleanName([a, b, c].filter(Boolean)); if (n) { const k = n.toLowerCase(); if (!seen.has(k)) seen.set(k, n); } };
+  const NW = "(?!Dr\\b)[A-Z][A-Za-z'’-]*[a-z][A-Za-z'’-]*";   // a name word — caps start, has a lowercase letter, and is NEVER the title "Dr" (stops teaser merges like "Dr. McCall Dr. Scott McCall" → was producing "Mccall Scott")
+  const MI = "(?:[A-Z]\\.?\\s+)?";                            // optional middle initial ("Kelly M. Watson")
+  const seen = new Map();                                     // lowercased "first last" -> display name (dedups "Name" vs "Name DVM")
+  const add = (a, b) => { const n = cleanName([a, b].filter(Boolean)); if (n) { const k = n.toLowerCase(); if (!seen.has(k)) seen.set(k, n); } };
   let m;
-  const reA = new RegExp(`\\bDr\\.?\\s+(${W})\\s+(${W})(?:\\s+(${W}))?`, 'g');         // Dr. First [Middle] Last
-  while ((m = reA.exec(text))) add(m[1], m[2], m[3]);
-  const reB = new RegExp(`\\b(${W})\\s+(${W})(?:\\s+(${W}))?,?\\s+(?:DVM|D\\.?V\\.?M\\.?|VMD)\\b`, 'g'); // First [Middle] Last, DVM
-  while ((m = reB.exec(text))) add(m[1], m[2], m[3]);
+  const reA = new RegExp(`\\bDr\\.?\\s+(${NW})\\s+${MI}(${NW})`, 'g');                          // Dr. First [M.] Last
+  while ((m = reA.exec(text))) add(m[1], m[2]);
+  const reB = new RegExp(`\\b(${NW})\\s+${MI}(${NW}),?\\s+(?:DVM|D\\.?V\\.?M\\.?|VMD)\\b`, 'g'); // First [M.] Last, DVM
+  while ((m = reB.exec(text))) add(m[1], m[2]);
 
   const years = new Set();
   const ctx = text.toLowerCase();
@@ -122,20 +128,66 @@ function extractVets(text) {
   return { vets: [...seen.values()], years: [...years].sort(), schools: [...schools] };
 }
 
+// Common team-page paths to PROBE when the discovered links come up thin — many sites bury or mislabel the
+// doctors page, so guessing the conventional URLs recovers it. Cheap: 404s return fast and we stop early.
+const GUESS = ['our-team', 'team', 'veterinarians', 'our-doctors', 'doctors', 'meet-the-team', 'meet-our-team', 'staff', 'our-veterinarians', 'about-us'];
+
+// ---- optional JS rendering (headless browser) for client-rendered team pages (Wix/React/Next) ----
+// Opt-in via --render; needs Playwright (`npm i playwright && npx playwright install chromium`). GRACEFUL:
+// if Playwright isn't installed it logs a hint once and the crawl proceeds static-only. Used ONLY when the
+// static pass found <2 vets (the suspected-JS sites), so it never slows the cases that already work.
+const RENDER = !!args.render;
+let _browser = null, _renderOff = false;
+async function ensureBrowser() {
+  if (_browser || _renderOff) return _browser;
+  try { const { chromium } = await import('playwright'); _browser = await chromium.launch({ headless: true }); }
+  catch { _renderOff = true; console.log('  ⚠ --render needs Playwright — run `npm i playwright && npx playwright install chromium`. Proceeding static-only.'); }
+  return _browser;
+}
+async function renderHtml(url) {
+  const b = await ensureBrowser(); if (!b) return null;
+  let page = null;
+  try {
+    page = await b.newPage({ userAgent: UA });
+    try { await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 }); } catch {}
+    try { await page.waitForLoadState('networkidle', { timeout: 8000 }); } catch {}
+    await page.waitForTimeout(600);
+    return await page.content();
+  } catch { return null; } finally { if (page) try { await page.close(); } catch {} }
+}
+
 const result = {}; let done = 0, hit = 0;
 async function crawl(c) {
   let url = c.web.trim(); if (!/^https?:/i.test(url)) url = 'http://' + url; url = url.split(/[?#]/)[0];
-  const home = await get(url);
-  let text = '', src = '';
+  const home = await get(url); done++;
+  // Try the homepage + every plausible team page; KEEP THE PAGE WITH THE MOST VETS (don't stop at the first hit —
+  // the first link is often an "about" blurb with one featured vet while the real roster is one URL over).
+  let best = { vets: [], years: [], schools: [] }, bestSrc = '';
+  const tried = new Set();
+  const tryPage = async (u) => {
+    if (!u || tried.has(u)) return; tried.add(u);
+    const p = await get(u); if (!p) return;
+    const ex = extractVets(stripTags(p)); if (ex.vets.length > best.vets.length) { best = ex; bestSrc = u; }
+  };
   if (home) {
-    for (const l of teamLinks(home, url)) { const p = await get(l.url); if (p) { text = stripTags(p); src = l.url; break; } }
-    if (!text) { text = stripTags(home); src = url; }
+    tried.add(url);
+    const ex = extractVets(stripTags(home)); if (ex.vets.length > best.vets.length) { best = ex; bestSrc = url; }
+    for (const l of teamLinks(home, url)) { if (best.vets.length >= 6) break; await tryPage(l.url); }
+    if (best.vets.length < 2) for (const g of GUESS) { if (best.vets.length >= 3) break; try { await tryPage(new URL('/' + g, url).href); } catch {} }
   }
-  const ex = text ? extractVets(text) : { vets: [], years: [], schools: [] };
-  done++;
-  if (ex.vets.length) {
+  if (RENDER && best.vets.length < 2 && home) {           // static came up thin → the team page is probably JS-rendered
+    const cands = [url, ...teamLinks(home, url).map(l => l.url), ...GUESS.map(g => { try { return new URL('/' + g, url).href; } catch { return null; } })].filter(Boolean);
+    const rtried = new Set();
+    for (const cu of cands) {
+      if (best.vets.length >= 3 || rtried.size >= 4) break;
+      if (rtried.has(cu)) continue; rtried.add(cu);
+      const h = await renderHtml(cu); if (!h) continue;
+      const ex = extractVets(stripTags(h)); if (ex.vets.length > best.vets.length) { best = ex; bestSrc = cu + ' (rendered)'; }
+    }
+  }
+  if (best.vets.length) {
     hit++;
-    result[key(c)] = { n: ex.vets.length, vets: ex.vets, ...(ex.years.length ? { years: ex.years } : {}), ...(ex.schools.length ? { schools: ex.schools } : {}), src };
+    result[key(c)] = { n: best.vets.length, vets: best.vets, ...(best.years.length ? { years: best.years } : {}), ...(best.schools.length ? { schools: best.schools } : {}), src: bestSrc };
   }
   if (done % 25 === 0 || done === clinics.length) console.log(`  ${done}/${clinics.length}  ·  ${hit} with a roster (${Math.round(100 * hit / done)}%)`);
 }
@@ -143,6 +195,7 @@ async function crawl(c) {
 let idx = 0;
 const worker = async () => { while (idx < clinics.length) await crawl(clinics[idx++]); };
 await Promise.all(Array.from({ length: CONC }, worker));
+if (_browser) await _browser.close();
 
 fs.writeFileSync(OUT,
   `// Auto-generated by build-vets.mjs — veterinarians on staff per clinic (count + names), heuristic web scrape.\n` +

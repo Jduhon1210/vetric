@@ -1,0 +1,8 @@
+{
+  "name": "vetric-tools",
+  "private": true,
+  "description": "Local build scripts for Vetric (the app itself is build-step-free index.html). playwright is OPTIONAL — only used by `node build-vets.mjs --render` to read JS-rendered team pages. Install browsers with `npx playwright install chromium`.",
+  "dependencies": {
+    "playwright": "^1.61.1"
+  }
+}
