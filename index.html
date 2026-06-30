@@ -1352,6 +1352,7 @@ let activeFilter='all'; // 'all','indep','pe'
 let activeCompanies=new Set(); // PE companies to show (empty = all)
 let drawLayer=null; // the rectangle on the map
 let _suppressClear=false; // true for ~160ms after a draw finalizes, so the finishing gesture's click doesn't instantly clear it
+let _skipNextRefetch=false; // set when a popup-pan moves the map, so the moveend refetch doesn't rebuild markers + close the popup
 const hav=(a,b,c,d)=>{const R=6371000,dL=(c-a)*Math.PI/180,dN=(d-b)*Math.PI/180,x=Math.sin(dL/2)**2+Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(dN/2)**2;return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));};
 const mi=m=>(m/1609.344).toFixed(1);
 const setStatus=(t,e=false)=>{const s=document.getElementById('status');s.textContent=t;s.className='status-bar'+(e?' err':'');};
@@ -1420,7 +1421,11 @@ function buildPopup(c) {
   const curKind = _kindOf(c);
   const multHTML = (curMult!=1) ? `<div style="display:inline-block;font-size:10px;font-weight:700;color:#92400e;background:#fef3c7;border-radius:10px;padding:2px 8px;margin-top:5px;margin-left:6px">competition ×${curMult}</div>` : '';
 
-  const svHTML = STREETVIEW ? `<div class="popup-sv-wrap" id="sv-${key}" style="display:none"><img class="popup-sv" src="/api/streetview?lat=${c.lat}&lon=${c.lon}" alt="Street View of ${safeName}" title="Click to enlarge" onclick="openSVLightbox(${c.lat},${c.lon})" onload="var w=document.getElementById('sv-${key}');if(w)w.style.display='block'" onerror="var w=this.closest('.popup-sv-wrap');if(w)w.style.display='none'"><span class="popup-sv-zoom">⤢</span></div>` : '';
+  // The wrap reserves its 118px height from the start (placeholder bg) so the popup is measured at FULL height
+  // when it opens — Leaflet then auto-pans it fully into view in one shot. (onerror collapses it where there's
+  // no Street View; the popup just gets shorter, which never clips.) Reserving height avoids a second pan, which
+  // would otherwise trigger the moveend refetch and close the popup.
+  const svHTML = STREETVIEW ? `<div class="popup-sv-wrap" id="sv-${key}"><img class="popup-sv" src="/api/streetview?lat=${c.lat}&lon=${c.lon}" alt="Street View of ${safeName}" title="Click to enlarge" onclick="openSVLightbox(${c.lat},${c.lon})" onerror="var w=this.closest('.popup-sv-wrap');if(w)w.style.display='none'"><span class="popup-sv-zoom">⤢</span></div>` : '';
   return `<div class="popup">
     ${svHTML}
     <div class="popup-header">
@@ -2158,7 +2163,7 @@ function ensurePEClinicsForSelectedZips(){
       // Add a marker for it so it shows on the map
       const idx = clinics.length-1;
       const m = L.marker([plat,plon],{icon:makeIcon(pinColor(c), pinTier(c))})
-        .bindPopup(()=>buildPopup(c),{maxWidth:260})
+        .bindPopup(()=>buildPopup(c),{maxWidth:260,autoPanPadding:[24,24]})
         .on('click',()=>{
           if(activeIdx!==null){const p=document.getElementById('c'+activeIdx);if(p)p.className='card';}
           activeIdx=idx;const el=document.getElementById('c'+idx);
@@ -2792,6 +2797,24 @@ map.on('click', e => {
   }
 });
 
+// When a popup opens, pan the map so the WHOLE popup is visible (Leaflet's built-in autoPan is unreliable here,
+// especially for the tall Street-View popups). Deferred a tick so the reserved-height image box is laid out
+// before we measure. _suppressClear avoids the pan being read as a click-away.
+map.on('popupopen', e => {
+  const pop=e.popup; if(!pop||!pop.getLatLng) return;
+  setTimeout(()=>{
+    if(map._popup!==pop) return;                              // popup closed/replaced meanwhile
+    const el=pop._container; if(!el) return;
+    const sz=map.getSize(), a=map.latLngToContainerPoint(pop.getLatLng());
+    const w=el.offsetWidth||260, h=el.offsetHeight||0, PAD=16, TIP=12;
+    const top=a.y-h-TIP, left=a.x-w/2, right=a.x+w/2;         // popup body sits above the anchor, centered
+    let dx=0, dy=0;
+    if(top<PAD) dy=top-PAD; else if(a.y>sz.y-PAD) dy=a.y-(sz.y-PAD);
+    if(left<PAD) dx=left-PAD; else if(right>sz.x-PAD) dx=right-(sz.x-PAD);
+    if(dx||dy){ _suppressClear=true; setTimeout(()=>_suppressClear=false,160); _skipNextRefetch=true; map.panBy([dx,dy],{animate:true}); }
+  },40);
+});
+
 function showAddClinicModal(lat, lon){
   const existing = document.getElementById('add-clinic-modal');
   if(existing) existing.remove();
@@ -3197,7 +3220,7 @@ async function fetchClinics(){
   const batch=[];
   markers=clinics.map((c,i)=>{
     const m=L.marker([c.lat,c.lon],{icon:makeIcon(pinColor(c), pinTier(c))})
-      .bindPopup(()=>buildPopup(c),{maxWidth:260})
+      .bindPopup(()=>buildPopup(c),{maxWidth:260,autoPanPadding:[24,24]})
       .on('click',()=>{
         if(activeIdx!==null){const p=document.getElementById('c'+activeIdx);if(p)p.className='card';}
         activeIdx=i;const el=document.getElementById('c'+i);
@@ -3284,6 +3307,7 @@ map.on('moveend',()=>{
     }
     fetchTraffic(); // refresh AADT points for the new view (no-op unless the layer is on)
     if(acqMode) renderAcquisitions(); // re-rank acquisition targets for the new view
+    if(_skipNextRefetch){ _skipNextRefetch=false; return; } // a popup-pan moved the map — keep markers so the open popup survives
     // Only reload if we've moved significantly outside the loaded area
     // (i.e. new viewport isn't fully contained within a buffered version of loaded bounds)
     if(loadedBounds){
