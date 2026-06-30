@@ -185,7 +185,10 @@ async function crawl(c) {
       const ex = extractVets(stripTags(h)); if (ex.vets.length > best.vets.length) { best = ex; bestSrc = cu + ' (rendered)'; }
     }
   }
-  if (best.vets.length) {
+  // >40 "vets" on one page is almost always a multi-location group's SHARED directory (e.g. a specialty chain
+  // listing every doctor across all locations), not one clinic's roster — drop it as unreliable rather than
+  // tag a single location with a bogus count.
+  if (best.vets.length && best.vets.length <= 40) {
     hit++;
     result[key(c)] = { n: best.vets.length, vets: best.vets, ...(best.years.length ? { years: best.years } : {}), ...(best.schools.length ? { schools: best.schools } : {}), src: bestSrc };
   }
