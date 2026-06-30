@@ -214,7 +214,6 @@ async function crawl(c) {
   }
   if (args.name) console.log(`  ${c.name}  →  n=${best.vets.length}  [${best.vets.join(', ')}]  (${bestSrc || 'no page'})`);  // --name test mode: show what was extracted
   if (done % 25 === 0 || done === clinics.length) console.log(`  ${done}/${clinics.length}  ·  ${hit} with a roster (${Math.round(100 * hit / done)}%)`);
-  if (done % 400 === 0) flush(false);   // CHECKPOINT: persist progress so a late hang can't lose the whole crawl
 }
 
 // Write the result file (idempotent). Called at checkpoints AND at the very end — guarantees we never lose a
@@ -227,16 +226,27 @@ function flush(final) {
   if (final) console.log(`\nDone. ${hit}/${clinics.length} clinics got a vet roster (${Math.round(100 * hit / (done || 1))}%). Wrote ${OUT} (${Object.keys(result).length} entries).`);
 }
 
-let idx = 0;
-const worker = async () => { while (idx < clinics.length) await crawl(clinics[idx++]); };
-// Race the crawl against a hard time cap so a stuck fetch can never strand the whole run — whatever's gathered
-// by then is still written. Then flush + force-exit (lingering keep-alive sockets otherwise hang/abort the process).
+// Hard PER-CLINIC timeout — the real fix. Some sites have fetches that hang past the 12s abort (DNS/TLS stalls
+// the AbortController doesn't interrupt), which previously stalled a whole worker for 15+ min. Racing each clinic
+// against a fixed wall-clock cap means a stuck site is simply skipped and the worker moves on. The leaked fetch
+// keeps running harmlessly until the final process.exit(0). Checkpoint is keyed to a worker-side `processed`
+// counter (always advances), not to anything inside a crawl that might hang.
+const CLINIC_CAP = 30000;
+let idx = 0, processed = 0;
+const worker = async () => {
+  while (idx < clinics.length) {
+    const c = clinics[idx++];
+    try { await Promise.race([crawl(c), new Promise((_, rej) => setTimeout(() => rej(new Error('clinic-timeout')), CLINIC_CAP))]); }
+    catch { /* timed out or crawl threw — skip this clinic, keep going */ }
+    if (++processed % 300 === 0) flush(false);   // CHECKPOINT every 300 clinics, reliably
+  }
+};
 let capped = false;
 await Promise.race([
   Promise.all(Array.from({ length: CONC }, worker)),
-  new Promise(r => setTimeout(() => { capped = true; r(); }, 100 * 60 * 1000)),   // 100-min hard cap
+  new Promise(r => setTimeout(() => { capped = true; r(); }, 30 * 60 * 1000)),   // 30-min backstop
 ]);
-if (capped) console.log(`\n⚠ Hard time cap reached — writing the ${Object.keys(result).length} rosters gathered so far.`);
+if (capped) console.log(`\n⚠ Backstop time cap reached — writing the ${Object.keys(result).length} rosters gathered so far.`);
 if (_browser) { try { await _browser.close(); } catch {} }
 flush(true);
 process.exit(0);
