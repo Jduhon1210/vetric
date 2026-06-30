@@ -177,7 +177,7 @@ body.vf-surface #zoom-msg{display:none!important;}
 .hex-strat-seg button:last-child{border-right:0;}
 .hex-strat-seg button.on{background:#334155;color:#fff;}
 .hex-strat-seg button.on.b{background:#15803d;}
-.hex-strat-seg button.on.l{background:#7c3aed;}
+.hex-strat-seg button.on.l{background:#0d9488;}
 .opp-list-head{display:grid;grid-template-columns:30px 1fr 64px;gap:12px;padding:0 14px 10px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);position:sticky;top:0;background:var(--bg);}
 .opp-row{display:grid;grid-template-columns:30px 1fr 64px;gap:12px;align-items:center;padding:12px 14px;background:var(--surface);border:1px solid var(--border);border-radius:10px;margin-bottom:8px;cursor:pointer;transition:box-shadow .12s,transform .12s;}
 .opp-row:hover{box-shadow:var(--shadow);transform:translateY(-1px);}
@@ -3791,7 +3791,7 @@ function _hexInWater(lat,lon){
 }
 // Module state
 let oppView='list';              // 'list' | 'surface'
-let hexStrategy='all';           // 'all' | 'build' | 'land' — surface strategy filter
+let hexStrategy='all';           // 'all' | 'developed' | 'emerging' — surface strategy filter
 let _hexSelIdx=-1, _hexRegionIdx=null;     // selected hex + the surrounding-hex "region" set
 const HEX_REGION_MI=1.4;                    // radius (mi) that captures the ring of immediate neighbors
 let hexBaseRows=[];              // per-hex precomputed records (heavy; built once)
@@ -3881,13 +3881,12 @@ function _zipAreaMi(feat){
   const areaMi=aDeg*69.0*(69.0*Math.cos(latMid*Math.PI/180));   // deg² → mi² at the ZIP's latitude
   _zipAreaCache.set(z,areaMi); return areaMi;
 }
-// Development stage from housing density + growth trajectory — distinguishes "build a clinic now"
-// from "land-bank: cheap rural land in the path of growth, acquire & hold". Display-only (NOT scored).
+// Development stage from housing density + growth trajectory — distinguishes already-DEVELOPED built-up areas
+// from EMERGING up-and-coming growth areas (which absorbs the former "land-bank"). Display-only (NOT scored).
 function _hexStage(dens, traj){
   const dev = dens!=null ? clamp01(dens/1400) : 0.5;            // developed-ness 0..1
   const g   = traj!=null ? traj : 0.5;
-  if(dev>=0.5) return {key:'build',  label:'Build-ready',  color:'#15803d', land:dev>0.78?'Premium land':'Moderate land'};
-  if(g>=0.55)  return {key:'land',   label:'Land-bank',    color:'#7c3aed', land:'Value land · hold play'};
+  if(dev>=0.5) return {key:'build',  label:'Developed', color:'#15803d', land:dev>0.78?'Premium land':'Moderate land'};
   if(dev>=0.28 || g>=0.42) return {key:'emerge', label:'Emerging', color:'#0d9488', land:'Value land'};
   return {key:'quiet', label:'Rural / quiet', color:'#94a3b8', land:'Cheap land'};
 }
@@ -3998,8 +3997,8 @@ function buildHexPolys(){
 }
 function _hexStageMatch(key){
   if(hexStrategy==='all') return true;
-  if(hexStrategy==='build') return key==='build'||key==='emerge';   // developed / developing — build now or soon
-  if(hexStrategy==='land')  return key==='land';                    // cheap rural growth — acquire & hold
+  if(hexStrategy==='developed') return key==='build';    // already-developed / built-up areas
+  if(hexStrategy==='emerging')  return key==='emerge';   // up-and-coming growth areas (absorbed the old land-bank)
   return true;
 }
 function setHexStrategy(s){ hexStrategy=s; redrawHexCanvas(); _fillLegend(); }
@@ -4111,15 +4110,15 @@ function _fillLegend(){
        `<span style="font-size:9px;font-weight:700;color:${st.color};white-space:nowrap">${st.label}</span></div>`; }).join('');
   const seg=`<div class="hex-strat-seg">`+
     `<button class="${hexStrategy==='all'?'on':''}" onclick="setHexStrategy('all')">All</button>`+
-    `<button class="${hexStrategy==='build'?'on b':''}" onclick="setHexStrategy('build')">Build-now</button>`+
-    `<button class="${hexStrategy==='land'?'on l':''}" onclick="setHexStrategy('land')">Land-bank</button></div>`;
+    `<button class="${hexStrategy==='developed'?'on b':''}" onclick="setHexStrategy('developed')">Developed</button>`+
+    `<button class="${hexStrategy==='emerging'?'on l':''}" onclick="setHexStrategy('emerging')">Emerging</button></div>`;
   const nZ=new Set(match.map(h=>h.zip)).size;
   const note = hexStrategy==='all' ? '' :
-    `<div style="font-size:10.5px;color:${hexStrategy==='land'?'#7c3aed':'#15803d'};font-weight:600;margin:7px 0 0">${nZ} ${hexStrategy==='land'?'land-bank (hold)':'build-now'} ZIP${nZ!==1?'s':''} highlighted</div>`;
+    `<div style="font-size:10.5px;color:${hexStrategy==='emerging'?'#0d9488':'#15803d'};font-weight:600;margin:7px 0 0">${nZ} ${hexStrategy==='emerging'?'emerging':'developed'} ZIP${nZ!==1?'s':''} highlighted</div>`;
   body.innerHTML=`${seg}${note}<div style="font-size:11px;color:#475569;margin-top:9px">Captured demand (low → high)</div>`+
     `<div class="hex-legbar"></div>`+
     `<div style="display:flex;justify-content:space-between;font-size:9.5px;color:#94a3b8;margin-top:1px"><span>low</span><span>high</span></div>`+
-    `<div class="hex-top-h">Top spots${hexStrategy==='all'?'':' · '+(hexStrategy==='land'?'Land-bank':'Build-now')}</div>${top||'<div style="font-size:11px;color:#94a3b8">No matching plays.</div>'}`;
+    `<div class="hex-top-h">Top spots${hexStrategy==='all'?'':' · '+(hexStrategy==='emerging'?'Emerging':'Developed')}</div>${top||'<div style="font-size:11px;color:#94a3b8">No matching plays.</div>'}`;
 }
 function _hexOpenDetailByCell(q,r){ const i=_hexAxialIndex.get(q+'_'+r); if(i!=null && hexScored[i]) _hexFocus(hexScored[i], true); }
 function _hexClearSel(){ _hexSelIdx=-1; _hexRegionIdx=null; }
