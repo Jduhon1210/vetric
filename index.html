@@ -4023,6 +4023,7 @@ function buildHexClinicIndex(){
 async function buildHexBaseInputs(){
   await loadZipGeometry();
   await _loadHexWater();                                          // real lake outlines → skip grading open water
+  await _loadOppRetail();                                         // commercial-fabric nodes → hex-card "nearest retail" read
   const geo=oppGeoSnap||incomeGeoData||_zipGeoCache;
   if(!geo) throw new Error('no zip geometry');
   _buildHexZipBuckets(geo);
@@ -4245,6 +4246,18 @@ function _hexFocus(h, doZoom){
   }
   _hexOpenDetail(h);
 }
+// Nearest commercial-fabric node in miles (cell-indexed over _oppRetailPts; null if data absent or >4mi).
+let _retailIdx=null;
+function _nearRetailMi(lat,lon){
+  if(!_oppRetailPts||!_oppRetailPts.length) return null;
+  if(!_retailIdx){ _retailIdx=new Map(); for(const p of _oppRetailPts){ const k=Math.round(p[0]/0.02)+'_'+Math.round(p[1]/0.02); (_retailIdx.get(k)||_retailIdx.set(k,[]).get(k)).push(p); } }
+  const bi=Math.round(lat/0.02), bj=Math.round(lon/0.02); let best=Infinity;
+  for(let di=-4;di<=4;di++) for(let dj=-4;dj<=4;dj++){
+    const arr=_retailIdx.get((bi+di)+'_'+(bj+dj)); if(!arr) continue;
+    for(const p of arr){ const d=hav(lat,lon,p[0],p[1]); if(d<best) best=d; }
+  }
+  return best===Infinity?null:best*0.000621371;   // metres → miles
+}
 function _hexOpenDetail(h){
   const box=document.getElementById('hex-detail'); if(!box) return;
   box.style.display='block';
@@ -4253,6 +4266,7 @@ function _hexOpenDetail(h){
   box.innerHTML=`<div style="font-weight:800;font-size:13px">${h.zip}${h.city?' · '+h.city:''}
       <span style="font-size:10px;font-weight:700;color:#fff;background:${st.color};padding:1px 7px;border-radius:10px;margin-left:4px;vertical-align:1px">${st.label}</span></div>
     <div style="font-size:10.5px;color:${st.color};font-weight:600;margin-top:3px">${st.land}${h.dens!=null?` · ~${Math.round(h.dens).toLocaleString()} homes/mi²`:''}</div>
+    ${(()=>{const d=_nearRetailMi(h.cLat,h.cLon); if(d==null&&!_oppRetailPts) return ''; return `<div style="font-size:10.5px;color:#64748b;margin-top:2px">${d==null?'No commercial fabric within 4 mi — land play or served elsewhere':d<0.4?'Commercial corridor at this spot':'Nearest commercial corridor ~'+d.toFixed(1)+' mi'}</div>`;})()}
     <div style="font-size:11px;color:#475569;margin:6px 0">Income ${_fmtMoney(h.inc)} · Growth '21→'24 ${_fmtPct(h.grow)} · New construction ${h.cons!=null?Math.round(h.cons*100)+'%':'—'}</div>
     <div style="font-size:11px;color:#475569;margin:0 0 6px">Dog households ${h.dog!=null?Math.round(h.dog).toLocaleString():'—'} → est. <b>${h.dog!=null?('~'+Math.round(h.dog*OPP_VISITS_PER_DOGHH).toLocaleString()):'—'}</b> vet visits/yr → a new clinic captures est. <b>${h.share!=null?'~'+Math.min(95,Math.round(h.share*100))+'%':'—'}</b></div>
     ${bar('Spend power',h.spendIdx||0,'#15803d')}${bar('Pet volume',h.volIdx||0,'#4338ca')}${bar('Growth trajectory',h.trajIdx||0,'#0d9488')}${bar('Market capture',h.share||0,'#b45309')}
@@ -4360,6 +4374,7 @@ async function openOpportunity(){
     const _cw=u=>fetch(u,{cache:'force-cache'}).then(r=>r&&r.text()).catch(()=>{});
     await Promise.all([
       loadZipGeometry().catch(()=>{}),
+      _loadOppRetail(),   // commercial-fabric nodes for the "why are there no vets here" read (108KB, cached)
       _cw(`https://api.census.gov/data/2022/acs/acs5?get=B19013_001E&for=zip%20code%20tabulation%20area:*&key=${_K}`),
       _cw(`https://api.census.gov/data/2022/acs/acs5?get=B11001_001E,B25003_001E,B25003_002E,B25024_001E,B25024_002E&for=zip%20code%20tabulation%20area:*&key=${_K}`),
       _cw(`https://api.census.gov/data/${GROWTH_YEAR_NEW}/acs/acs5?get=B01003_001E&for=zip%20code%20tabulation%20area:*&key=${_K}`),
@@ -4420,6 +4435,17 @@ async function openOpportunity(){
   rescoreAndRender();
 }
 
+// Commercial-fabric nodes (retail/commercial landuse centroids + anchor stores) — one-time Overpass
+// pull baked into dfw-retail.json, same recipe as dfw-water.json. Used DISPLAY-ONLY to explain WHY a
+// ZIP has few/no vets: a wealthy zero-vet ZIP with no commercial land isn't whitespace — its demand is
+// served by the adjacent corridor (there's nowhere to put a clinic). NEVER a score input (buildability
+// is a tag, not a penalty). Missing file → retailN stays null and the UI line simply doesn't render.
+let _oppRetailPts=null, _oppRetailP=null;
+function _loadOppRetail(){
+  if(_oppRetailP) return _oppRetailP;
+  _oppRetailP=fetch('dfw-retail.json',{cache:'force-cache'}).then(r=>r.ok?r.json():null).then(j=>{_oppRetailPts=Array.isArray(j)?j:null; return _oppRetailPts;}).catch(()=>null);
+  return _oppRetailP;
+}
 // Compute the raw per-ZIP inputs (income, demand, weighted competition) for
 // every ZIP whose centroid sits in the DFW region.
 function buildOppBaseInputs(){
@@ -4483,7 +4509,16 @@ function buildOppBaseInputs(){
       if(pointInGeoJSON(cl.lat,cl.lon,f)){ indCount++; dvm += (_vetStaffAt(cl.lat,cl.lon)||{}).n || 2; }
     }
 
-    rows.push({ zip, feat:f, city:(f.properties.city||f.properties.po_name||''), inc, dog, grow, cons, peCount, indCount, dvm });
+    // Commercial-fabric count (display-only): retail/commercial nodes inside the ZIP. null = data not loaded.
+    let retailN=null;
+    if(_oppRetailPts){
+      retailN=0;
+      for(const p of _oppRetailPts){
+        if(p[0]<bb.minLat||p[0]>bb.maxLat||p[1]<bb.minLon||p[1]>bb.maxLon) continue;
+        if(pointInGeoJSON(p[0],p[1],f)) retailN++;
+      }
+    }
+    rows.push({ zip, feat:f, city:(f.properties.city||f.properties.po_name||''), inc, dog, grow, cons, peCount, indCount, dvm, retailN });
   }
   oppBaseRows=rows;
 }
@@ -4572,6 +4607,19 @@ const _fmtMoney=v=>v==null?'—':'$'+Math.round(v).toLocaleString();
 const _fmtPct=v=>v==null?'—':(v>=0?'+':'')+(v*100).toFixed(1)+'%';
 function _oppUnder(r){ return r.dog!=null ? r.dog/((r.dvm||0) + 1) : null; }   // demand per DVM
 // Per-ZIP drill-down with the REAL underlying numbers (not just the 0-100 bars) + region-relative caveat.
+// "Commercial fabric" read — answers WHY a ZIP has few/no vets (display-only, never scored).
+// A zero-vet ZIP is only whitespace if there's somewhere to build; a built-out residential enclave
+// with no commercial land has its demand served by adjacent corridors, and a fast-growing exurb
+// with none YET is a land play. Hidden entirely when dfw-retail.json isn't loaded (non-DFW regions).
+function _oppFabricLine(r){
+  if(r.retailN==null) return '';
+  let txt, col;
+  if(r.retailN>=3){ txt=`${r.retailN} nodes — buildable corridors`; col='#15803d'; }
+  else if(r.retailN>=1){ txt=`limited — ${r.retailN} node${r.retailN>1?'s':''}`; col='#b45309'; }
+  else if((r.cons!=null&&r.cons>=0.33)||(r.grow!=null&&r.grow>=0.25)){ txt='none yet — retail still building out (land play)'; col='#0d9488'; }
+  else { txt='none — residential enclave; demand served by adjacent corridors'; col='#dc2626'; }
+  return `<div style="display:flex;justify-content:space-between;gap:10px;padding:2.5px 0;font-size:12px"><span style="color:#64748b;white-space:nowrap">Commercial fabric</span><span style="font-weight:700;color:${col};text-align:right">${txt}</span></div>`;
+}
 // ~2.4 vet visits per dog-owning household per year — industry planning average; display-only.
 const OPP_VISITS_PER_DOGHH = 2.4;
 function renderOppDetail(r,i){
@@ -4594,6 +4642,7 @@ function renderOppDetail(r,i){
     ${line('Population growth ’21→’24', _fmtPct(r.grow))}
     ${line('New construction (2010+)', r.cons!=null?(r.cons*100).toFixed(0)+'%':'—')}
     ${line('Clinics', (r.peCount+r.indCount), `${r.peCount} PE / ${r.indCount} indep`)}
+    ${_oppFabricLine(r)}
     <div style="height:1px;background:var(--border);margin:6px 0"></div>
     ${line('Income · Demand · Competition · Growth', `${r.fIncome.toFixed(0)} · ${r.fDemand.toFixed(0)} · ${r.fComp.toFixed(0)} · ${(r.fGrowth||0).toFixed(0)}`)}
     ${line('Composite score', Math.round(r.score))}
