@@ -5632,6 +5632,7 @@ async function openEvaluate(){
   setTimeout(()=>{ if(evalActive) _evalComputeAndRender(); }, 30);
 }
 function _evalComputeAndRender(){
+  _evalClearDrive();               // a recompute rebuilds the sites list, so an old drive polygon would orphan (button state lost)
   evalSat=null; evalZoneStat=null; // recomputed below once the grid is scored; cleared so early-returns can't show a stale grade
   const feat=evalFeat, bb=_evalBBox(feat);
   const R=evalRadiusMi*1609.344;
@@ -6026,13 +6027,27 @@ async function computeIsochrone(lat, lon, budgetSec){
   }
   return ring;
 }
+let _evalDriveIdx=-1, _evalDriveRing=null;   // which top-site the drive polygon belongs to + its cached ring (reuse on re-show, no API call)
+const _DRIVE_SHOW='◔ 10-min drive area', _DRIVE_HIDE='✕ Hide drive area';
+function _evalDriveResetBtns(){
+  document.querySelectorAll('button[onclick^="evalDriveTime"]').forEach(b=>{ b.textContent=_DRIVE_SHOW; b.disabled=false; });
+  document.querySelectorAll('[id^="evd-"]').forEach(d=>{ d.innerHTML=''; });   // clear every site's drive readout too
+}
+// Remove the drive polygon (leaves the cached ring so re-showing the SAME site is free); resets buttons + readouts.
+function _evalHideDrive(){ if(evalDriveLayer){ map.removeLayer(evalDriveLayer); evalDriveLayer=null; } _evalDriveResetBtns(); }
+// Full reset — drop the polygon AND the cache (used on recompute / clear).
+function _evalClearDrive(){ _evalHideDrive(); _evalDriveIdx=-1; _evalDriveRing=null; }
 async function evalDriveTime(i, btn){
   const g=evalTop[i]; if(!g) return;
+  // TOGGLE OFF: this site's drive area is currently on screen → hide it.
+  if(evalDriveLayer && _evalDriveIdx===i){ _evalHideDrive(); return; }   // _evalHideDrive already clears the readout
+  _evalHideDrive();   // clear any other site's polygon + reset all buttons first
   const orig = btn ? btn.textContent : '';
   if(btn){ btn.disabled=true; btn.textContent='Computing…'; }
   try{
-    const ring=await computeIsochrone(g.la, g.lo, DRIVE_BUDGET_SEC);
-    if(evalDriveLayer){ map.removeLayer(evalDriveLayer); evalDriveLayer=null; }
+    // Reuse the cached ring if it's this same site (hidden then re-shown) — no second Routes call.
+    let ring = (_evalDriveIdx===i && _evalDriveRing) ? _evalDriveRing : await computeIsochrone(g.la, g.lo, DRIVE_BUDGET_SEC);
+    _evalDriveIdx=i; _evalDriveRing=ring;
     evalDriveLayer=L.polygon(ring,{color:'#7c3aed',weight:2.5,fillColor:'#7c3aed',fillOpacity:0.12}).addTo(map);
     try{ map.fitBounds(evalDriveLayer.getBounds(),{padding:[40,40],maxZoom:14}); }catch(e){}
     const poly=ring.map(p=>({lat:p[0],lng:p[1]}));
@@ -6040,15 +6055,17 @@ async function evalDriveTime(i, btn){
     for(const c of evalCompsCache){ if(pointInPolygon(c.lat,c.lon,poly)){ c.pe?pe++:ind++; } }
     const el=document.getElementById('evd-'+i);
     if(el) el.innerHTML=`<b>10-min drive:</b> ${pe+ind} clinics in range (${pe} PE · ${ind} indep) · ~${Math.round(_polyAreaMi(ring))} mi² catchment`;
+    if(btn){ btn.disabled=false; btn.textContent=_DRIVE_HIDE; }
   }catch(e){
     vfToast('Drive-time unavailable — is the Routes API set up?');
-  } finally { if(btn){ btn.disabled=false; btn.textContent=orig||'◔ 10-min drive'; } }
+    if(btn){ btn.disabled=false; btn.textContent=orig||_DRIVE_SHOW; }
+  }
 }
 function clearEvaluate(){
   const wasArea=evalAreaMode;
   evalActive=false; evalAreaMode=false; evalAreaZips=null; evalSat=null; evalZoneStat=null; evalZoneCities=[]; evalParcelCounties=[];
   _evalClearLayers(); _evalHideLegend();
-  if(evalDriveLayer){ map.removeLayer(evalDriveLayer); evalDriveLayer=null; }
+  _evalClearDrive();
   evalData={vets:[], retail:[], resid:[], roads:[], aadt:[], zoning:[], osmLU:[], parcels:[]}; evalDataOk={retail:false,roads:false,resid:false,aadt:false,zoning:false,parcels:false};
   evalCells=[]; evalTop=[]; evalCompsCache=[];
   if(selectedZips.size) applyZipSelection();
