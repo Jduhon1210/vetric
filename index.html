@@ -4502,14 +4502,21 @@ function rescoreAndRender(){
   const dogs=oppBaseRows.map(r=>r.dog).filter(v=>v!=null);
   const grows=oppBaseRows.map(r=>r.grow).filter(v=>v!=null);
   const conss=oppBaseRows.map(r=>r.cons).filter(v=>v!=null);
-  // Underservice = pet households per DVM (veterinarian) — high means demand the market can't yet
-  // serve. Per-VET, not per-clinic: a 6-DVM hospital serves far more than a solo, so capacity is the
-  // unit (industry vets-per-capita). dvm sums real scraped rosters, defaulting to 2 (median) where unknown.
-  const _under=r=> r.dog!=null ? r.dog/((r.dvm||0) + 1) : null;   // demand per DVM (vets serving the ZIP, real where scraped else 2)
-  const unders=oppBaseRows.map(_under).filter(v=>v!=null);
-
   const mm=arr=>{ const mn=Math.min(...arr), mx=Math.max(...arr); return {mn,mx,rng:(mx-mn)||1}; };
   const incMM=incs.length?mm(incs):{mn:0,mx:1,rng:1};
+  // Income percentile (0..1) within the region — used twice below as the "can this market pay?" signal.
+  const _incPct=r=> r.inc!=null ? Math.max(0,Math.min(1,(r.inc-incMM.mn)/incMM.rng)) : 0.5;
+  // Utilization: low-income ZIPs use vet care at well below the flat average, so demand is discounted
+  // by spending power (floor 0.35 — low-income dog owners still visit, just less). This is what stops a
+  // zero-clinic, low-income ZIP from reading as the region's best market: absence of supply there is the
+  // market's verdict, not an inefficiency (the "vet desert" trap — 75217 ranked #1 on raw counts).
+  const _util=r=> 0.35+0.65*_incPct(r);
+  // Underservice (SCORING metric) = EFFECTIVE dog households per DVM — spending-weighted demand per vet.
+  // Per-VET, not per-clinic (a 6-DVM hospital serves far more than a solo); dvm sums real scraped rosters,
+  // defaulting to 2 (median) where unknown. NOTE the detail-card display (_oppUnder) stays the RAW
+  // households-per-vet figure — that's a fact about the ZIP; this weighted version is the score input.
+  const _under=r=> r.dog!=null ? (r.dog*_util(r))/((r.dvm||0) + 1) : null;
+  const unders=oppBaseRows.map(_under).filter(v=>v!=null);
   const dogMM=dogs.length?mm(dogs):{mn:0,mx:1,rng:1};
   const growMM=grows.length?mm(grows):{mn:0,mx:1,rng:1};
   const consMM=conss.length?mm(conss):{mn:0,mx:1,rng:1};
@@ -4531,9 +4538,22 @@ function rescoreAndRender(){
     // Competition factor is computed as underservice internally — demand-relative,
     // so a small ZIP no longer looks open just because it has a low raw clinic count.
     const fComp = u!=null ? (u-underMM.mn)/underMM.rng*100 : 50;
-    const score = fIncome*w.income + fDemand*w.demand + fComp*w.comp + fGrowth*w.growth;
+    // Market-viability damper: the additive blend is MULTIPLIED by spending power, mirroring the
+    // industry funnel (screen the market, then score openness) and the Surface's multiplicative
+    // demand×capture design. An open-but-poor market can no longer buy the top rank on the
+    // competition factor alone; a strong market takes only a mild haircut. Same _util curve as
+    // the underservice weighting (floor 0.35), so one knob tunes both.
+    const score = (fIncome*w.income + fDemand*w.demand + fComp*w.comp + fGrowth*w.growth) * _util(r);
     return { ...r, fIncome, fDemand, fComp, fGrowth, score };
   }).sort((a,b)=>b.score-a.score);
+  // Present the composite as a 0–100 index within the region (best ≈95, worst ≈5) — the damper above
+  // compresses raw values, and sub-scores are region-relative percentiles anyway (Esri's suitability
+  // output is the same relative ranking). Monotonic stretch: ORDER and spacing are unchanged, and the
+  // "relative to this region" disclosures (list hint + card caveat) cover the interpretation.
+  if(oppScored.length>1){
+    const sMx=oppScored[0].score, sMn=oppScored[oppScored.length-1].score, sRng=(sMx-sMn)||1;
+    for(const r of oppScored) r.score=5+90*(r.score-sMn)/sRng;
+  }
 
   // In Surface view, the card is already built (by setOppView) and recolored by rescoreHexes —
   // don't rebuild #opp-list-wrap here (that would wipe an open hex-detail and double the work).
