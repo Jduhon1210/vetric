@@ -4516,7 +4516,12 @@ function rescoreAndRender(){
   // defaulting to 2 (median) where unknown. NOTE the detail-card display (_oppUnder) stays the RAW
   // households-per-vet figure — that's a fact about the ZIP; this weighted version is the score input.
   const _under=r=> r.dog!=null ? (r.dog*_util(r))/((r.dvm||0) + 1) : null;
-  const unders=oppBaseRows.map(_under).filter(v=>v!=null);
+  // LOG-transform the ratio before normalizing: dogHH-per-vet is heavy-tailed (a zero-vet ZIP sits at
+  // ~5,000/vet vs a normal ZIP's ~150), so linear min-max pinned the outlier at 100 and crushed every
+  // real market to a 0–5 sub-score (the #1 ZIP displayed "Competition 2" — read as a contradiction).
+  // Log spreads the scale: region median sub-score goes ~6 → ~60. Do NOT revert to linear min-max.
+  const _underL=r=>{ const u=_under(r); return u!=null?Math.log(1+u):null; };
+  const unders=oppBaseRows.map(_underL).filter(v=>v!=null);
   const dogMM=dogs.length?mm(dogs):{mn:0,mx:1,rng:1};
   const growMM=grows.length?mm(grows):{mn:0,mx:1,rng:1};
   const consMM=conss.length?mm(conss):{mn:0,mx:1,rng:1};
@@ -4534,7 +4539,7 @@ function rescoreAndRender(){
     const gN = r.grow!=null ? (r.grow-growMM.mn)/growMM.rng*100 : null;
     const cN = r.cons!=null ? (r.cons-consMM.mn)/consMM.rng*100 : null;
     const fGrowth = (gN!=null && cN!=null) ? 0.6*gN+0.4*cN : (gN!=null ? gN : (cN!=null ? cN : 50));
-    const u=_under(r);
+    const u=_underL(r);   // LOG-space, matching how underMM was built above
     // Competition factor is computed as underservice internally — demand-relative,
     // so a small ZIP no longer looks open just because it has a low raw clinic count.
     const fComp = u!=null ? (u-underMM.mn)/underMM.rng*100 : 50;
