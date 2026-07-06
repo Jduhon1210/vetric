@@ -4294,7 +4294,10 @@ function _hexOpenDetail(h){
     <div style="font-size:11px;color:#475569;margin:6px 0">Income ${_fmtMoney(h.inc)} · Growth '21→'24 ${_fmtPct(h.grow)} · New construction ${h.cons!=null?Math.round(h.cons*100)+'%':'—'}</div>
     ${(()=>{const cE=(typeof dogData!=='undefined'&&dogData[h.zip]&&dogData[h.zip].catEst!=null)?dogData[h.zip].catEst:null;
       const v=h.dog!=null?Math.round(h.dog*OPP_VISITS_PER_DOGHH+(cE||0)*OPP_VISITS_PER_CATHH):null;
-      return `<div style="font-size:11px;color:#475569;margin:0 0 6px">${h.dog!=null?Math.round(h.dog).toLocaleString():'—'} dog${cE!=null?' + '+Math.round(cE).toLocaleString()+' cat':''} households → est. <b>${v!=null?('~'+v.toLocaleString()):'—'}</b> vet visits/yr → a new clinic captures est. <b>${h.share!=null?'~'+Math.min(95,Math.round(h.share*100))+'%':'—'}</b></div>`;})()}
+      let band='';
+      if(v!=null && h.share!=null){ const cap=v*Math.min(h.share,0.95)/OPP_VISITS_PER_DVM;
+        band = cap<1.3?'a solo practice':cap<2.5?'a ~2-doctor practice':cap<3.6?'a ~3-doctor practice':'a 4+ doctor hospital'; }
+      return `<div style="font-size:11px;color:#475569;margin:0 0 6px">${h.dog!=null?Math.round(h.dog).toLocaleString():'—'} dog${cE!=null?' + '+Math.round(cE).toLocaleString()+' cat':''} households → est. <b>${v!=null?('~'+v.toLocaleString()):'—'}</b> vet visits/yr → a new clinic captures est. <b>${h.share!=null?'~'+Math.min(95,Math.round(h.share*100))+'%':'—'}</b>${band?' → enough for <b>'+band+'</b>':''}</div>`;})()}
     ${bar('Spend power',h.spendIdx||0,'#15803d')}${bar('Pet volume',h.volIdx||0,'#4338ca')}${bar('Growth trajectory',h.trajIdx||0,'#0d9488')}${bar('Market capture',h.share||0,'#b45309')}
     <div style="margin:8px 0 6px;font-size:12px">Opportunity score <b style="color:${h._color}">${Math.round((h.score||0)*100)}</b> <span style="font-size:10px;color:#94a3b8">demand × est. market capture</span></div>
     <button class="eval-btn" style="width:100%" onclick="evaluateHexSpot(${h.cLat.toFixed(5)},${h.cLon.toFixed(5)})">Evaluate this spot →</button>`;
@@ -4650,6 +4653,11 @@ function _oppFabricLine(r){
 const OPP_VISITS_PER_DOGHH = 2.4;
 // Cat households visit far less (~half of cats see a vet in a given year) — ~1.2 visits/HH-yr. Display-only.
 const OPP_VISITS_PER_CATHH = 1.2;
+// Effective annual visits that sustain one full-time DVM. Deliberately ~2,000 (not the ~3,500-4,000
+// max-throughput number): our visit chain is conservative, vets split time/species, and 2,000 is
+// calibrated so a "balanced" ZIP (saturation tertiles) reads supply ≈ demand — keeps every card
+// internally consistent. Cross-check: US actuals run ~2,500-3,000 visits/vet-yr. Display-only.
+const OPP_VISITS_PER_DVM = 2000;
 function renderOppDetail(r,i){
   const u=_oppUnder(r);
   const line=(label,val,sub)=>`<div style="display:flex;justify-content:space-between;padding:2.5px 0;font-size:12px"><span style="color:#64748b">${label}</span><span style="font-weight:700;color:#1f2933">${val}${sub?` <span style='color:#94a3b8;font-weight:500'>${sub}</span>`:''}</span></div>`;
@@ -4666,6 +4674,14 @@ function renderOppDetail(r,i){
     ${catHH!=null?line('Cat-owning households', Math.round(catHH).toLocaleString()):''}
     ${visits!=null?line('Est. annual vet visits', '~'+visits.toLocaleString(), catHH!=null?'dogs + cats':''):''}
     ${line('Veterinarians serving it (DVMs)', r.dvm!=null?r.dvm:'—')}
+    ${(()=>{ if(visits==null) return '';
+      const sustain=Math.max(1,Math.round(visits/OPP_VISITS_PER_DVM));
+      let verdict='';
+      if(r.dvm!=null){ const head=sustain-r.dvm;
+        if(head>=2) verdict=`<div style="font-size:11px;font-weight:700;color:#15803d;padding:1px 0 3px">Whitespace — demand for ~${head} more full-time DVMs than practice here today</div>`;
+        else if(head<=-2) verdict=`<div style="font-size:11px;font-weight:700;color:#475569;padding:1px 0 3px">Service hub — more vets than in-ZIP demand; they draw from surrounding ZIPs</div>`;
+        else verdict=`<div style="font-size:11px;font-weight:700;color:#64748b;padding:1px 0 3px">Balanced — supply roughly matches in-ZIP demand</div>`; }
+      return line('Demand sustains', '~'+sustain+' full-time DVM'+(sustain!==1?'s':''), r.dvm!=null?('vs '+r.dvm+' today'):'')+verdict; })()}
     ${line('Dog households per vet', u!=null?Math.round(u).toLocaleString():'—','higher = more open market')}
     ${sec('Market context')}
     ${line('Median income', _fmtMoney(r.inc))}
@@ -4700,6 +4716,7 @@ function exportOppCSV(){
     {label:'Median income',get:x=>x.r.inc!=null?Math.round(x.r.inc):''},
     {label:'Dog households (modeled)',get:x=>x.r.dog!=null?Math.round(x.r.dog):''},
     {label:'Cat households (modeled)',get:x=>(typeof dogData!=='undefined'&&dogData[x.r.zip]&&dogData[x.r.zip].catEst!=null)?dogData[x.r.zip].catEst:''},
+    {label:'Demand sustains DVMs (est.)',get:x=>{ if(x.r.dog==null) return ''; const cE=(typeof dogData!=='undefined'&&dogData[x.r.zip]&&dogData[x.r.zip].catEst!=null)?dogData[x.r.zip].catEst:0; return Math.max(1,Math.round((x.r.dog*OPP_VISITS_PER_DOGHH+cE*OPP_VISITS_PER_CATHH)/OPP_VISITS_PER_DVM)); }},
     {label:'Growth 21-24',get:x=>x.r.grow!=null?(x.r.grow*100).toFixed(1)+'%':''},
     {label:'New construction %',get:x=>x.r.cons!=null?(x.r.cons*100).toFixed(0):''},
     {label:'PE clinics',get:x=>x.r.peCount},
