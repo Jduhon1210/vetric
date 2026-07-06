@@ -2445,6 +2445,11 @@ async function toggleIncomeLayer(on){
 // from real Census data instead of hardcoding it, and we adjust per ZIP instead
 // of applying one flat number everywhere.
 const TX_DOG_BASE_RATE = 0.45;
+// Cats: TX households owning cats (~28%, AVMA demographic norms — Texas skews dog). Modeled per ZIP like
+// dogs but with HALF the homeownership elasticity and NO single-family loading: cat ownership tracks
+// owning-vs-renting weakly and is largely housing-type independent (apartments suit cats) — using the
+// dog adjustment verbatim would fake precision. Clamped tighter (±15% -> rate 0.15–0.45).
+const TX_CAT_BASE_RATE = 0.28;
 let dogRaw = {};      // zip -> {households, ownerPct, sfPct}
 let dogData = {};     // zip -> {households, rate, est}
 let dogGeoData = null;
@@ -2536,7 +2541,10 @@ async function toggleDogLayer(on){
       modifier = Math.max(-0.3, Math.min(0.3, modifier));
       let rate = TX_DOG_BASE_RATE * (1+modifier);
       rate = Math.max(0.2, Math.min(0.7, rate));
-      dogData[zip] = { households: z.households, rate, est: Math.round(z.households*rate) };
+      const ownerDev = (z.ownerPct!=null && avgOwnerPct>0) ? (z.ownerPct-avgOwnerPct)/avgOwnerPct : 0;
+      let catRate = TX_CAT_BASE_RATE * (1 + Math.max(-0.15, Math.min(0.15, 0.5*ownerDev)));
+      catRate = Math.max(0.15, Math.min(0.45, catRate));
+      dogData[zip] = { households: z.households, rate, est: Math.round(z.households*rate), catEst: Math.round(z.households*catRate) };
     });
 
     // Step 5: build/refresh choropleth
@@ -4284,7 +4292,9 @@ function _hexOpenDetail(h){
     <div style="font-size:10.5px;color:${st.color};font-weight:600;margin-top:3px">${st.land}${h.dens!=null?` · ~${Math.round(h.dens).toLocaleString()} homes/mi²`:''}</div>
     ${(()=>{const d=_nearRetailMi(h.cLat,h.cLon); if(d==null&&!_oppRetailPts) return ''; return `<div style="font-size:10.5px;color:#64748b;margin-top:2px">${d==null?'No commercial fabric within 4 mi — land play or served elsewhere':d<0.4?'Commercial corridor at this spot':'Nearest commercial corridor ~'+d.toFixed(1)+' mi'}</div>`;})()}
     <div style="font-size:11px;color:#475569;margin:6px 0">Income ${_fmtMoney(h.inc)} · Growth '21→'24 ${_fmtPct(h.grow)} · New construction ${h.cons!=null?Math.round(h.cons*100)+'%':'—'}</div>
-    <div style="font-size:11px;color:#475569;margin:0 0 6px">Dog households ${h.dog!=null?Math.round(h.dog).toLocaleString():'—'} → est. <b>${h.dog!=null?('~'+Math.round(h.dog*OPP_VISITS_PER_DOGHH).toLocaleString()):'—'}</b> vet visits/yr → a new clinic captures est. <b>${h.share!=null?'~'+Math.min(95,Math.round(h.share*100))+'%':'—'}</b></div>
+    ${(()=>{const cE=(typeof dogData!=='undefined'&&dogData[h.zip]&&dogData[h.zip].catEst!=null)?dogData[h.zip].catEst:null;
+      const v=h.dog!=null?Math.round(h.dog*OPP_VISITS_PER_DOGHH+(cE||0)*OPP_VISITS_PER_CATHH):null;
+      return `<div style="font-size:11px;color:#475569;margin:0 0 6px">${h.dog!=null?Math.round(h.dog).toLocaleString():'—'} dog${cE!=null?' + '+Math.round(cE).toLocaleString()+' cat':''} households → est. <b>${v!=null?('~'+v.toLocaleString()):'—'}</b> vet visits/yr → a new clinic captures est. <b>${h.share!=null?'~'+Math.min(95,Math.round(h.share*100))+'%':'—'}</b></div>`;})()}
     ${bar('Spend power',h.spendIdx||0,'#15803d')}${bar('Pet volume',h.volIdx||0,'#4338ca')}${bar('Growth trajectory',h.trajIdx||0,'#0d9488')}${bar('Market capture',h.share||0,'#b45309')}
     <div style="margin:8px 0 6px;font-size:12px">Opportunity score <b style="color:${h._color}">${Math.round((h.score||0)*100)}</b> <span style="font-size:10px;color:#94a3b8">demand × est. market capture</span></div>
     <button class="eval-btn" style="width:100%" onclick="evaluateHexSpot(${h.cLat.toFixed(5)},${h.cLon.toFixed(5)})">Evaluate this spot →</button>`;
@@ -4638,19 +4648,23 @@ function _oppFabricLine(r){
 }
 // ~2.4 vet visits per dog-owning household per year — industry planning average; display-only.
 const OPP_VISITS_PER_DOGHH = 2.4;
+// Cat households visit far less (~half of cats see a vet in a given year) — ~1.2 visits/HH-yr. Display-only.
+const OPP_VISITS_PER_CATHH = 1.2;
 function renderOppDetail(r,i){
   const u=_oppUnder(r);
   const line=(label,val,sub)=>`<div style="display:flex;justify-content:space-between;padding:2.5px 0;font-size:12px"><span style="color:#64748b">${label}</span><span style="font-weight:700;color:#1f2933">${val}${sub?` <span style='color:#94a3b8;font-weight:500'>${sub}</span>`:''}</span></div>`;
   const sec=t=>`<div style="font-size:9.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:#94a3b8;margin:8px 0 2px">${t}</div>`;
   const hh=(typeof dogData!=='undefined'&&dogData[r.zip]&&dogData[r.zip].households)?dogData[r.zip].households:null;
-  const visits=r.dog!=null?Math.round(r.dog*OPP_VISITS_PER_DOGHH):null;
+  const catHH=(typeof dogData!=='undefined'&&dogData[r.zip]&&dogData[r.zip].catEst!=null)?dogData[r.zip].catEst:null;
+  const visits=r.dog!=null?Math.round(r.dog*OPP_VISITS_PER_DOGHH+(catHH||0)*OPP_VISITS_PER_CATHH):null;
   const rank=(typeof i==='number'&&i>=0)?i+1:(oppScored.findIndex(x=>x.zip===r.zip)+1);
   return `<div class="opp-detail-inner">
     ${rank>0?`<div style="font-size:11px;font-weight:800;color:#1e3a8a">Ranks #${rank} of ${oppScored.length} ZIPs in ${oppRegion.name}</div>`:''}
     ${sec('Demand walk — this ZIP as the service area')}
     ${hh!=null?line('Households', Math.round(hh).toLocaleString()):''}
     ${line('Dog-owning households', r.dog!=null?Math.round(r.dog).toLocaleString():'—')}
-    ${visits!=null?line('Est. annual vet visits', '~'+visits.toLocaleString()):''}
+    ${catHH!=null?line('Cat-owning households', Math.round(catHH).toLocaleString()):''}
+    ${visits!=null?line('Est. annual vet visits', '~'+visits.toLocaleString(), catHH!=null?'dogs + cats':''):''}
     ${line('Veterinarians serving it (DVMs)', r.dvm!=null?r.dvm:'—')}
     ${line('Dog households per vet', u!=null?Math.round(u).toLocaleString():'—','higher = more open market')}
     ${sec('Market context')}
@@ -4685,6 +4699,7 @@ function exportOppCSV(){
     {label:'Composite score',get:x=>Math.round(x.r.score)},
     {label:'Median income',get:x=>x.r.inc!=null?Math.round(x.r.inc):''},
     {label:'Dog households (modeled)',get:x=>x.r.dog!=null?Math.round(x.r.dog):''},
+    {label:'Cat households (modeled)',get:x=>(typeof dogData!=='undefined'&&dogData[x.r.zip]&&dogData[x.r.zip].catEst!=null)?dogData[x.r.zip].catEst:''},
     {label:'Growth 21-24',get:x=>x.r.grow!=null?(x.r.grow*100).toFixed(1)+'%':''},
     {label:'New construction %',get:x=>x.r.cons!=null?(x.r.cons*100).toFixed(0):''},
     {label:'PE clinics',get:x=>x.r.peCount},
@@ -5008,7 +5023,9 @@ async function ensureDogData(){
     if(z.sfPct!=null&&avgSf>0){ m+=(z.sfPct-avgSf)/avgSf; p++; }
     m=p>0?m/p:0; m=Math.max(-0.3,Math.min(0.3,m));
     let rate=TX_DOG_BASE_RATE*(1+m); rate=Math.max(0.2,Math.min(0.7,rate));
-    dogData[zip]={ households:z.households, rate, est:Math.round(z.households*rate) }; });
+    const oDev=(z.ownerPct!=null&&avgOwner>0)?(z.ownerPct-avgOwner)/avgOwner:0;
+    let cRate=TX_CAT_BASE_RATE*(1+Math.max(-0.15,Math.min(0.15,0.5*oDev))); cRate=Math.max(0.15,Math.min(0.45,cRate));
+    dogData[zip]={ households:z.households, rate, est:Math.round(z.households*rate), catEst:Math.round(z.households*cRate) }; });
 }
 // Load + compute population growth ('21→'24) without painting a layer. Mirrors the fetch in
 // toggleGrowthLayer — KEEP IN SYNC if that changes.
