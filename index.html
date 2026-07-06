@@ -152,6 +152,8 @@ body.dev-mode .search-bar{background:var(--amber-light);border-bottom-color:#fde
 .opp-preset-row{display:flex;gap:6px;margin-bottom:20px;flex-wrap:wrap;}
 .opp-preset{font-size:11px;font-weight:600;padding:5px 10px;border-radius:6px;border:1px solid var(--border2);background:var(--bg);color:var(--text2);cursor:pointer;}
 .opp-preset:hover{border-color:var(--navy);color:var(--navy);}
+.opp-preset.active{background:var(--navy);border-color:var(--navy);color:#fff;}
+.opp-preset.active:hover{color:#fff;}
 .opp-divider{height:1px;background:var(--border);margin:6px 0 18px;}
 .opp-list-wrap{overflow-y:auto;padding:14px 18px 24px;}
 /* Hex opportunity surface — Surface view reveals the live map behind the panel */
@@ -179,6 +181,8 @@ body.vf-surface #zoom-msg{display:none!important;}
 .hex-strat-seg button.on.b{background:#15803d;}
 .hex-strat-seg button.on.l{background:#0d9488;}
 .opp-list-head{display:grid;grid-template-columns:30px 1fr 64px;gap:12px;padding:0 14px 10px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);position:sticky;top:0;background:var(--bg);}
+.opp-caret{display:inline-block;font-size:11px;color:#64748b;font-weight:700;transition:transform .15s;}
+.opp-caret.open{transform:rotate(180deg);}
 .opp-row{display:grid;grid-template-columns:30px 1fr 64px;gap:12px;align-items:center;padding:12px 14px;background:var(--surface);border:1px solid var(--border);border-radius:10px;margin-bottom:8px;cursor:pointer;transition:box-shadow .12s,transform .12s;}
 .opp-row:hover{box-shadow:var(--shadow);transform:translateY(-1px);}
 .opp-rank{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:14px;font-weight:700;color:var(--subtle);text-align:center;}
@@ -432,7 +436,7 @@ body.vf-surface #zoom-msg{display:none!important;}
 .vm-method-note{font-size:11px;color:#64748b;line-height:1.45;margin-top:8px;padding:8px 10px;background:#f8fafc;border:1px solid var(--border);border-radius:8px;}
 .vm-method-note summary{cursor:pointer;font-weight:700;color:#475569;}
 /* DEMO MODE (temporary) — hide data-source + methodology disclosures for the demo video. Delete this one line to restore. */
-.vm-method-note,.popup-disclaimer,.layer-desc,.eval-note,.leaflet-control-attribution{display:none !important;}
+.vm-method-note,.popup-disclaimer,.layer-desc,.eval-note{display:none !important;}
 .vm-star{cursor:pointer;color:#cbd5e1;font-size:15px;line-height:1;user-select:none;transition:color .15s;}
 .vm-star.on{color:#f59e0b;}
 .vm-star:hover{color:#f59e0b;}
@@ -674,7 +678,7 @@ body.vf-surface #zoom-msg{display:none!important;}
       <p>Find where to open or acquire your next clinic — competition, demographics, growth, and zoning-aware site scoring, all on one map.</p>
       <ul class="lg-feats">
         <li><svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Every clinic mapped — PE-owned &amp; independent</li>
-        <li><svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Opportunity scoring across North Texas ZIPs</li>
+        <li><svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Opportunity scoring across Texas metro ZIPs</li>
         <li><svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Zoning-aware site evaluation down to the parcel</li>
       </ul>
     </div>
@@ -996,31 +1000,31 @@ body.vf-surface #zoom-msg{display:none!important;}
         <div class="opp-title" id="opp-title">Opportunity Scores — Dallas–Fort Worth</div>
         <button class="region-btn" onclick="openRegionPicker()" title="Score a different Texas metro"><svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> Change region</button>
       </div>
-      <div class="opp-sub" id="opp-sub">Ranking ZIPs by income, pet demand, and competition. Drag the weights to match your thesis.</div>
+      <div class="opp-sub" id="opp-sub">Screen ranked ZIP markets on income, pet demand, competition, and growth — then drill into one-mile sites. Drag the weights to match your thesis.</div>
     </div>
     <div class="opp-body">
       <div class="opp-controls">
         <h4>Weighting</h4>
         <div class="opp-preset-row">
-          <button class="opp-preset" onclick="oppPreset('balanced')">Balanced</button>
-          <button class="opp-preset" onclick="oppPreset('underserved')">Underserved</button>
-          <button class="opp-preset" onclick="oppPreset('cashflow')">Cash-flow</button>
-          <button class="opp-preset" onclick="oppPreset('growth')">High-growth</button>
+          <button class="opp-preset active" id="preset-industry" onclick="oppPreset('industry')">Industry standard</button>
+          <button class="opp-preset" id="preset-underserved" onclick="oppPreset('underserved')">Underserved</button>
+          <button class="opp-preset" id="preset-cashflow" onclick="oppPreset('cashflow')">Cash-flow</button>
+          <button class="opp-preset" id="preset-growth" onclick="oppPreset('growth')">High-growth</button>
         </div>
         <div class="weight-row">
-          <div class="weight-head"><span class="weight-name">Income</span><span class="weight-val" id="w-income-val">25%</span></div>
+          <div class="weight-head"><span class="weight-name">Income</span><span class="weight-val" id="w-income-val">20%</span></div>
           <div class="weight-desc">Higher median household income scores higher</div>
-          <input type="range" class="opp-slider" id="w-income" min="0" max="100" value="25" oninput="onWeightChange()"/>
+          <input type="range" class="opp-slider" id="w-income" min="0" max="100" value="20" oninput="onWeightChange()"/>
         </div>
         <div class="weight-row">
-          <div class="weight-head"><span class="weight-name">Pet demand</span><span class="weight-val" id="w-demand-val">25%</span></div>
+          <div class="weight-head"><span class="weight-name">Pet demand</span><span class="weight-val" id="w-demand-val">22%</span></div>
           <div class="weight-desc">More dog-owning households scores higher</div>
-          <input type="range" class="opp-slider" id="w-demand" min="0" max="100" value="25" oninput="onWeightChange()"/>
+          <input type="range" class="opp-slider" id="w-demand" min="0" max="100" value="22" oninput="onWeightChange()"/>
         </div>
         <div class="weight-row">
-          <div class="weight-head"><span class="weight-name">Low competition</span><span class="weight-val" id="w-comp-val">25%</span></div>
-          <div class="weight-desc">Fewer clinics relative to local pet demand scores higher — underserved markets (demand-adjusted internally, not raw count)</div>
-          <input type="range" class="opp-slider" id="w-comp" min="0" max="100" value="25" oninput="onWeightChange()"/>
+          <div class="weight-head"><span class="weight-name">Competition</span><span class="weight-val" id="w-comp-val">33%</span></div>
+          <div class="weight-desc">Fewer vets relative to local pet demand scores higher — underserved markets rise</div>
+          <input type="range" class="opp-slider" id="w-comp" min="0" max="100" value="33" oninput="onWeightChange()"/>
         </div>
         <div class="weight-row">
           <div class="weight-head"><span class="weight-name">Population growth</span><span class="weight-val" id="w-growth-val">25%</span></div>
@@ -3801,6 +3805,8 @@ function getOppWeights(){
 }
 
 function onWeightChange(){
+  // any weight change deselects the active preset chip; oppPreset re-asserts its own AFTER calling this
+  document.querySelectorAll('.opp-preset.active').forEach(b=>b.classList.remove('active'));
   const wi=+document.getElementById('w-income').value;
   const wd=+document.getElementById('w-demand').value;
   const wc=+document.getElementById('w-comp').value;
@@ -3821,11 +3827,15 @@ function oppPreset(kind){
     document.getElementById('w-comp').value=c;
     document.getElementById('w-growth').value=g;
   };
-  if(kind==='balanced')    set(25,25,25,25);
+  // "Industry standard" mirrors the only published site-selection weighting (competition ≈ 33%,
+  // Esri's worked urgent-care example) — also the app's landing default.
+  if(kind==='industry')    set(20,22,33,25);
   if(kind==='underserved') set(20,20,40,20);
   if(kind==='cashflow')    set(40,25,20,15);
   if(kind==='growth')      set(20,20,20,40);
-  onWeightChange();
+  onWeightChange();   // clears any .active (manual-drag path) — so re-assert AFTER it
+  document.querySelectorAll('.opp-preset').forEach(b=>b.classList.remove('active'));
+  const btn=document.getElementById('preset-'+kind); if(btn) btn.classList.add('active');
 }
 
 // Snapshots so the opportunity score has ALL datasets even though the map
@@ -3980,7 +3990,7 @@ function _hexStage(dens, traj, cons){
   if((nc!=null && nc>=0.33) || g>=0.50) return {key:'emerge', label:'Emerging', color:'#0d9488', land:'Value land'};
   // an established lower-density suburb that's stopped growing/building is still Developed (mature, not emerging).
   if(dev!=null && dev>=0.25) return {key:'build', label:'Developed', color:'#15803d', land:'Moderate land'};
-  return {key:'quiet', label:'Rural / quiet', color:'#94a3b8', land:'Cheap land'};
+  return {key:'quiet', label:'Rural / quiet', color:'#94a3b8', land:'Low-cost land'};
 }
 
 // ── clinic spatial index (deduped, PE-flagged, reviews-carrying) ────────────
@@ -4124,7 +4134,7 @@ function _hexAt(lat,lon){
 function _hexShowTip(latlng,h){
   if(!hexHoverTip) hexHoverTip=L.tooltip({className:'hex-tip',direction:'top',offset:[0,-2],opacity:0.97});
   const sc=h.score!=null?Math.round(h.score*100):'—';
-  hexHoverTip.setLatLng(latlng).setContent(`<b>${h.zip||'—'}${h.city?' · '+h.city:''}</b><br>Captured-demand <b>${sc}</b>`);
+  hexHoverTip.setLatLng(latlng).setContent(`<b>${h.zip||'—'}${h.city?' · '+h.city:''}</b><br>Opportunity <b>${sc}</b>/100`);
   if(!map.hasLayer(hexHoverTip)) hexHoverTip.addTo(map);
 }
 function _hexHideTip(){ if(hexHoverTip && map.hasLayer(hexHoverTip)) map.removeLayer(hexHoverTip); }
@@ -4143,7 +4153,7 @@ function _hexInstallHandlers(){
 // ── surface entry / view toggle / card / detail / handoff ───────────────────
 function renderHexSurface(){
   if(_hexSig()!==_hexBuiltKey || !hexBaseRows.length){
-    const body=document.getElementById('hex-legend-body'); if(body) body.innerHTML='<div style="padding:10px 4px;color:#64748b;font-size:12px">Building surface…</div>';
+    const body=document.getElementById('hex-legend-body'); if(body) body.innerHTML='<div style="padding:10px 4px;color:#64748b;font-size:12px">Scoring ~10,000 one-mile sites across '+oppRegion.name+'…</div>';
     const _sig=_hexSig();
     buildHexBaseInputs().then(()=>{ if(oppView!=='surface' || _hexSig()!==_sig) return; /* user left / region changed mid-build — drop the result */ _hexView=true; buildHexPolys(); rescoreHexes(); _hexInstallHandlers(); })
       .catch(err=>{ console.error('hex surface build failed',err); const b=document.getElementById('hex-legend-body'); if(b) b.innerHTML='<div style="padding:10px 4px;color:#b91c1c;font-size:12px">Could not build the surface — try reopening Opportunity.</div>'; });
@@ -4239,13 +4249,14 @@ function _hexOpenDetail(h){
   const box=document.getElementById('hex-detail'); if(!box) return;
   box.style.display='block';
   const st=h._stage||_hexStage(h.dens,h.trajIdx,h.cons);
-  const bar=(lbl,v,col)=>`<div style="display:flex;align-items:center;gap:6px;margin:2px 0"><span style="width:62px;font-size:10px;color:#64748b">${lbl}</span><div style="flex:1;height:7px;background:#eef2f7;border-radius:4px;overflow:hidden"><i style="display:block;height:100%;width:${Math.round(clamp01(v)*100)}%;background:${col}"></i></div></div>`;
+  const bar=(lbl,v,col)=>`<div style="display:flex;align-items:center;gap:6px;margin:2px 0"><span style="width:96px;font-size:10px;color:#64748b">${lbl}</span><div style="flex:1;height:7px;background:#eef2f7;border-radius:4px;overflow:hidden"><i style="display:block;height:100%;width:${Math.round(clamp01(v)*100)}%;background:${col}"></i></div></div>`;
   box.innerHTML=`<div style="font-weight:800;font-size:13px">${h.zip}${h.city?' · '+h.city:''}
       <span style="font-size:10px;font-weight:700;color:#fff;background:${st.color};padding:1px 7px;border-radius:10px;margin-left:4px;vertical-align:1px">${st.label}</span></div>
     <div style="font-size:10.5px;color:${st.color};font-weight:600;margin-top:3px">${st.land}${h.dens!=null?` · ~${Math.round(h.dens).toLocaleString()} homes/mi²`:''}</div>
-    <div style="font-size:11px;color:#475569;margin:6px 0">Income ${_fmtMoney(h.inc)} · Dog HH ${h.dog!=null?Math.round(h.dog).toLocaleString():'—'}<br>Growth '21→'24 ${_fmtPct(h.grow)} · New construction ${h.cons!=null?Math.round(h.cons*100)+'%':'—'}</div>
-    ${bar('Spend',h.spendIdx||0,'#15803d')}${bar('Volume',h.volIdx||0,'#4338ca')}${bar('Trajectory',h.trajIdx||0,'#0d9488')}${bar('Capture',h.share||0,'#b45309')}
-    <div style="margin:8px 0 6px;font-size:12px">Captured-demand score <b style="color:${h._color}">${Math.round((h.score||0)*100)}</b></div>
+    <div style="font-size:11px;color:#475569;margin:6px 0">Income ${_fmtMoney(h.inc)} · Growth '21→'24 ${_fmtPct(h.grow)} · New construction ${h.cons!=null?Math.round(h.cons*100)+'%':'—'}</div>
+    <div style="font-size:11px;color:#475569;margin:0 0 6px">Dog households ${h.dog!=null?Math.round(h.dog).toLocaleString():'—'} → est. <b>${h.dog!=null?('~'+Math.round(h.dog*OPP_VISITS_PER_DOGHH).toLocaleString()):'—'}</b> vet visits/yr → a new clinic captures est. <b>${h.share!=null?'~'+Math.min(95,Math.round(h.share*100))+'%':'—'}</b></div>
+    ${bar('Spend power',h.spendIdx||0,'#15803d')}${bar('Pet volume',h.volIdx||0,'#4338ca')}${bar('Growth trajectory',h.trajIdx||0,'#0d9488')}${bar('Market capture',h.share||0,'#b45309')}
+    <div style="margin:8px 0 6px;font-size:12px">Opportunity score <b style="color:${h._color}">${Math.round((h.score||0)*100)}</b> <span style="font-size:10px;color:#94a3b8">demand × est. market capture</span></div>
     <button class="eval-btn" style="width:100%" onclick="evaluateHexSpot(${h.cLat.toFixed(5)},${h.cLon.toFixed(5)})">Evaluate this spot →</button>`;
 }
 function evaluateHexSpot(lat,lon){
@@ -4335,7 +4346,9 @@ async function openOpportunity(){
   // If already scored once this session, just re-render
   if(oppScored.length){ rescoreAndRender(); return; }
   oppLoading=true;
-  wrap.innerHTML='<div class="opp-loading">Loading market data for '+oppRegion.name+'…</div>';
+  // Staged loading — real milestones, not a dead spinner (each line advances as that step starts)
+  const _oppStage=msg=>{ wrap.innerHTML='<div class="opp-loading" style="display:flex;align-items:center;gap:11px;justify-content:center"><span class="opp-spinner" style="width:20px;height:20px;border-width:2.5px"></span>'+msg+'</div>'; };
+  _oppStage('Loading Census market data for '+oppRegion.name+'…');
 
   try{
     // PARALLELIZE the network: the income/pets/growth toggles below run sequentially (their
@@ -4362,6 +4375,7 @@ async function openOpportunity(){
     oppIncomeSnap = {...incomeData};
 
     // Then pets, snapshot
+    _oppStage('Modeling pet demand by ZIP…');
     if(!Object.keys(dogData).length){
       document.getElementById('toggle-pets').checked=true;
       await toggleDogLayer(true);
@@ -4371,6 +4385,7 @@ async function openOpportunity(){
     Object.keys(dogData).forEach(z=> oppDogSnap[z]=dogData[z].est);
 
     // Then growth, snapshot
+    _oppStage('Loading population growth + new construction…');
     if(!Object.keys(growthData).length){
       document.getElementById('toggle-growth').checked=true;
       await toggleGrowthLayer(true);
@@ -4387,6 +4402,7 @@ async function openOpportunity(){
     // an accurate competition count matters more than shaving load time, and scoring without
     // them would under-count competition on a cold first load. Returning users are instant via
     // the localStorage cache inside ensureRegionIndependents; only the cold first load waits.
+    _oppStage('Mapping the competitive set — every clinic in '+oppRegion.name+'…');
     try{ await ensureRegionIndependents(); }catch(e){}
 
     // Turn OFF all choropleths so landing on a ZIP shows the plain base map.
@@ -4476,7 +4492,7 @@ let oppBaseRows=[];
 // Normalize 0–100 across the regional set, apply weights, sort, render
 function rescoreAndRender(){
   if(!oppBaseRows.length){
-    if(oppView!=='surface') document.getElementById('opp-list-wrap').innerHTML='<div class="opp-empty">No ZIP data in the North Texas region yet.</div>'; // don't stomp the surface card
+    if(oppView!=='surface') document.getElementById('opp-list-wrap').innerHTML='<div class="opp-empty">No ZIP data in the '+oppRegion.name+' region yet.</div>'; // don't stomp the surface card
     return;
   }
   const w=getOppWeights();
@@ -4499,18 +4515,22 @@ function rescoreAndRender(){
   const consMM=conss.length?mm(conss):{mn:0,mx:1,rng:1};
   const underMM=unders.length?mm(unders):{mn:0,mx:1,rng:1};
 
+  // A missing factor scores NEUTRAL 50, not 0 — null used to mean "worst percentile in the region",
+  // so a ZIP missing one Census variable sank dozens of ranks on a data gap. Mirrors the Surface's
+  // null→0.5 convention. (All-null ZIPs are already skipped in buildOppBaseInputs, so 50s can't
+  // float no-data junk into the list; the detail card still shows "—" for the missing value.)
   oppScored=oppBaseRows.map(r=>{
-    const fIncome = r.inc!=null ? (r.inc-incMM.mn)/incMM.rng*100 : 0;
-    const fDemand = r.dog!=null ? (r.dog-dogMM.mn)/dogMM.rng*100 : 0;
+    const fIncome = r.inc!=null ? (r.inc-incMM.mn)/incMM.rng*100 : 50;
+    const fDemand = r.dog!=null ? (r.dog-dogMM.mn)/dogMM.rng*100 : 50;
     // Growth factor = population change blended with new-home construction (both
     // forward signals). Construction is computed internally, not a separate dial.
     const gN = r.grow!=null ? (r.grow-growMM.mn)/growMM.rng*100 : null;
     const cN = r.cons!=null ? (r.cons-consMM.mn)/consMM.rng*100 : null;
-    const fGrowth = (gN!=null && cN!=null) ? 0.6*gN+0.4*cN : (gN!=null ? gN : (cN!=null ? cN : 0));
+    const fGrowth = (gN!=null && cN!=null) ? 0.6*gN+0.4*cN : (gN!=null ? gN : (cN!=null ? cN : 50));
     const u=_under(r);
     // Competition factor is computed as underservice internally — demand-relative,
     // so a small ZIP no longer looks open just because it has a low raw clinic count.
-    const fComp = u!=null ? (u-underMM.mn)/underMM.rng*100 : 0;
+    const fComp = u!=null ? (u-underMM.mn)/underMM.rng*100 : 50;
     const score = fIncome*w.income + fDemand*w.demand + fComp*w.comp + fGrowth*w.growth;
     return { ...r, fIncome, fDemand, fComp, fGrowth, score };
   }).sort((a,b)=>b.score-a.score);
@@ -4527,19 +4547,30 @@ const _fmtMoney=v=>v==null?'—':'$'+Math.round(v).toLocaleString();
 const _fmtPct=v=>v==null?'—':(v>=0?'+':'')+(v*100).toFixed(1)+'%';
 function _oppUnder(r){ return r.dog!=null ? r.dog/((r.dvm||0) + 1) : null; }   // demand per DVM
 // Per-ZIP drill-down with the REAL underlying numbers (not just the 0-100 bars) + region-relative caveat.
-function renderOppDetail(r){
+// ~2.4 vet visits per dog-owning household per year — industry planning average; display-only.
+const OPP_VISITS_PER_DOGHH = 2.4;
+function renderOppDetail(r,i){
   const u=_oppUnder(r);
   const line=(label,val,sub)=>`<div style="display:flex;justify-content:space-between;padding:2.5px 0;font-size:12px"><span style="color:#64748b">${label}</span><span style="font-weight:700;color:#1f2933">${val}${sub?` <span style='color:#94a3b8;font-weight:500'>${sub}</span>`:''}</span></div>`;
+  const sec=t=>`<div style="font-size:9.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:#94a3b8;margin:8px 0 2px">${t}</div>`;
+  const hh=(typeof dogData!=='undefined'&&dogData[r.zip]&&dogData[r.zip].households)?dogData[r.zip].households:null;
+  const visits=r.dog!=null?Math.round(r.dog*OPP_VISITS_PER_DOGHH):null;
+  const rank=(typeof i==='number'&&i>=0)?i+1:(oppScored.findIndex(x=>x.zip===r.zip)+1);
   return `<div class="opp-detail-inner">
+    ${rank>0?`<div style="font-size:11px;font-weight:800;color:#1e3a8a">Ranks #${rank} of ${oppScored.length} ZIPs in ${oppRegion.name}</div>`:''}
+    ${sec('Demand walk — this ZIP as the service area')}
+    ${hh!=null?line('Households', Math.round(hh).toLocaleString()):''}
+    ${line('Dog-owning households', r.dog!=null?Math.round(r.dog).toLocaleString():'—')}
+    ${visits!=null?line('Est. annual vet visits', '~'+visits.toLocaleString()):''}
+    ${line('Veterinarians serving it (DVMs)', r.dvm!=null?r.dvm:'—')}
+    ${line('Dog households per vet', u!=null?Math.round(u).toLocaleString():'—','higher = more open market')}
+    ${sec('Market context')}
     ${line('Median income', _fmtMoney(r.inc))}
-    ${line('Dog households', r.dog!=null?Math.round(r.dog).toLocaleString():'—')}
     ${line('Population growth ’21→’24', _fmtPct(r.grow))}
     ${line('New construction (2010+)', r.cons!=null?(r.cons*100).toFixed(0)+'%':'—')}
     ${line('Clinics', (r.peCount+r.indCount), `${r.peCount} PE / ${r.indCount} indep`)}
-    ${line('Veterinarians (DVMs)', r.dvm!=null?r.dvm:'—')}
-    ${line('Underservice', u!=null?Math.round(u).toLocaleString():'—')}
     <div style="height:1px;background:var(--border);margin:6px 0"></div>
-    ${line('Income · Demand · LowComp · Growth', `${r.fIncome.toFixed(0)} · ${r.fDemand.toFixed(0)} · ${r.fComp.toFixed(0)} · ${(r.fGrowth||0).toFixed(0)}`)}
+    ${line('Income · Demand · Competition · Growth', `${r.fIncome.toFixed(0)} · ${r.fDemand.toFixed(0)} · ${r.fComp.toFixed(0)} · ${(r.fGrowth||0).toFixed(0)}`)}
     ${line('Composite score', Math.round(r.score))}
     <div style="display:flex;gap:8px;margin-top:10px;align-items:center">
       <button class="vm-export-btn" style="flex:1;justify-content:center" onclick="event.stopPropagation();oppSelect('${r.zip}')">View on map →</button>
@@ -4548,10 +4579,13 @@ function renderOppDetail(r){
     <div style="font-size:10.5px;color:#94a3b8;margin-top:8px;line-height:1.4">Sub-scores are relative <b>within ${oppRegion.name}</b> — not comparable across regions.</div>
   </div>`;
 }
-function oppToggleDetail(i){
+let _oppOpenZip=null;   // which ZIP's detail card is expanded — survives renderOppList rebuilds (slider drags)
+function oppToggleDetail(i,zip){
   const d=document.getElementById('oppd-'+i); if(!d) return;
   const open=d.style.display!=='none'; d.style.display=open?'none':'block';
+  _oppOpenZip=open?null:(zip||null);
   const row=d.closest('.opp-row'); if(row) row.classList.toggle('expanded',!open);
+  const car=row&&row.querySelector('.opp-caret'); if(car) car.classList.toggle('open',!open);
 }
 function exportOppCSV(){
   downloadCSV((window.oppScored||oppScored||[]).map((r,i)=>({r,i})), [
@@ -4567,7 +4601,7 @@ function exportOppCSV(){
     {label:'Indep clinics',get:x=>x.r.indCount},
     {label:'Income score',get:x=>x.r.fIncome.toFixed(0)},
     {label:'Demand score',get:x=>x.r.fDemand.toFixed(0)},
-    {label:'LowComp score',get:x=>x.r.fComp.toFixed(0)},
+    {label:'Competition score',get:x=>x.r.fComp.toFixed(0)},
     {label:'Growth score',get:x=>(x.r.fGrowth||0).toFixed(0)}
   ], 'vetric-opportunity-'+(oppRegion.key||'region')+'.csv');
 }
@@ -4575,10 +4609,12 @@ function exportOppCSV(){
 function renderOppList(){
   const wrap=document.getElementById('opp-list-wrap');
   const tEl=document.getElementById('opp-title'); if(tEl) tEl.textContent='Opportunity Scores — '+oppRegion.name;
-  const seg=`<div class="opp-view-seg"><button class="${oppView==='list'?'on':''}" onclick="setOppView('list')">List</button><button class="${oppView==='surface'?'on':''}" onclick="setOppView('surface')">Surface</button></div>`;
+  // Two funnel stages, captioned the way PE runs them: market screen → site scoring
+  const seg=`<div><div class="opp-view-seg"><button class="${oppView==='list'?'on':''}" onclick="setOppView('list')">List</button><button class="${oppView==='surface'?'on':''}" onclick="setOppView('surface')">Surface</button></div>`+
+    `<div style="font-size:9.5px;color:#94a3b8;font-weight:600;margin-top:3px;letter-spacing:.02em">${oppView==='surface'?'Site scoring · one-mile hexes':'Market screen · ranked ZIPs'}</div></div>`;
   if(oppView==='surface'){
     document.getElementById('opp-sub').textContent=`${oppScored.length} ZIPs scored across ${oppRegion.name} · opportunity surface — best buildable spots`;
-    wrap.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">${seg}${oppScored.length?_exportBtn('exportOppCSV()','Export'):''}</div>${_hexSurfaceCard()}`;
+    wrap.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">${seg}${oppScored.length?_exportBtn('exportOppCSV()','Export ZIP rankings'):''}</div>${_hexSurfaceCard()}`;
     renderHexSurface();
     _oppKpiTop();
     return;
@@ -4588,10 +4624,11 @@ function renderOppList(){
   const rows=oppScored.map((r,i)=>{
     const col=oppScoreColor(r.score);
     const cityLabel=r.city ? r.city : (r.peCount+r.indCount)+' clinics';
-    return `<div class="opp-row" onclick="oppToggleDetail(${i})">
+    const open=r.zip===_oppOpenZip;   // keep the expanded card open across slider-drag rebuilds
+    return `<div class="opp-row${open?' expanded':''}" onclick="oppToggleDetail(${i},'${r.zip}')">
       <div class="opp-rank ${i<3?'top':''}">${i+1}</div>
       <div class="opp-main">
-        <div class="opp-zip">${r.zip} <span style="font-size:10px;color:#cbd5e1;font-weight:600">▾</span></div>
+        <div class="opp-zip">${r.zip} <span class="opp-caret${open?' open':''}">▾</span></div>
         <div class="opp-city">${cityLabel} · ${r.peCount} PE / ${r.indCount} indep</div>
         <div class="opp-factors">
           <div class="opp-fbar"><i style="width:${r.fIncome.toFixed(0)}%;background:#15803d"></i></div>
@@ -4599,14 +4636,14 @@ function renderOppList(){
           <div class="opp-fbar"><i style="width:${r.fComp.toFixed(0)}%;background:#b45309"></i></div>
           <div class="opp-fbar"><i style="width:${(r.fGrowth||0).toFixed(0)}%;background:#0d9488"></i></div>
         </div>
-        <div class="opp-flabel"><span>Income</span><span>Demand</span><span>Low comp</span><span>Growth</span></div>
-        <div class="opp-detail" id="oppd-${i}" style="display:none;margin-top:10px;padding-top:10px;border-top:1px dashed var(--border)">${renderOppDetail(r)}</div>
+        <div class="opp-flabel"><span>Income</span><span>Demand</span><span>Competition</span><span>Growth</span></div>
+        <div class="opp-detail" id="oppd-${i}" style="display:${open?'block':'none'};margin-top:10px;padding-top:10px;border-top:1px dashed var(--border)">${renderOppDetail(r,i)}</div>
       </div>
       <div class="opp-score" style="background:${col}">${Math.round(r.score)}</div>
     </div>`;
   }).join('');
   const methodNote=`<details class="vm-method-note" style="margin-top:14px"><summary>How these scores are computed</summary><div style="margin-top:6px">Four factors — income (Census ACS 2022), pet demand (<b>modeled</b> from ACS 2022 housing), low competition (pet households per PE-weighted clinic), and growth (ACS 2021→2024 population + new construction) — each scaled 0–100 across this region's ZIPs and blended by your weights. Sub-scores are <b>region-relative percentiles</b>, not absolute. Competition is radius-based, not drive-time. A screening signal — verify before diligence.</div></details>`;
-  wrap.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">${seg}<div class="opp-list-head" style="margin:0;flex:1;margin-left:10px"><span>#</span><span>ZIP — tap to expand</span><span style="text-align:center">Score</span></div>${oppScored.length?_exportBtn('exportOppCSV()','Export'):''}</div>${rows}${methodNote}`;
+  wrap.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">${seg}<div style="flex:1;text-align:right;margin-right:10px;font-size:10.5px;color:#94a3b8;font-weight:600">Scores are relative to this region · click a ZIP to expand</div>${oppScored.length?_exportBtn('exportOppCSV()','Export'):''}</div>${rows}${methodNote}`;
   _oppKpiTop();
 }
 // Reflect the current #1 ranked ZIP in the KPI bar (shared by list + surface views)
@@ -4615,7 +4652,7 @@ function _oppKpiTop(){
   const top=oppScored[0];
   const kEl=document.getElementById('kpi-opp'), kFoot=document.getElementById('kpi-opp-foot');
   if(kEl){ kEl.textContent=top.zip; kEl.classList.remove('pending'); }
-  if(kFoot){ kFoot.textContent=`score ${Math.round(top.score)} · ${top.city||'North Texas'}`; }
+  if(kFoot){ kFoot.textContent=`score ${Math.round(top.score)} · ${top.city||oppRegion.name}`; }
 }
 
 // Click a ranked ZIP → prepare everything while still on the Opportunity
@@ -4634,7 +4671,8 @@ function oppSelect(zip){
 
   // Show the loading overlay over the opportunity screen
   const overlay=document.getElementById('opp-overlay');
-  document.getElementById('opp-load-zip').textContent='ZIP '+zip+' — '+(r.city||'North Texas');
+  const _rk=oppScored.findIndex(x=>x.zip===zip);
+  document.getElementById('opp-load-zip').textContent='ZIP '+zip+' — '+(r.city||oppRegion.name)+(_rk>=0?(' · #'+(_rk+1)+' of '+oppScored.length):'');
   overlay.classList.add('show');
 
   // Clear any prior selection
