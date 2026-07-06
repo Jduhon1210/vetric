@@ -613,49 +613,7 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
 .set-opt input{margin-top:2px;flex-shrink:0;width:16px;height:16px;cursor:pointer;accent-color:var(--navy);}
 .set-opt b{color:var(--text);font-weight:600;}
 .set-opt-note{display:block;color:#64748b;font-size:12px;margin-top:2px;}
-/* ── Login screen ─────────────────────────────────────────────────────────── */
-#login-screen{position:fixed;inset:0;z-index:10000;display:flex;background:var(--surface);font-family:'Inter',system-ui,sans-serif;}
-#login-screen.hidden{display:none;}
-.lg-brand{flex:1.05;position:relative;background:linear-gradient(150deg,#1e3a8a 0%,#1e3068 55%,#172554 100%);color:#fff;padding:54px 56px;display:flex;flex-direction:column;justify-content:space-between;overflow:hidden;}
-.lg-brand::after{content:"";position:absolute;inset:0;background-image:radial-gradient(circle at 1px 1px,rgba(255,255,255,.06) 1px,transparent 0);background-size:24px 24px;pointer-events:none;}
-.lg-brand-top{display:flex;align-items:center;gap:13px;position:relative;z-index:1;}
-.lg-logo{width:46px;height:46px;border-radius:13px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;}
-.lg-logo svg{width:27px;height:27px;}
-.lg-wordmark{font-size:23px;font-weight:800;letter-spacing:-.01em;}
-.lg-wordmark span{color:#93c5fd;}
-.lg-hero{position:relative;z-index:1;max-width:450px;}
-.lg-hero h1{font-size:33px;line-height:1.15;font-weight:800;letter-spacing:-.02em;margin:0 0 16px;}
-.lg-hero p{font-size:15px;line-height:1.6;color:#c7d2fe;margin:0 0 30px;}
-.lg-feats{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:14px;}
-.lg-feats li{display:flex;align-items:flex-start;gap:12px;font-size:14px;color:#e0e7ff;}
-.lg-feats svg{flex-shrink:0;margin-top:1px;color:#93c5fd;}
-.lg-foot{position:relative;z-index:1;font-size:12px;color:#8fa1cc;}
-.lg-form-wrap{flex:1;display:flex;align-items:center;justify-content:center;padding:40px;}
-.lg-card{width:100%;max-width:372px;}
-.lg-card h2{font-size:24px;font-weight:800;color:var(--text);letter-spacing:-.01em;margin:0 0 6px;}
-.lg-card .lg-sub{font-size:14px;color:var(--muted);margin:0 0 28px;}
-.lg-field{margin-bottom:16px;}
-.lg-field label{display:block;font-size:12.5px;font-weight:600;color:var(--text2);margin-bottom:6px;}
-.lg-field input{width:100%;padding:11px 13px;border:1px solid var(--border2);border-radius:var(--radius);font-size:14px;font-family:inherit;color:var(--text);background:var(--surface);transition:border-color .15s,box-shadow .15s;}
-.lg-field input::placeholder{color:var(--subtle);}
-.lg-field input:focus{outline:none;border-color:var(--navy);box-shadow:0 0 0 3px rgba(30,58,138,.12);}
-.lg-err{font-size:12.5px;color:var(--red);margin:-6px 0 12px;min-height:15px;}
-.lg-row{display:flex;align-items:center;justify-content:space-between;margin:2px 0 22px;}
-.lg-check{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--text2);cursor:pointer;user-select:none;}
-.lg-check input{width:15px;height:15px;accent-color:var(--navy);}
-.lg-link{font-size:13px;color:var(--navy);text-decoration:none;font-weight:600;}
-.lg-link:hover{text-decoration:underline;}
-.lg-btn{width:100%;padding:12px;background:var(--navy);color:#fff;border:none;border-radius:var(--radius);font-size:14.5px;font-weight:700;font-family:inherit;cursor:pointer;transition:background .15s,transform .05s;}
-.lg-btn:hover{background:var(--navy-dark);}
-.lg-btn:active{transform:translateY(1px);}
-.lg-divider{display:flex;align-items:center;gap:12px;margin:22px 0;color:var(--subtle);font-size:12px;}
-.lg-divider::before,.lg-divider::after{content:"";flex:1;height:1px;background:var(--border);}
-.lg-alt{text-align:center;font-size:13px;color:var(--muted);}
-.lg-alt a{color:var(--navy);font-weight:600;text-decoration:none;}
-.lg-alt a:hover{text-decoration:underline;}
-.lg-note{margin-top:24px;font-size:11px;color:var(--subtle);text-align:center;line-height:1.5;}
-@media(max-width:880px){.lg-brand{display:none;}}
-/* ── App loading screen (bridges sign-in → fully-ready app) ─────────────────── */
+/* ── App loading screen (bridges the server-authenticated visit → fully-ready app) ───── */
 #app-loader{position:fixed;inset:0;z-index:9000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;background:var(--bg);transition:opacity .4s ease;}
 #app-loader.hidden{opacity:0;pointer-events:none;}
 .al-logo{width:56px;height:56px;border-radius:16px;background:linear-gradient(150deg,#1e3a8a,#1e3068);display:flex;align-items:center;justify-content:center;box-shadow:0 8px 24px rgba(30,58,138,.22);animation:al-pulse 1.8s ease-in-out infinite;}
@@ -667,47 +625,8 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
 </style>
 </head>
 <body>
-<div id="login-screen">
-  <div class="lg-brand">
-    <div class="lg-brand-top">
-      <div class="lg-logo"><svg viewBox="0 0 24 24" fill="none">
-        <rect x="3" y="14" width="3.4" height="7" rx="1.2" fill="#fff" opacity="0.55"/>
-        <rect x="8.3" y="10" width="3.4" height="11" rx="1.2" fill="#fff" opacity="0.75"/>
-        <rect x="13.6" y="6" width="3.4" height="15" rx="1.2" fill="#fff"/>
-        <path d="M2.5 9.5h3l1.6-4 2.2 7 1.8-3.5 1.4 2h7.5" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" opacity="0.95"/>
-      </svg></div>
-      <div class="lg-wordmark">Vet<span>ric</span></div>
-    </div>
-    <div class="lg-hero">
-      <h1>Texas veterinary market intelligence.</h1>
-      <p>Find where to open or acquire your next clinic — competition, demographics, growth, and zoning-aware site scoring, all on one map.</p>
-      <ul class="lg-feats">
-        <li><svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Every clinic mapped — PE-owned &amp; independent</li>
-        <li><svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Opportunity scoring across Texas metro ZIPs</li>
-        <li><svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Zoning-aware site evaluation down to the parcel</li>
-      </ul>
-    </div>
-    <div class="lg-foot">© 2026 Vetric · Veterinary Market Intelligence</div>
-  </div>
-  <div class="lg-form-wrap">
-    <form class="lg-card" onsubmit="return vetricSignIn(event)" autocomplete="on">
-      <h2>Welcome back</h2>
-      <p class="lg-sub">Sign in to your Vetric workspace</p>
-      <div class="lg-field"><label for="lg-email">Email</label><input id="lg-email" type="email" autocomplete="username" placeholder="you@company.com" required></div>
-      <div class="lg-field"><label for="lg-pass">Password</label><input id="lg-pass" type="password" autocomplete="current-password" placeholder="••••••••" required></div>
-      <div class="lg-err" id="lg-err"></div>
-      <div class="lg-row">
-        <label class="lg-check"><input type="checkbox" id="lg-remember" checked> Remember me</label>
-        <a class="lg-link" href="#" onclick="return false">Forgot password?</a>
-      </div>
-      <button class="lg-btn" type="submit">Sign in</button>
-      <div class="lg-divider">or</div>
-      <div class="lg-alt">Don't have access yet? <a href="#" onclick="return false">Request a demo</a></div>
-      <div class="lg-note">Demo build — sign-in is a front-end gate, not yet backed by an authentication server.</div>
-    </form>
-  </div>
-</div>
-<script>try{if(localStorage.getItem('vf_authed')==='1'){document.getElementById('login-screen').classList.add('hidden');}}catch(e){}</script>
+<!-- The old client-side "login screen" is gone — access is now enforced server-side by
+     functions/_middleware.js before index.html is ever served (real sign-in page: /login). -->
 <div id="app-loader">
   <div class="al-logo"><svg viewBox="0 0 24 24" fill="none">
     <rect x="3" y="14" width="3.4" height="7" rx="1.2" fill="#fff" opacity="0.55"/>
@@ -1079,37 +998,11 @@ function _vfInitials(email){
   const ini=(parts.length>1?parts[0][0]+parts[1][0]:u.slice(0,2)).toUpperCase();
   return ini||'VM';
 }
-function vetricSignIn(e){
-  if(e&&e.preventDefault) e.preventDefault();
-  const email=(document.getElementById('lg-email').value||'').trim();
-  const pass=document.getElementById('lg-pass').value||'';
-  const err=document.getElementById('lg-err');
-  if(!email||!pass){ if(err) err.textContent='Enter your email and password.'; return false; }
-  if(err) err.textContent='';
-  try{
-    const remember=document.getElementById('lg-remember');
-    if(!remember||remember.checked) localStorage.setItem('vf_authed','1');
-    localStorage.setItem('vf_user_email', email);
-  }catch(_){}
-  const av=document.querySelector('.avatar'); if(av){ av.textContent=_vfInitials(email); av.title=email+' · click to sign out'; }
-  const ls=document.getElementById('login-screen'); if(ls) ls.classList.add('hidden');
-  // bridge to the app behind a brief loading screen until tiles + PE data are ready
-  if(typeof _vfRevealApp==='function') _vfRevealApp();
-  return false;
-}
+// Real sign-out: kills the session server-side (functions/api/auth/logout.js), not just a
+// local flag — the cookie is invalidated in KV so it can't be replayed, then bounce to /login.
 function vetricSignOut(){
-  try{ localStorage.removeItem('vf_authed'); }catch(_){}
-  const p=document.getElementById('lg-pass'); if(p) p.value='';
-  const ls=document.getElementById('login-screen'); if(ls) ls.classList.remove('hidden');
+  fetch('/api/auth/logout', { method: 'POST' }).finally(()=>{ window.location.href='/login'; });
 }
-// On load: if already signed in, reflect the user's initials in the avatar
-(function(){ try{
-  if(localStorage.getItem('vf_authed')==='1'){
-    const em=localStorage.getItem('vf_user_email');
-    const av=document.querySelector('.avatar');
-    if(em && av){ av.textContent=_vfInitials(em); av.title=em+' · click to sign out'; }
-  }
-}catch(_){}})();
 </script>
 <script src="pe-data.js" defer></script>
 <script src="vet-clinics.js" defer></script>
@@ -1280,8 +1173,15 @@ function _vfWarmCaches(){
   const warm=()=>{ try{ if(typeof loadZipGeometry==='function') loadZipGeometry().catch(()=>{}); }catch(_){} try{ if(typeof fetchIncomeBatch==='function') fetchIncomeBatch([]).catch(()=>{}); }catch(_){} };
   (window.requestIdleCallback||(f=>setTimeout(f,1500)))(warm,{timeout:4000});
 }
-// Already signed in (returning user)? The early inline script hid the login; bridge straight to the loader → app.
-try{ if(localStorage.getItem('vf_authed')==='1') _vfRevealApp(); }catch(_){}
+// Access is enforced SERVER-SIDE now (functions/_middleware.js + a real session cookie) — by the
+// time this script runs, the visitor is already authenticated (anyone else was redirected to
+// /login before index.html was ever served). So just reveal the app, then fetch who's signed in.
+_vfRevealApp();
+fetch('/api/auth/me').then(r=>r.json()).then(d=>{
+  if(!d || !d.authed) return; // shouldn't happen (middleware already gated this page) — fail quiet
+  const av=document.querySelector('.avatar');
+  if(av && d.email){ av.textContent=_vfInitials(d.email); av.title=d.email+' · click to sign out'; }
+}).catch(()=>{});
 
 const clusterGroup = L.layerGroup();
 map.addLayer(clusterGroup);
