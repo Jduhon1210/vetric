@@ -27,7 +27,7 @@ const HTML = `<!doctype html>
   .brand-word span{color:#93c5fd;}
 
   h1{font-family:'Newsreader',Georgia,serif;font-weight:300;font-size:40px;line-height:1.12;letter-spacing:-.01em;color:#fff;text-align:center;margin-bottom:12px;}
-  h1 em{font-style:italic;color:#bfdbfe;}
+  h1 em{font-style:italic;color:#fff;}
   .sub{font-size:14.5px;line-height:1.65;color:#b7c4ee;text-align:center;margin-bottom:36px;}
   .sub b{color:#e0e7ff;font-weight:600;}
 
@@ -62,7 +62,7 @@ const HTML = `<!doctype html>
     </div>
 
     <div id="step1" class="step on">
-      <h1>AI-powered<br><em>veterinary market<br>intelligence.</em></h1>
+      <h1>AI-Powered<br><em>Veterinary Market<br>Intelligence.</em></h1>
       <p class="sub">Enter your email and we'll send you a one-time sign-in code.</p>
       <form id="f1" onsubmit="return reqCode(event)">
         <label for="email">Email</label>
