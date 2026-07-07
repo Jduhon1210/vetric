@@ -4,23 +4,31 @@
 // same generic success message whether or not the email is allowed, so this endpoint can't be
 // used to probe who has access.
 export async function onRequestPost({ request, env }) {
-  let body;
-  try { body = await request.json(); } catch (e) { return json({ error: 'bad json' }, 400); }
-  const email = String((body && body.email) || '').trim().toLowerCase();
-  if (!email || !email.includes('@')) return json({ error: 'Enter a valid email.' }, 400);
+  try {
+    let body;
+    try { body = await request.json(); } catch (e) { return json({ error: 'bad json' }, 400); }
+    const email = String((body && body.email) || '').trim().toLowerCase();
+    if (!email || !email.includes('@')) return json({ error: 'Enter a valid email.' }, 400);
 
-  const allowed = await env.VETRIC_KV.get('allow:' + email);
-  if (allowed) {
-    const cooldownKey = 'cooldown:' + email;
-    if (!(await env.VETRIC_KV.get(cooldownKey))) {   // light throttle: max 1 code / 30s / email
-      const code = String(Math.floor(100000 + Math.random() * 900000));
-      await env.VETRIC_KV.put('code:' + email, code, { expirationTtl: 600 });
-      await env.VETRIC_KV.put(cooldownKey, '1', { expirationTtl: 30 });
-      await _sendCodeEmail(env, email, code);
+    const allowed = await env.VETRIC_KV.get('allow:' + email);
+    if (allowed) {
+      const cooldownKey = 'cooldown:' + email;
+      // Light throttle: max 1 code per minute per email. NOTE: Cloudflare KV's MINIMUM
+      // expirationTtl is 60 seconds — a smaller value makes put() THROW (was 30 → error 1101).
+      if (!(await env.VETRIC_KV.get(cooldownKey))) {
+        const code = String(Math.floor(100000 + Math.random() * 900000));
+        await env.VETRIC_KV.put('code:' + email, code, { expirationTtl: 600 });
+        await env.VETRIC_KV.put(cooldownKey, '1', { expirationTtl: 60 });
+        await _sendCodeEmail(env, email, code);
+      }
     }
+    // Same response either way — do not leak allowlist membership.
+    return json({ ok: true, message: 'If that email has access, a sign-in code is on its way.' });
+  } catch (e) {
+    // Always answer JSON — an unhandled throw becomes Cloudflare's HTML "error 1101" page,
+    // which the login page's r.json() can't parse (surfaced to users as a generic network error).
+    return json({ error: 'Server error — try again in a moment.' }, 500);
   }
-  // Same response either way — do not leak allowlist membership.
-  return json({ ok: true, message: 'If that email has access, a sign-in code is on its way.' });
 }
 
 async function _sendCodeEmail(env, to, code) {
