@@ -56,7 +56,15 @@ Any old entry with value `1` (from the email-code era) can't sign in until you e
 to a real code. Add one entry per person; to revoke access, delete their entry (existing
 sessions remain valid until they expire in 30 days, or also delete their `session:*` key).
 
-### 5. Redeploy
+### 5. Enable Vetric AI (Workers AI binding — free tier)
+The AI tab (chat assistant) runs on **Cloudflare Workers AI** — free allocation (~10,000
+neurons/day), no API key, no card. One binding:
+**Pages project → Settings → Bindings → Add → Workers AI** → variable name **`AI`**
+(Production and Preview). Until it's added, the AI tab answers with a friendly
+"not configured yet" message — nothing breaks. Only signed-in (allow-listed) users can reach
+`/api/ai`, so strangers can't burn the daily allocation.
+
+### 6. Redeploy
 Push this code to `main` (or trigger a deploy) so Cloudflare Pages picks up the new
 `functions/` files. Once deployed, `vetric.co` will redirect anyone without a session to
 `/login`.

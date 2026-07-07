@@ -613,6 +613,35 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
 .set-opt input{margin-top:2px;flex-shrink:0;width:16px;height:16px;cursor:pointer;accent-color:var(--navy);}
 .set-opt b{color:var(--text);font-weight:600;}
 .set-opt-note{display:block;color:#64748b;font-size:12px;margin-top:2px;}
+/* ── Vetric AI drawer ─────────────────────────────────────────────────────── */
+#nav-ai-btn{color:#6d28d9;font-weight:700;}
+#nav-ai-btn.on{color:#fff;background:#6d28d9;border-radius:8px;}
+.vf-ai{position:fixed;top:0;right:-420px;bottom:0;width:400px;max-width:96vw;background:var(--surface);border-left:1px solid var(--border2);box-shadow:-18px 0 50px rgba(15,23,42,.18);z-index:1600;display:flex;flex-direction:column;transition:right .25s ease;}
+.vf-ai.open{right:0;}
+.vf-ai-head{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:linear-gradient(150deg,#1e3a8a,#172554);color:#fff;flex-shrink:0;}
+.vf-ai-title{font-size:15px;font-weight:800;letter-spacing:-.01em;}
+.vf-ai-title span{color:#93c5fd;}
+.vf-ai-title em{font-style:normal;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;background:rgba(255,255,255,.16);border-radius:8px;padding:2px 7px;margin-left:8px;vertical-align:2px;}
+.vf-ai-x{background:none;border:none;color:#c7d2fe;font-size:15px;cursor:pointer;padding:4px 8px;border-radius:6px;}
+.vf-ai-x:hover{background:rgba(255,255,255,.12);color:#fff;}
+.vf-ai-msgs{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px;}
+.vf-ai-m{max-width:88%;padding:9px 13px;border-radius:12px;font-size:13px;line-height:1.55;white-space:pre-wrap;word-wrap:break-word;}
+.vf-ai-m.user{align-self:flex-end;background:var(--navy);color:#fff;border-bottom-right-radius:4px;}
+.vf-ai-m.assistant{align-self:flex-start;background:var(--bg2);color:var(--text);border-bottom-left-radius:4px;}
+.vf-ai-m.assistant b{color:#1e3a8a;}
+.vf-ai-m.assistant pre{background:#eef2f7;border-radius:8px;padding:8px;overflow-x:auto;font-size:11.5px;margin:6px 0;}
+.vf-ai-act{align-self:flex-start;font-size:10.5px;font-weight:700;color:#6d28d9;background:#f3effd;border:1px solid #ddd0f7;border-radius:9px;padding:3px 9px;}
+.vf-ai-typing{align-self:flex-start;color:var(--muted);font-size:12px;padding:4px 2px;}
+.vf-ai-chips{display:flex;flex-direction:column;gap:8px;margin-top:6px;}
+.vf-ai-chip{text-align:left;font-size:12.5px;font-weight:600;color:var(--navy);background:#eef2fb;border:1px solid #dbe3f4;border-radius:9px;padding:8px 12px;cursor:pointer;font-family:inherit;}
+.vf-ai-chip:hover{background:#e0e7f7;}
+.vf-ai-inrow{display:flex;gap:8px;padding:12px 14px;border-top:1px solid var(--border);flex-shrink:0;}
+.vf-ai-inrow input{flex:1;padding:10px 13px;border:1px solid var(--border2);border-radius:10px;font-size:13px;font-family:inherit;}
+.vf-ai-inrow input:focus{outline:none;border-color:var(--navy);box-shadow:0 0 0 3px rgba(30,58,138,.10);}
+.vf-ai-send{width:42px;border:none;border-radius:10px;background:var(--navy);color:#fff;font-size:16px;cursor:pointer;}
+.vf-ai-send:disabled{opacity:.5;cursor:default;}
+.vf-ai-report{align-self:flex-start;max-width:92%;border:1px solid var(--border2);border-radius:10px;padding:10px 13px;font-size:12px;background:#fff;}
+.vf-ai-report a{color:var(--navy);font-weight:700;text-decoration:none;font-size:12px;}
 /* ── App loading screen (bridges the server-authenticated visit → fully-ready app) ───── */
 #app-loader{position:fixed;inset:0;z-index:9000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;background:var(--bg);transition:opacity .4s ease;}
 #app-loader.hidden{opacity:0;pointer-events:none;}
@@ -652,6 +681,7 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
       <button class="nav-link" data-section="acquisitions" onclick="switchSection('acquisitions')">Acquisitions</button>
       <button class="nav-link" data-section="properties" onclick="switchSection('properties')">Properties</button>
       <button class="nav-link" data-section="reports" onclick="switchSection('reports')">Watchlist</button>
+      <button class="nav-link" id="nav-ai-btn" onclick="toggleAIPanel()">AI</button>
     </nav>
   </div>
   <div style="display:flex;align-items:center;gap:12px;">
@@ -663,6 +693,11 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
     <div class="avatar" title="Sign out" style="cursor:pointer" onclick="vetricSignOut()">JD</div>
   </div>
 </header>
+<div id="vf-ai" class="vf-ai">
+  <div class="vf-ai-head"><div class="vf-ai-title">Vet<span>ric</span> AI<em>beta</em></div><button class="vf-ai-x" onclick="toggleAIPanel()" aria-label="Close">✕</button></div>
+  <div class="vf-ai-msgs" id="vf-ai-msgs"></div>
+  <div class="vf-ai-inrow"><input id="vf-ai-in" placeholder="Ask for reports, lists, settings changes…" onkeydown="if(event.key==='Enter')aiSend()"><button class="vf-ai-send" id="vf-ai-send" onclick="aiSend()">→</button></div>
+</div>
 <div class="settings-overlay" id="settings-overlay" onclick="if(event.target===this)closeSettings()">
   <div class="settings-modal">
     <div class="settings-head"><span>Settings</span><button class="settings-close" onclick="closeSettings()" aria-label="Close">✕</button></div>
@@ -6020,6 +6055,227 @@ function clearEvaluate(){
   if(selectedZips.size) applyZipSelection();
   else if(wasArea && drawnArea){ markers.forEach(m=>setMarkerVisible(m,true)); captureAreaClinics(); } // back to the drawn-area view
   else { markers.forEach(m=>setMarkerVisible(m,true)); renderNormalSidebar(); }
+}
+</script>
+<script>
+/* ── Vetric AI — chat drawer with real tools into the app ─────────────────────
+   The model runs server-side (/api/ai → Cloudflare Workers AI, free tier); THIS file owns the
+   tool registry and executes tool calls against live app state (rankings, weights, layers,
+   settings, watchlist, reports). Loop: send → model may return tool_calls → execute each →
+   send results back → final text. Max 5 rounds per user message. */
+const AI_SYSTEM = "You are Vetric AI, the built-in analyst inside Vetric — a Texas veterinary market-intelligence app for clinic site selection and acquisitions, used by PE firms and regional groups. You control the app through tools. ALWAYS use tools for data and actions — never invent numbers; every figure you state must come from a tool result. Be concise and businesslike; use short bullets. For a report: gather data with tools first, then write clean markdown and call save_report with it. For settings/layers/weights/navigation requests: make the change with the right tool, then confirm in one line. Scores are region-relative (0-100 within the active region).";
+
+const AI_TOOLS = [
+ {type:'function', function:{name:'get_top_markets', description:'Ranked ZIP markets for the active region from the live opportunity model (score, income, dog households, vets, growth, retail nodes).', parameters:{type:'object', properties:{count:{type:'number', description:'How many (default 5, max 15)'}}}}},
+ {type:'function', function:{name:'get_zip_profile', description:'Full profile for one ZIP: rank, composite + factor scores, income, dog/cat households, est. annual vet visits, DVMs, sustainable-DVM verdict, clinic counts, commercial-retail nodes, growth.', parameters:{type:'object', properties:{zip:{type:'string'}}, required:['zip']}}},
+ {type:'function', function:{name:'set_weights', description:'Set the four opportunity weighting sliders (0-100 each; they are normalized). Re-ranks instantly.', parameters:{type:'object', properties:{income:{type:'number'}, demand:{type:'number'}, competition:{type:'number'}, growth:{type:'number'}}, required:['income','demand','competition','growth']}}},
+ {type:'function', function:{name:'apply_preset', description:'Apply a weighting preset: industry (default), underserved, cashflow, growth.', parameters:{type:'object', properties:{preset:{type:'string', enum:['industry','underserved','cashflow','growth']}}, required:['preset']}}},
+ {type:'function', function:{name:'show_section', description:'Navigate the app to a section.', parameters:{type:'object', properties:{section:{type:'string', enum:['map','opportunity','acquisitions','watchlist']}}, required:['section']}}},
+ {type:'function', function:{name:'focus_zip', description:'Open a ZIP on the map with its boundary outlined (leaves the current section).', parameters:{type:'object', properties:{zip:{type:'string'}}, required:['zip']}}},
+ {type:'function', function:{name:'toggle_map_layer', description:'Turn a map data layer on or off.', parameters:{type:'object', properties:{layer:{type:'string', enum:['income','pets','growth','density']}, on:{type:'boolean'}}, required:['layer','on']}}},
+ {type:'function', function:{name:'set_preference', description:'Change an app setting: hide_pins (auto-hide clinic pins when zoomed out) or include_mobile (count mobile vets as competition).', parameters:{type:'object', properties:{preference:{type:'string', enum:['hide_pins','include_mobile']}, on:{type:'boolean'}}, required:['preference','on']}}},
+ {type:'function', function:{name:'watchlist', description:'List, add or remove saved markets in the watchlist.', parameters:{type:'object', properties:{action:{type:'string', enum:['list','add','remove']}, zip:{type:'string', description:'Required for add/remove'}}, required:['action']}}},
+ {type:'function', function:{name:'search_clinics', description:'Search clinics and veterinarians by name.', parameters:{type:'object', properties:{query:{type:'string'}}, required:['query']}}},
+ {type:'function', function:{name:'save_report', description:'Save a finished markdown report — shows it in the chat with a download link. Call this LAST, after gathering data.', parameters:{type:'object', properties:{title:{type:'string'}, markdown:{type:'string'}}, required:['title','markdown']}}}
+];
+
+let aiHistory=[], aiBusy=false, aiOpened=false;
+function toggleAIPanel(){
+  const el=document.getElementById('vf-ai'), btn=document.getElementById('nav-ai-btn');
+  const open=!el.classList.contains('open');
+  el.classList.toggle('open', open); if(btn) btn.classList.toggle('on', open);
+  if(open && !aiOpened){ aiOpened=true; aiGreet(); }
+  if(open) setTimeout(()=>{ const i=document.getElementById('vf-ai-in'); if(i) i.focus(); },260);
+}
+function aiGreet(){
+  aiAddMsg('assistant', "I'm Vetric AI. I can pull live rankings, build reports and lists, change layers and settings, and manage your watchlist. Try one of these:");
+  const box=document.getElementById('vf-ai-msgs');
+  const chips=document.createElement('div'); chips.className='vf-ai-chips';
+  [['Top 5 markets right now'],['Build me a one-page market report for this region'],['Turn on the income layer'],["What's in my watchlist?"]].forEach(([t])=>{
+    const c=document.createElement('button'); c.className='vf-ai-chip'; c.textContent=t;
+    c.onclick=()=>{ const i=document.getElementById('vf-ai-in'); i.value=t; aiSend(); };
+    chips.appendChild(c);
+  });
+  box.appendChild(chips); box.scrollTop=box.scrollHeight;
+}
+function _aiEsc(t){ return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function _aiMd(t){
+  let h=_aiEsc(t);
+  h=h.replace(/```([\s\S]*?)```/g,(m,c)=>'<pre>'+c.trim()+'</pre>');
+  h=h.replace(/^#{1,3} (.*)$/gm,'<b>$1</b>');
+  h=h.replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>');
+  h=h.replace(/^[-•] /gm,'• ');
+  return h;
+}
+function aiAddMsg(role, text){
+  const box=document.getElementById('vf-ai-msgs');
+  const d=document.createElement('div'); d.className='vf-ai-m '+role;
+  d.innerHTML=_aiMd(text);
+  box.appendChild(d); box.scrollTop=box.scrollHeight;
+}
+function aiAddAction(name){
+  const box=document.getElementById('vf-ai-msgs');
+  const d=document.createElement('div'); d.className='vf-ai-act'; d.textContent='⚙ '+name;
+  box.appendChild(d); box.scrollTop=box.scrollHeight;
+}
+function _aiContext(){
+  const w=(typeof getOppWeights==='function')?getOppWeights():null;
+  return 'App state: region='+(typeof oppRegion!=='undefined'?oppRegion.name:'?')
+    +'; opportunity data loaded='+((typeof oppScored!=='undefined'&&oppScored.length)?('yes ('+oppScored.length+' ZIPs)'):'no (tools load it automatically)')
+    +(w?('; weights income '+Math.round(w.income*100)+'% / demand '+Math.round(w.demand*100)+'% / competition '+Math.round(w.comp*100)+'% / growth '+Math.round(w.growth*100)+'%'):'')
+    +'; watchlist items='+(typeof getWatch==='function'?getWatch().length:0)+'.';
+}
+async function aiSend(){
+  if(aiBusy) return;
+  const inp=document.getElementById('vf-ai-in');
+  const q=(inp.value||'').trim(); if(!q) return;
+  inp.value='';
+  aiAddMsg('user', q);
+  aiHistory.push({role:'user', content:q});
+  aiBusy=true; document.getElementById('vf-ai-send').disabled=true;
+  const box=document.getElementById('vf-ai-msgs');
+  const typing=document.createElement('div'); typing.className='vf-ai-typing'; typing.textContent='Vetric AI is working…';
+  box.appendChild(typing); box.scrollTop=box.scrollHeight;
+  try{ await _aiTurn(); }catch(e){ aiAddMsg('assistant','⚠ '+(e&&e.message||'Something went wrong.')); }
+  typing.remove();
+  aiBusy=false; document.getElementById('vf-ai-send').disabled=false;
+}
+async function _aiTurn(){
+  for(let round=0; round<5; round++){
+    const messages=[{role:'system', content:AI_SYSTEM+' '+_aiContext()}].concat(aiHistory.slice(-24));
+    const r=await fetch('/api/ai',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages, tools:AI_TOOLS})});
+    let d; try{ d=await r.json(); }catch(e){ d={error:'Bad response from the AI service.'}; }
+    if(!r.ok || d.error){ aiAddMsg('assistant','⚠ '+(d.error||'AI request failed.')); return; }
+    const calls=d.tool_calls;
+    if(calls && calls.length){
+      aiHistory.push({role:'assistant', content:d.response||'', tool_calls:calls});
+      for(const tc of calls){
+        const name=tc.name||(tc.function&&tc.function.name)||'';
+        let args=tc.arguments||(tc.function&&tc.function.arguments)||{};
+        if(typeof args==='string'){ try{ args=JSON.parse(args); }catch(e){ args={}; } }
+        aiAddAction(name);
+        let result;
+        try{ result=await aiExecTool(name, args); }
+        catch(e){ result={error:String(e&&e.message||e)}; }
+        aiHistory.push({role:'tool', name, content:JSON.stringify(result).slice(0,6000)});
+      }
+      continue;
+    }
+    const text=d.response||'(no response)';
+    aiAddMsg('assistant', text);
+    aiHistory.push({role:'assistant', content:text});
+    return;
+  }
+  aiAddMsg('assistant','I hit the per-message action limit — say "continue" to keep going.');
+}
+async function _aiEnsureOpp(){
+  if(typeof oppScored!=='undefined' && oppScored.length) return;
+  await Promise.all([ensureIncomeData(), ensureDogData(), ensureGrowthData(), ensureConstructionData(), loadZipGeometry(), _loadOppRetail()]);
+  oppGeoSnap=incomeGeoData||_zipGeoCache; oppIncomeSnap={...incomeData};
+  oppDogSnap={}; Object.keys(dogData).forEach(z=>oppDogSnap[z]=dogData[z].est);
+  oppGrowthSnap={...growthData}; oppConstructionSnap={...constructionData};
+  if(!oppRegionIndependents || !oppRegionIndependents.length){
+    oppRegionIndependents=_activeVetClinics().filter(v=>v.lat>=oppRegion.s&&v.lat<=oppRegion.n&&v.lon>=oppRegion.w&&v.lon<=oppRegion.e&&!checkPE(v.name,v.lat,v.lon,null,getOverrides())).map(v=>({lat:v.lat,lon:v.lon}));
+  }
+  buildOppBaseInputs(); rescoreAndRender();
+}
+function _aiRow(r,i){
+  return { rank:i+1, zip:r.zip, city:r.city||null, score:Math.round(r.score),
+    medianIncome:r.inc!=null?Math.round(r.inc):null, dogHouseholds:r.dog!=null?Math.round(r.dog):null,
+    dvms:r.dvm!=null?r.dvm:null, growthPct:r.grow!=null?+(r.grow*100).toFixed(1):null,
+    clinics:(r.peCount||0)+(r.indCount||0), retailNodes:r.retailN };
+}
+async function aiExecTool(name, a){
+  a=a||{};
+  switch(name){
+    case 'get_top_markets': {
+      await _aiEnsureOpp();
+      const n=Math.min(Math.max(1, +a.count||5), 15);
+      return { region:oppRegion.name, markets:oppScored.slice(0,n).map(_aiRow) };
+    }
+    case 'get_zip_profile': {
+      await _aiEnsureOpp();
+      const z=String(a.zip||'').trim();
+      const i=oppScored.findIndex(r=>r.zip===z);
+      if(i<0) return {error:'ZIP '+z+' is not in the scored region ('+oppRegion.name+').'};
+      const r=oppScored[i];
+      const catHH=(dogData[z]&&dogData[z].catEst!=null)?dogData[z].catEst:null;
+      const visits=r.dog!=null?Math.round(r.dog*OPP_VISITS_PER_DOGHH+(catHH||0)*OPP_VISITS_PER_CATHH):null;
+      const sustains=visits!=null?Math.max(1,Math.round(visits/OPP_VISITS_PER_DVM)):null;
+      return { ..._aiRow(r,i), factorScores:{income:Math.round(r.fIncome), demand:Math.round(r.fDemand), competition:Math.round(r.fComp), growth:Math.round(r.fGrowth||0)},
+        catHouseholds:catHH!=null?Math.round(catHH):null, estAnnualVetVisits:visits, demandSustainsDvms:sustains,
+        peClinics:r.peCount, independentClinics:r.indCount, newConstructionPct:r.cons!=null?Math.round(r.cons*100):null };
+    }
+    case 'set_weights': {
+      const v=k=>Math.min(100,Math.max(0,Math.round(+a[k]||0)));
+      document.getElementById('w-income').value=v('income');
+      document.getElementById('w-demand').value=v('demand');
+      document.getElementById('w-comp').value=v('competition');
+      document.getElementById('w-growth').value=v('growth');
+      onWeightChange();
+      await _aiEnsureOpp();
+      return { applied:true, top5:oppScored.slice(0,5).map(r=>r.zip+' ('+Math.round(r.score)+')') };
+    }
+    case 'apply_preset': {
+      if(!['industry','underserved','cashflow','growth'].includes(a.preset)) return {error:'unknown preset'};
+      oppPreset(a.preset);
+      await _aiEnsureOpp();
+      return { applied:a.preset, top5:oppScored.slice(0,5).map(r=>r.zip+' ('+Math.round(r.score)+')') };
+    }
+    case 'show_section': {
+      const map={map:'map', opportunity:'opportunity', acquisitions:'acquisitions', watchlist:'reports'};
+      if(!map[a.section]) return {error:'unknown section'};
+      switchSection(map[a.section]);
+      return { showing:a.section };
+    }
+    case 'focus_zip': {
+      await _aiEnsureOpp();
+      const z=String(a.zip||'').trim();
+      if(!oppScored.some(r=>r.zip===z)) return {error:'ZIP '+z+' is not in the scored region.'};
+      oppSelect(z);
+      return { focused:z };
+    }
+    case 'toggle_map_layer': {
+      const on=!!a.on;
+      const defs={ income:['toggle-income', toggleIncomeLayer], pets:['toggle-pets', toggleDogLayer], growth:['toggle-growth', toggleGrowthLayer], density:[null, toggleClinicDensityLayer] };
+      const d=defs[a.layer]; if(!d) return {error:'unknown layer'};
+      if(d[0]){ const cb=document.getElementById(d[0]); if(cb) cb.checked=on; }
+      else { const cb=document.querySelector('input[onchange*="ClinicDensityLayer"]'); if(cb) cb.checked=on; }
+      await d[1](on);
+      if(typeof switchSection==='function') switchSection('map');
+      return { layer:a.layer, on };
+    }
+    case 'set_preference': {
+      const on=!!a.on;
+      if(a.preference==='hide_pins'){ const cb=document.getElementById('opt-hidepins'); if(cb) cb.checked=on; toggleHidePins(on); return {preference:'hide_pins', on}; }
+      if(a.preference==='include_mobile'){ const cb=document.getElementById('opt-mobile'); if(cb) cb.checked=on; toggleIncludeMobile(on); return {preference:'include_mobile', on}; }
+      return {error:'unknown preference'};
+    }
+    case 'watchlist': {
+      if(a.action==='list') return { items:getWatch().map(w=>({type:w.type, id:w.id, name:w.name||null, score:w.score!=null?w.score:null})) };
+      const z=String(a.zip||'').trim(); if(!z) return {error:'zip required'};
+      await _aiEnsureOpp();
+      const has=_inWatch('market', z);
+      if(a.action==='add'){ if(!has) toggleWatchMarket(z, null); return { added:z, alreadyThere:has }; }
+      if(a.action==='remove'){ if(has) toggleWatchMarket(z, null); return { removed:z, wasThere:has }; }
+      return {error:'unknown action'};
+    }
+    case 'search_clinics': {
+      const res=(_clinicSuggest(String(a.query||''), 6)||[]).map(x=>({name:x.label, detail:x.sub||null}));
+      return { results:res };
+    }
+    case 'save_report': {
+      const title=String(a.title||'Vetric report');
+      const md=String(a.markdown||'');
+      const box=document.getElementById('vf-ai-msgs');
+      const d=document.createElement('div'); d.className='vf-ai-report';
+      const url=URL.createObjectURL(new Blob([md], {type:'text/markdown'}));
+      d.innerHTML='<b>'+_aiEsc(title)+'</b><div style="margin:6px 0 8px;max-height:220px;overflow-y:auto">'+_aiMd(md)+'</div><a href="'+url+'" download="'+_aiEsc(title.replace(/[^a-z0-9]+/gi,'-').toLowerCase())+'.md">↓ Download report (.md)</a>';
+      box.appendChild(d); box.scrollTop=box.scrollHeight;
+      return { saved:true, title };
+    }
+    default: return {error:'unknown tool '+name};
+  }
 }
 </script>
 </body>
