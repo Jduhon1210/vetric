@@ -61,63 +61,35 @@ const HTML = `<!doctype html>
       <div class="brand-word">Vet<span>ric</span></div>
     </div>
 
-    <div id="step1" class="step on">
+    <div class="step on">
       <h1>AI-Powered<br><em>Veterinary Market<br>Intelligence.</em></h1>
-      <p class="sub">Enter your email and we'll send you a one-time sign-in code.</p>
-      <form id="f1" onsubmit="return reqCode(event)">
+      <p class="sub">Sign in with your email and the access code you were given.</p>
+      <form id="f1" onsubmit="return signIn(event)">
         <label for="email">Email</label>
         <input id="email" type="email" placeholder="you@company.com" autocomplete="email" required autofocus>
+        <label for="key">Access code</label>
+        <input id="key" type="password" placeholder="Your Vetric access code" autocomplete="current-password">
         <div class="err" id="err1"></div>
-        <button id="btn1" type="submit">Continue</button>
+        <button id="btn1" type="submit">Sign in</button>
       </form>
-    </div>
-
-    <div id="step2" class="step">
-      <h1><em>Check your inbox.</em></h1>
-      <p class="sub">We sent a 6-digit code to <b id="sentTo"></b><br>It expires in 10 minutes.</p>
-      <form id="f2" onsubmit="return verify(event)">
-        <label for="code">Sign-in code</label>
-        <input id="code" class="code-input" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000" required>
-        <div class="err" id="err2"></div>
-        <button id="btn2" type="submit">Sign in</button>
-      </form>
-      <a class="back" onclick="goBack()">&larr; Use a different email</a>
     </div>
   </div>
   <div class="foot">Vetric · Veterinary market intelligence · Access is by invitation</div>
 <script>
-let currentEmail='';
-async function reqCode(e){
+async function signIn(e){
   e.preventDefault();
   const email=document.getElementById('email').value.trim();
+  const key=document.getElementById('key').value.trim();
   const err=document.getElementById('err1'), btn=document.getElementById('btn1');
-  err.textContent=''; btn.disabled=true; btn.textContent='Sending…';
+  if(!key){ err.textContent='Enter your access code.'; return false; }
+  err.textContent=''; btn.disabled=true; btn.textContent='Signing in…';
   try{
-    const r=await fetch('/api/auth/request-code',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email})});
+    const r=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,key})});
     const d=await r.json();
-    if(!r.ok){ err.textContent=d.error||'Something went wrong.'; btn.disabled=false; btn.textContent='Continue'; return false; }
-    currentEmail=email;
-    document.getElementById('sentTo').textContent=email;
-    document.getElementById('step1').classList.remove('on');
-    document.getElementById('step2').classList.add('on');
-    document.getElementById('code').focus();
-  }catch(ex){ err.textContent='Network error — try again.'; }
-  btn.disabled=false; btn.textContent='Continue';
-  return false;
-}
-async function verify(e){
-  e.preventDefault();
-  const code=document.getElementById('code').value.trim();
-  const err=document.getElementById('err2'), btn=document.getElementById('btn2');
-  err.textContent=''; btn.disabled=true; btn.textContent='Verifying…';
-  try{
-    const r=await fetch('/api/auth/verify-code',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:currentEmail,code})});
-    const d=await r.json();
-    if(!r.ok){ err.textContent=d.error||'Invalid code.'; btn.disabled=false; btn.textContent='Sign in'; return false; }
+    if(!r.ok){ err.textContent=d.error||'Sign-in failed.'; btn.disabled=false; btn.textContent='Sign in'; return false; }
     window.location.href='/';
   }catch(ex){ err.textContent='Network error — try again.'; btn.disabled=false; btn.textContent='Sign in'; }
   return false;
 }
-function goBack(){ document.getElementById('step2').classList.remove('on'); document.getElementById('step1').classList.add('on'); document.getElementById('err2').textContent=''; }
 </script>
 </body></html>`;

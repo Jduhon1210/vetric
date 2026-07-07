@@ -5,10 +5,12 @@ OR the raw data files (`pe-data.js`, `vet-clinics.js`, `vet-staff.js`, `tx-zips.
 the gate is enforced by `functions/_middleware.js` on every single request, not just a
 client-side flag.
 
-**How it works:** visitor enters their email at `/login` → if it's on your allow-list, they get
-a 6-digit code by email (10-min expiry) → they enter it → they get a real session cookie
-(30 days) → in. Not on the list = stopped right at the login screen with "This email doesn't
-have access yet" (an explicit rejection — the owner chose clear UX over hiding who's invited).
+**How it works (access-code mode — current):** visitor enters their email + the access code you
+gave them at `/login` → server checks the KV allow-list entry (its VALUE is that person's access
+code) → match issues a real session cookie (30 days) → in. No emails are sent at all (the
+email-code flow was removed 2026-07-08 to stay inside the Resend free tier — it's in git history
+if we ever want it back). Not on the list = stopped at the login screen with "This email doesn't
+have access yet." Wrong code = "Incorrect access code" (max 10 tries per 5 minutes per email).
 
 ## One-time setup (do this in the Cloudflare dashboard — I can't do this part for you)
 
@@ -23,7 +25,13 @@ Your Pages project (**vetfinder**) → **Settings → Functions → KV namespace
 Do this for **both Production and Preview** (there's a separate toggle for each), or preview
 deploys will 500 on every request.
 
-### 3. Set up Resend (sends the code emails) — free tier covers this easily
+### 3. ~~Set up Resend~~ — NOT needed in access-code mode
+The `RESEND_API_KEY` / `RESEND_FROM` variables are currently unused (no emails are sent).
+Keep them if they're already set — harmless — and they'll matter again only if the email-code
+flow is ever restored. Skip the rest of this section.
+
+<details><summary>Old Resend instructions (only for restoring the email-code flow)</summary>
+
 1. Sign up at **resend.com** (free: 100 emails/day, 3,000/month — plenty for invite-only access)
 2. **API Keys** → create one → copy it
 3. Back in Cloudflare: Pages project → **Settings → Environment variables** → add:
@@ -35,15 +43,18 @@ deploys will 500 on every request.
 
 **Until `RESEND_API_KEY` is set, the code is generated and stored but no email is sent** — the
 app won't break, sign-in just won't work yet. Set this before you send anyone the link.
+</details>
 
 ### 4. Add the people who are allowed in
 **Workers & Pages → KV → vetric-auth** → **Add entry**:
 - Key: `allow:their.email@company.com` (**must be lowercase**)
-- Value: anything — a name or `1` is fine, only the key's presence matters
+- Value: **their access code** — a code YOU choose (e.g. `mesa-vet-2026`). You give it to them
+  directly (text, call, email — your choice). The value IS the credential, so don't use `1`
+  or anything guessable; a couple of words + numbers is plenty.
 
-Add one entry per person. To revoke access, delete their entry — their next code request is
-rejected at the login screen (existing sessions remain valid until they expire in 30 days or
-you also delete their `session:*` key, which you can look up if needed).
+Any old entry with value `1` (from the email-code era) can't sign in until you edit its value
+to a real code. Add one entry per person; to revoke access, delete their entry (existing
+sessions remain valid until they expire in 30 days, or also delete their `session:*` key).
 
 ### 5. Redeploy
 Push this code to `main` (or trigger a deploy) so Cloudflare Pages picks up the new
@@ -51,17 +62,18 @@ Push this code to `main` (or trigger a deploy) so Cloudflare Pages picks up the 
 `/login`.
 
 ## Testing it
-1. Add your own email as an `allow:` entry.
+1. Set your own `allow:` entry's VALUE to an access code of your choosing.
 2. Visit `vetric.co` in an incognito window → should redirect to `/login`.
-3. Enter your email → check your inbox for the code (once Resend is configured).
-4. Enter the code → should land on the real app, avatar shows your initials.
+3. Enter your email + that access code → should land on the real app, avatar shows your initials.
+4. Wrong code → "Incorrect access code." · unknown email → "doesn't have access yet."
 5. Click the avatar (sign out) → should bounce back to `/login`, and reloading `vetric.co`
    directly should redirect to `/login` again (session is really gone, not just hidden).
 
 ## Files
 - `_middleware.js` — the gate; runs on every request.
 - `login.js` — the public sign-in page (`/login`), self-contained (no external JS/CSS).
-- `api/auth/request-code.js` — checks the allow-list, emails a code.
-- `api/auth/verify-code.js` — checks the code, issues the session cookie.
+- `api/auth/login.js` — checks email + access code against the allow-list, issues the session
+  cookie. (The old `request-code.js`/`verify-code.js` email-OTP pair was removed 2026-07-08;
+  recover from git history to restore that flow.)
 - `api/auth/logout.js` — kills the session server-side.
 - `api/auth/me.js` — lets the app show who's signed in (for the avatar).
