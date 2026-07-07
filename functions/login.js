@@ -1,5 +1,6 @@
-// GET /login — the ONLY page reachable without a session (see _middleware.js). Fully
-// self-contained (no external JS/CSS) so it can never be blocked by the gate it sits in front of.
+// GET /login — the ONLY page reachable without a session (see _middleware.js). Self-contained
+// aside from Google Fonts (fine pre-auth; the app itself already uses Google Fonts).
+// Aesthetic: Resend-inspired — near-black, large serif display type, white pill CTA, quiet grays.
 export async function onRequestGet() {
   return new Response(HTML, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
 }
@@ -7,56 +8,82 @@ export async function onRequestGet() {
 const HTML = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Sign in — Vetric</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;1,6..72,300;1,6..72,400&display=swap" rel="stylesheet">
 <style>
-  *{box-sizing:border-box;}
-  body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f1f5f9;font-family:'Inter',system-ui,-apple-system,sans-serif;}
-  .card{width:380px;max-width:calc(100vw - 32px);background:#fff;border-radius:16px;box-shadow:0 20px 60px rgba(15,23,42,.14);padding:32px 30px;}
-  .brand{display:flex;align-items:center;gap:9px;margin-bottom:22px;}
-  .brand-logo{width:30px;height:30px;border-radius:8px;background:linear-gradient(160deg,#1e3a8a,#1e293b);display:flex;align-items:center;justify-content:center;}
-  .brand-word{font-size:18px;font-weight:800;color:#0f172a;letter-spacing:-.01em;}
-  .brand-word span{color:#1e3a8a;}
-  h1{font-size:19px;font-weight:800;color:#0f172a;margin:0 0 4px;}
-  .sub{font-size:13px;color:#64748b;margin:0 0 20px;line-height:1.5;}
-  label{font-size:12.5px;font-weight:600;color:#334155;display:block;margin-bottom:5px;}
-  input{width:100%;padding:10px 12px;border:1px solid #d7dee8;border-radius:9px;font-size:14px;font-family:inherit;margin-bottom:14px;}
-  input:focus{outline:none;border-color:#1e3a8a;box-shadow:0 0 0 3px rgba(30,58,138,.1);}
-  button{width:100%;padding:11px;border:0;border-radius:9px;background:#1e3a8a;color:#fff;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;}
-  button:disabled{opacity:.6;cursor:default;}
-  button:hover:not(:disabled){background:#1e3562;}
-  .err{font-size:12.5px;color:#dc2626;min-height:16px;margin:-6px 0 10px;}
-  .msg{font-size:12.5px;color:#15803d;margin:-6px 0 10px;line-height:1.5;}
-  .step{display:none;} .step.on{display:block;}
-  .back{font-size:12px;color:#64748b;text-decoration:none;display:inline-block;margin-top:12px;cursor:pointer;}
-  .back:hover{color:#1e3a8a;}
-  .code-input{letter-spacing:8px;font-size:20px;font-weight:700;text-align:center;font-family:ui-monospace,monospace;}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{height:100%;}
+  body{background:#0a0a0b;color:#ededef;font-family:'Inter',system-ui,-apple-system,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;position:relative;overflow:hidden;}
+  /* quiet depth — a faint warm glow low in the frame, like light on a dark table */
+  body::before{content:"";position:fixed;left:50%;bottom:-40vh;width:130vw;height:80vh;transform:translateX(-50%);background:radial-gradient(ellipse at center,rgba(255,255,255,.055) 0%,rgba(255,255,255,.018) 40%,transparent 70%);pointer-events:none;}
+  body::after{content:"";position:fixed;inset:0;background-image:radial-gradient(circle at 1px 1px,rgba(255,255,255,.028) 1px,transparent 0);background-size:28px 28px;pointer-events:none;mask-image:radial-gradient(ellipse at 50% 40%,black 0%,transparent 75%);-webkit-mask-image:radial-gradient(ellipse at 50% 40%,black 0%,transparent 75%);}
+
+  .wrap{width:100%;max-width:392px;position:relative;z-index:1;}
+  .brand{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:42px;}
+  .brand-logo{width:34px;height:34px;border-radius:9px;background:linear-gradient(160deg,#1e3a8a,#172554);border:1px solid rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;box-shadow:0 4px 24px rgba(30,58,138,.45);}
+  .brand-logo svg{width:19px;height:19px;}
+  .brand-word{font-size:17px;font-weight:700;letter-spacing:-.01em;color:#fff;}
+  .brand-word span{color:#93c5fd;}
+
+  h1{font-family:'Newsreader',Georgia,serif;font-weight:300;font-size:40px;line-height:1.12;letter-spacing:-.01em;color:#fff;text-align:center;margin-bottom:12px;}
+  h1 em{font-style:italic;}
+  .sub{font-size:14.5px;line-height:1.65;color:#a1a1aa;text-align:center;margin-bottom:36px;}
+  .sub b{color:#d4d4d8;font-weight:600;}
+
+  label{display:block;font-size:12.5px;font-weight:600;color:#d4d4d8;margin-bottom:8px;letter-spacing:.01em;}
+  input{width:100%;padding:13px 16px;background:#131315;border:1px solid rgba(255,255,255,.10);border-radius:12px;font-size:15px;font-family:inherit;color:#fff;margin-bottom:16px;transition:border-color .15s,box-shadow .15s;}
+  input::placeholder{color:#52525b;}
+  input:focus{outline:none;border-color:rgba(255,255,255,.28);box-shadow:0 0 0 4px rgba(255,255,255,.05);}
+  .code-input{font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:24px;font-weight:600;letter-spacing:10px;text-align:center;padding:14px 8px 14px 18px;}
+
+  button{width:100%;padding:13px;border:0;border-radius:999px;background:#fff;color:#0a0a0b;font-size:14.5px;font-weight:600;font-family:inherit;cursor:pointer;transition:opacity .15s,transform .05s;}
+  button:hover:not(:disabled){opacity:.88;}
+  button:active:not(:disabled){transform:translateY(1px);}
+  button:disabled{opacity:.45;cursor:default;}
+
+  .err{font-size:13px;color:#f87171;min-height:18px;margin:-6px 0 12px;text-align:center;}
+  .step{display:none;} .step.on{display:block;animation:rise .35s ease;}
+  @keyframes rise{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:none;}}
+  .back{display:block;text-align:center;font-size:13px;color:#a1a1aa;text-decoration:none;margin-top:22px;cursor:pointer;transition:color .15s;}
+  .back:hover{color:#fff;}
+  .foot{position:relative;z-index:1;margin-top:56px;font-size:12px;color:#52525b;text-align:center;}
+  .foot a{color:#71717a;text-decoration:none;}
 </style></head>
 <body>
-  <div class="card">
-    <div class="brand"><div class="brand-logo"></div><div class="brand-word">Vet<span>ric</span></div></div>
+  <div class="wrap">
+    <div class="brand">
+      <div class="brand-logo"><svg viewBox="0 0 24 24" fill="none">
+        <rect x="3" y="14" width="3.4" height="7" rx="1.2" fill="#fff" opacity="0.55"/>
+        <rect x="8.3" y="10" width="3.4" height="11" rx="1.2" fill="#fff" opacity="0.75"/>
+        <rect x="13.6" y="6" width="3.4" height="15" rx="1.2" fill="#fff"/>
+      </svg></div>
+      <div class="brand-word">Vet<span>ric</span></div>
+    </div>
 
     <div id="step1" class="step on">
-      <h1>Sign in to Vetric</h1>
+      <h1>Market intelligence,<br><em>by invitation.</em></h1>
       <p class="sub">Enter your email and we'll send you a one-time sign-in code.</p>
       <form id="f1" onsubmit="return reqCode(event)">
         <label for="email">Email</label>
-        <input id="email" type="email" placeholder="you@company.com" required autofocus>
+        <input id="email" type="email" placeholder="you@company.com" autocomplete="email" required autofocus>
         <div class="err" id="err1"></div>
-        <button id="btn1" type="submit">Send code</button>
+        <button id="btn1" type="submit">Continue</button>
       </form>
     </div>
 
     <div id="step2" class="step">
-      <h1>Enter your code</h1>
-      <p class="sub">We sent a 6-digit code to <b id="sentTo"></b>. It expires in 10 minutes.</p>
+      <h1><em>Check your inbox.</em></h1>
+      <p class="sub">We sent a 6-digit code to <b id="sentTo"></b><br>It expires in 10 minutes.</p>
       <form id="f2" onsubmit="return verify(event)">
         <label for="code">Sign-in code</label>
-        <input id="code" class="code-input" inputmode="numeric" maxlength="6" placeholder="000000" required>
+        <input id="code" class="code-input" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000" required>
         <div class="err" id="err2"></div>
-        <button id="btn2" type="submit">Verify &amp; sign in</button>
+        <button id="btn2" type="submit">Sign in</button>
       </form>
       <a class="back" onclick="goBack()">&larr; Use a different email</a>
     </div>
   </div>
+  <div class="foot">Vetric · Veterinary market intelligence · Access is by invitation</div>
 <script>
 let currentEmail='';
 async function reqCode(e){
@@ -67,14 +94,14 @@ async function reqCode(e){
   try{
     const r=await fetch('/api/auth/request-code',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email})});
     const d=await r.json();
-    if(!r.ok){ err.textContent=d.error||'Something went wrong.'; btn.disabled=false; btn.textContent='Send code'; return false; }
+    if(!r.ok){ err.textContent=d.error||'Something went wrong.'; btn.disabled=false; btn.textContent='Continue'; return false; }
     currentEmail=email;
     document.getElementById('sentTo').textContent=email;
     document.getElementById('step1').classList.remove('on');
     document.getElementById('step2').classList.add('on');
     document.getElementById('code').focus();
   }catch(ex){ err.textContent='Network error — try again.'; }
-  btn.disabled=false; btn.textContent='Send code';
+  btn.disabled=false; btn.textContent='Continue';
   return false;
 }
 async function verify(e){
@@ -85,9 +112,9 @@ async function verify(e){
   try{
     const r=await fetch('/api/auth/verify-code',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:currentEmail,code})});
     const d=await r.json();
-    if(!r.ok){ err.textContent=d.error||'Invalid code.'; btn.disabled=false; btn.textContent='Verify & sign in'; return false; }
+    if(!r.ok){ err.textContent=d.error||'Invalid code.'; btn.disabled=false; btn.textContent='Sign in'; return false; }
     window.location.href='/';
-  }catch(ex){ err.textContent='Network error — try again.'; btn.disabled=false; btn.textContent='Verify & sign in'; }
+  }catch(ex){ err.textContent='Network error — try again.'; btn.disabled=false; btn.textContent='Sign in'; }
   return false;
 }
 function goBack(){ document.getElementById('step2').classList.remove('on'); document.getElementById('step1').classList.add('on'); document.getElementById('err2').textContent=''; }
