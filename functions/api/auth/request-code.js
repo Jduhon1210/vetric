@@ -1,8 +1,9 @@
 // POST /api/auth/request-code   { email }
 // If the email is on the allowlist (a KV key "allow:<email>", added manually by the admin —
-// see functions/README.md), emails a 6-digit one-time code (10-min TTL). ALWAYS returns the
-// same generic success message whether or not the email is allowed, so this endpoint can't be
-// used to probe who has access.
+// see functions/README.md), emails a 6-digit one-time code (10-min TTL). Emails NOT on the
+// allowlist are rejected with an explicit 403 at the login screen (per the owner's request —
+// a deliberate UX-over-privacy trade: it does reveal allowlist membership to whoever types an
+// email in, but no invited user is ever left waiting for a code that will never come).
 export async function onRequestPost({ request, env }) {
   try {
     let body;
@@ -11,19 +12,20 @@ export async function onRequestPost({ request, env }) {
     if (!email || !email.includes('@')) return json({ error: 'Enter a valid email.' }, 400);
 
     const allowed = await env.VETRIC_KV.get('allow:' + email);
-    if (allowed) {
-      const cooldownKey = 'cooldown:' + email;
-      // Light throttle: max 1 code per minute per email. NOTE: Cloudflare KV's MINIMUM
-      // expirationTtl is 60 seconds — a smaller value makes put() THROW (was 30 → error 1101).
-      if (!(await env.VETRIC_KV.get(cooldownKey))) {
-        const code = String(Math.floor(100000 + Math.random() * 900000));
-        await env.VETRIC_KV.put('code:' + email, code, { expirationTtl: 600 });
-        await env.VETRIC_KV.put(cooldownKey, '1', { expirationTtl: 60 });
-        await _sendCodeEmail(env, email, code);
-      }
+    if (!allowed) {
+      return json({ error: "This email doesn't have access yet. Contact Vetric to request an invitation." }, 403);
     }
-    // Same response either way — do not leak allowlist membership.
-    return json({ ok: true, message: 'If that email has access, a sign-in code is on its way.' });
+
+    const cooldownKey = 'cooldown:' + email;
+    // Light throttle: max 1 code per minute per email. NOTE: Cloudflare KV's MINIMUM
+    // expirationTtl is 60 seconds — a smaller value makes put() THROW (was 30 → error 1101).
+    if (!(await env.VETRIC_KV.get(cooldownKey))) {
+      const code = String(Math.floor(100000 + Math.random() * 900000));
+      await env.VETRIC_KV.put('code:' + email, code, { expirationTtl: 600 });
+      await env.VETRIC_KV.put(cooldownKey, '1', { expirationTtl: 60 });
+      await _sendCodeEmail(env, email, code);
+    }
+    return json({ ok: true, message: 'Code sent — check your inbox.' });
   } catch (e) {
     // Always answer JSON — an unhandled throw becomes Cloudflare's HTML "error 1101" page,
     // which the login page's r.json() can't parse (surfaced to users as a generic network error).

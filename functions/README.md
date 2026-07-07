@@ -7,7 +7,8 @@ client-side flag.
 
 **How it works:** visitor enters their email at `/login` → if it's on your allow-list, they get
 a 6-digit code by email (10-min expiry) → they enter it → they get a real session cookie
-(30 days) → in. Not on the list = no code is ever sent, no matter what they try.
+(30 days) → in. Not on the list = stopped right at the login screen with "This email doesn't
+have access yet" (an explicit rejection — the owner chose clear UX over hiding who's invited).
 
 ## One-time setup (do this in the Cloudflare dashboard — I can't do this part for you)
 
@@ -40,9 +41,9 @@ app won't break, sign-in just won't work yet. Set this before you send anyone th
 - Key: `allow:their.email@company.com` (**must be lowercase**)
 - Value: anything — a name or `1` is fine, only the key's presence matters
 
-Add one entry per person. To revoke access, delete their entry — their next request for a new
-code will get nothing (existing sessions remain valid until they expire in 30 days or you also
-delete their `session:*` key, which you can look up if needed).
+Add one entry per person. To revoke access, delete their entry — their next code request is
+rejected at the login screen (existing sessions remain valid until they expire in 30 days or
+you also delete their `session:*` key, which you can look up if needed).
 
 ### 5. Redeploy
 Push this code to `main` (or trigger a deploy) so Cloudflare Pages picks up the new
