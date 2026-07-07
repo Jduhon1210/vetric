@@ -1433,8 +1433,7 @@ function openClinicEditor(key){
   _ceAutoSize=staffBucket; _ceOrigSize=size;   // remember the auto-prefill + the prior explicit size so Save doesn't freeze a guess
   const _staffOvCur=(o.staffOv!=null&&o.staffOv!=='')?o.staffOv:'';
   const _staffNames=(_staff&&_staff.vets&&_staff.vets.length)?esc(_staff.vets.join(', ')):'';
-  const _staffMeta=(_staff&&((_staff.years&&_staff.years.length)||(_staff.schools&&_staff.schools.length)))
-    ?`${_staff.years&&_staff.years.length?'grad '+_staff.years.join(', '):''}${_staff.years&&_staff.years.length&&_staff.schools&&_staff.schools.length?' · ':''}${_staff.schools&&_staff.schools.length?esc(_staff.schools.join(', ')):''}`:'';
+  const _staffMeta=(_staff&&_staff.years&&_staff.years.length)?`grad ${_staff.years.join(', ')}`:'';   // grad years only (age/succession proxy) — school names dropped as noise
   const staffInfoHTML=`<div class="cedit-f full"><label>Veterinarians on staff (DVMs)</label>`
     +`<input id="ce-staff" type="number" min="0" step="1" value="${_staffOvCur!==''?_staffOvCur:(_staff&&_staff.n!=null?_staff.n:'')}" placeholder="e.g. 4">`
     +`<div style="font-size:11px;color:#64748b;margin-top:4px;line-height:1.5">`
