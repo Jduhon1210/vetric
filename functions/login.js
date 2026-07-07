@@ -1,6 +1,7 @@
 // GET /login — the ONLY page reachable without a session (see _middleware.js). Self-contained
 // aside from Google Fonts (fine pre-auth; the app itself already uses Google Fonts).
-// Aesthetic: Resend-inspired — near-black, large serif display type, white pill CTA, quiet grays.
+// Aesthetic: Resend-inspired composition in Vetric's navy brand palette — deep blue gradient,
+// large serif display type, light-blue accents, white pill CTA.
 export async function onRequestGet() {
   return new Response(HTML, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
 }
@@ -13,41 +14,41 @@ const HTML = `<!doctype html>
 <style>
   *{box-sizing:border-box;margin:0;padding:0;}
   html,body{height:100%;}
-  body{background:#0a0a0b;color:#ededef;font-family:'Inter',system-ui,-apple-system,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;position:relative;overflow:hidden;}
-  /* quiet depth — a faint warm glow low in the frame, like light on a dark table */
-  body::before{content:"";position:fixed;left:50%;bottom:-40vh;width:130vw;height:80vh;transform:translateX(-50%);background:radial-gradient(ellipse at center,rgba(255,255,255,.055) 0%,rgba(255,255,255,.018) 40%,transparent 70%);pointer-events:none;}
-  body::after{content:"";position:fixed;inset:0;background-image:radial-gradient(circle at 1px 1px,rgba(255,255,255,.028) 1px,transparent 0);background-size:28px 28px;pointer-events:none;mask-image:radial-gradient(ellipse at 50% 40%,black 0%,transparent 75%);-webkit-mask-image:radial-gradient(ellipse at 50% 40%,black 0%,transparent 75%);}
+  body{background:linear-gradient(160deg,#1a2c66 0%,#14204f 45%,#0d1535 100%);color:#eef2ff;font-family:'Inter',system-ui,-apple-system,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;position:relative;overflow:hidden;}
+  /* quiet depth — a soft light-blue glow low in the frame */
+  body::before{content:"";position:fixed;left:50%;bottom:-40vh;width:130vw;height:80vh;transform:translateX(-50%);background:radial-gradient(ellipse at center,rgba(147,197,253,.14) 0%,rgba(147,197,253,.045) 40%,transparent 70%);pointer-events:none;}
+  body::after{content:"";position:fixed;inset:0;background-image:radial-gradient(circle at 1px 1px,rgba(255,255,255,.05) 1px,transparent 0);background-size:28px 28px;pointer-events:none;mask-image:radial-gradient(ellipse at 50% 40%,black 0%,transparent 75%);-webkit-mask-image:radial-gradient(ellipse at 50% 40%,black 0%,transparent 75%);}
 
   .wrap{width:100%;max-width:392px;position:relative;z-index:1;}
   .brand{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:42px;}
-  .brand-logo{width:34px;height:34px;border-radius:9px;background:linear-gradient(160deg,#1e3a8a,#172554);border:1px solid rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;box-shadow:0 4px 24px rgba(30,58,138,.45);}
+  .brand-logo{width:34px;height:34px;border-radius:9px;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.22);display:flex;align-items:center;justify-content:center;box-shadow:0 4px 24px rgba(10,18,48,.5);}
   .brand-logo svg{width:19px;height:19px;}
   .brand-word{font-size:17px;font-weight:700;letter-spacing:-.01em;color:#fff;}
   .brand-word span{color:#93c5fd;}
 
   h1{font-family:'Newsreader',Georgia,serif;font-weight:300;font-size:40px;line-height:1.12;letter-spacing:-.01em;color:#fff;text-align:center;margin-bottom:12px;}
-  h1 em{font-style:italic;}
-  .sub{font-size:14.5px;line-height:1.65;color:#a1a1aa;text-align:center;margin-bottom:36px;}
-  .sub b{color:#d4d4d8;font-weight:600;}
+  h1 em{font-style:italic;color:#bfdbfe;}
+  .sub{font-size:14.5px;line-height:1.65;color:#b7c4ee;text-align:center;margin-bottom:36px;}
+  .sub b{color:#e0e7ff;font-weight:600;}
 
-  label{display:block;font-size:12.5px;font-weight:600;color:#d4d4d8;margin-bottom:8px;letter-spacing:.01em;}
-  input{width:100%;padding:13px 16px;background:#131315;border:1px solid rgba(255,255,255,.10);border-radius:12px;font-size:15px;font-family:inherit;color:#fff;margin-bottom:16px;transition:border-color .15s,box-shadow .15s;}
-  input::placeholder{color:#52525b;}
-  input:focus{outline:none;border-color:rgba(255,255,255,.28);box-shadow:0 0 0 4px rgba(255,255,255,.05);}
+  label{display:block;font-size:12.5px;font-weight:600;color:#dbe4ff;margin-bottom:8px;letter-spacing:.01em;}
+  input{width:100%;padding:13px 16px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.16);border-radius:12px;font-size:15px;font-family:inherit;color:#fff;margin-bottom:16px;transition:border-color .15s,box-shadow .15s,background .15s;}
+  input::placeholder{color:#8194c9;}
+  input:focus{outline:none;background:rgba(255,255,255,.10);border-color:#93c5fd;box-shadow:0 0 0 4px rgba(147,197,253,.14);}
   .code-input{font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:24px;font-weight:600;letter-spacing:10px;text-align:center;padding:14px 8px 14px 18px;}
 
-  button{width:100%;padding:13px;border:0;border-radius:999px;background:#fff;color:#0a0a0b;font-size:14.5px;font-weight:600;font-family:inherit;cursor:pointer;transition:opacity .15s,transform .05s;}
-  button:hover:not(:disabled){opacity:.88;}
+  button{width:100%;padding:13px;border:0;border-radius:999px;background:#fff;color:#14204f;font-size:14.5px;font-weight:700;font-family:inherit;cursor:pointer;box-shadow:0 6px 22px rgba(10,18,48,.35);transition:opacity .15s,transform .05s;}
+  button:hover:not(:disabled){opacity:.9;}
   button:active:not(:disabled){transform:translateY(1px);}
-  button:disabled{opacity:.45;cursor:default;}
+  button:disabled{opacity:.5;cursor:default;}
 
-  .err{font-size:13px;color:#f87171;min-height:18px;margin:-6px 0 12px;text-align:center;}
+  .err{font-size:13px;color:#fda4af;min-height:18px;margin:-6px 0 12px;text-align:center;}
   .step{display:none;} .step.on{display:block;animation:rise .35s ease;}
   @keyframes rise{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:none;}}
-  .back{display:block;text-align:center;font-size:13px;color:#a1a1aa;text-decoration:none;margin-top:22px;cursor:pointer;transition:color .15s;}
+  .back{display:block;text-align:center;font-size:13px;color:#b7c4ee;text-decoration:none;margin-top:22px;cursor:pointer;transition:color .15s;}
   .back:hover{color:#fff;}
-  .foot{position:relative;z-index:1;margin-top:56px;font-size:12px;color:#52525b;text-align:center;}
-  .foot a{color:#71717a;text-decoration:none;}
+  .foot{position:relative;z-index:1;margin-top:56px;font-size:12px;color:#7d8dbd;text-align:center;}
+  .foot a{color:#93a3d1;text-decoration:none;}
 </style></head>
 <body>
   <div class="wrap">
