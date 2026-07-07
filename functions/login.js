@@ -62,7 +62,7 @@ const HTML = `<!doctype html>
     </div>
 
     <div id="step1" class="step on">
-      <h1>Market intelligence,<br><em>by invitation.</em></h1>
+      <h1>AI-powered<br><em>veterinary market<br>intelligence.</em></h1>
       <p class="sub">Enter your email and we'll send you a one-time sign-in code.</p>
       <form id="f1" onsubmit="return reqCode(event)">
         <label for="email">Email</label>
