@@ -1894,6 +1894,7 @@ function captureAreaClinics(){
 }
 
 function clearArea(){
+  if(evalActive) _evalResetState();   // clicking off an area also dismisses an active site analysis (no orphaned heatmap)
   drawnArea=null;
   areaClinicKeys=new Set();
   activeFilter='all';
@@ -2165,6 +2166,7 @@ function selectZip(zip, feat, shiftHeld){
 }
 
 function clearZipSelection(){
+  if(evalActive) _evalResetState();   // clicking off a ZIP also dismisses an active site analysis (no orphaned heatmap)
   selectedZips.forEach((entry, z) => _unhighlightZip(z));
   selectedZips.clear();
   if(!drawnArea) markers.forEach(m => setMarkerVisible(m,true));
@@ -6118,13 +6120,19 @@ async function evalDriveTime(i, btn){
     if(btn){ btn.disabled=false; btn.textContent=orig||_DRIVE_SHOW; }
   }
 }
-function clearEvaluate(){
-  const wasArea=evalAreaMode;
+// Tear down ALL visual + data state left by a site analysis (heatmap cells, legend, competitor
+// dots, drive-time polygons, zoning overlay, cached context). Used by clearEvaluate AND by the
+// click-off paths (clearArea / clearZipSelection) so dismissing the analysis never orphans the
+// heatmap on the map. Does NOT re-render the sidebar — the caller decides what view to restore.
+function _evalResetState(){
   evalActive=false; evalAreaMode=false; evalAreaZips=null; evalSat=null; evalZoneStat=null; evalZoneCities=[]; evalParcelCounties=[];
-  _evalClearLayers(); _evalHideLegend();
-  _evalClearDrive();
+  _evalClearLayers(); _evalHideLegend(); _evalClearDrive();
   evalData={vets:[], retail:[], resid:[], roads:[], aadt:[], zoning:[], osmLU:[], parcels:[]}; evalDataOk={retail:false,roads:false,resid:false,aadt:false,zoning:false,parcels:false};
   evalCells=[]; evalTop=[]; evalCompsCache=[];
+}
+function clearEvaluate(){
+  const wasArea=evalAreaMode;
+  _evalResetState();
   if(selectedZips.size) applyZipSelection();
   else if(wasArea && drawnArea){ markers.forEach(m=>setMarkerVisible(m,true)); captureAreaClinics(); } // back to the drawn-area view
   else { markers.forEach(m=>setMarkerVisible(m,true)); renderNormalSidebar(); }
