@@ -5978,26 +5978,39 @@ async function _leaseGeo(lat,lon){
   _leaseGeoCache.set(k,info); return info;
 }
 // Open the tab SYNCHRONOUSLY (inside the click gesture) so popup blockers don't eat it, then
-// navigate once the reverse-geocode resolves.
-async function openLeaseSearch(lat,lon,site){
+// navigate once the reverse-geocode resolves. mode = 'lease' (existing space) | 'land' (buy land
+// to build — the exurb whitespace play, where lease inventory is thin but land listings aren't).
+async function openLeaseSearch(lat,lon,site,mode){
   const w=window.open('','_blank');
   try{
     const {city,state}=await _leaseGeo(lat,lon);
     let url;
     if(site==='crexi'){
-      const cityPath=city?('/'+city.split(/\s+/).map(x=>x.charAt(0).toUpperCase()+x.slice(1).toLowerCase()).join('-')):'';
-      url=state?`https://www.crexi.com/lease/properties/${state}${cityPath}`:'https://www.crexi.com/lease/properties';
+      const seg=city?('/'+city.split(/\s+/).map(x=>x.charAt(0).toUpperCase()+x.slice(1).toLowerCase()).join('-')):'';
+      if(mode==='land') url=state?`https://www.crexi.com/properties/${state}${seg}${seg?'/Commercial-Land':''}`:'https://www.crexi.com/properties';
+      else url=state?`https://www.crexi.com/lease/properties/${state}${seg}`:'https://www.crexi.com/lease/properties';
     } else {
       const slug=city?city.toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,''):'';
-      url=state?`https://www.loopnet.com/search/commercial-real-estate/${slug?slug+'-':''}${state.toLowerCase()}/for-lease/`:'https://www.loopnet.com/search/commercial-real-estate/for-lease/';
+      const geo=state?(slug?slug+'-':'')+state.toLowerCase():'';
+      url=geo?`https://www.loopnet.com/search/commercial-real-estate/${geo}/${mode==='land'?'for-sale':'for-lease'}/`
+             :`https://www.loopnet.com/search/commercial-real-estate/for-${mode==='land'?'sale':'lease'}/`;
     }
     if(w){ w.opener=null; w.location=url; } else window.open(url,'_blank','noopener');
   }catch(e){ if(w) w.close(); vfToast('Could not open listings — check your connection and try again.'); }
 }
-function _leaseLinks(la,lo){
-  return `<div style="margin-top:6px;font-size:10.5px;color:#64748b" onclick="event.stopPropagation()">Spaces to lease nearby: `
-    +`<a onclick="openLeaseSearch(${la},${lo},'crexi')" style="cursor:pointer;color:#0d9488;font-weight:700;text-decoration:none">Crexi ↗</a> · `
-    +`<a onclick="openLeaseSearch(${la},${lo},'loopnet')" style="cursor:pointer;color:#0d9488;font-weight:700;text-decoration:none">LoopNet ↗</a></div>`;
+// Handoff block for a recommended site: an expectation line (set from the local retail fabric so
+// an empty lease search is never a surprise) + Lease and Land-to-build links into Crexi + LoopNet.
+function _leaseBlock(g){
+  const la=g.la, lo=g.lo;
+  let note='';
+  if(evalDataOk.retail){
+    if(g.retailN>=0.6) note=`<div style="font-size:10px;color:#15803d;margin-bottom:3px;font-weight:600">Established retail nearby — existing lease space is more likely.</div>`;
+    else if(g.retailN<0.35) note=`<div style="font-size:10px;color:#b45309;margin-bottom:3px;font-weight:600">Sparse retail here — likely a build-to-suit or land play; try Land first.</div>`;
+  }
+  const lnk=(site,mode,label)=>`<a onclick="openLeaseSearch(${la},${lo},'${site}','${mode}')" style="cursor:pointer;color:#0d9488;font-weight:700;text-decoration:none">${label} ↗</a>`;
+  return `<div style="margin-top:6px;font-size:10.5px;color:#64748b" onclick="event.stopPropagation()">${note}`
+    +`<div>Lease space: ${lnk('crexi','lease','Crexi')} · ${lnk('loopnet','lease','LoopNet')}</div>`
+    +`<div style="margin-top:2px">Land to build: ${lnk('crexi','land','Crexi')} · ${lnk('loopnet','land','LoopNet')}</div></div>`;
 }
 function _evalRenderSidebar(){
   const sb=document.querySelector('.sidebar'); if(!sb) return;
@@ -6023,7 +6036,7 @@ function _evalRenderSidebar(){
         <span style="color:#94a3b8;font-family:'JetBrains Mono',monospace">${sid}</span>
         <span class="vm-star ${_inWatch('site',sid)?'on':''}" style="margin-left:auto" title="Save site to watchlist" onclick="toggleWatchSite(${g.la},${g.lo},${headline},this)">★</span>
       </div>
-      ${_leaseLinks(g.la,g.lo)}
+      ${_leaseBlock(g)}
       <div style="margin-top:7px" onclick="event.stopPropagation()">
         <button class="vm-export-btn" style="color:#6d28d9;background:#f3effd;border-color:#ddd0f7" onclick="evalDriveTime(${i},this)">◔ 10-min drive area</button>
         <div id="evd-${i}" style="font-size:11px;color:#6d28d9;margin-top:5px;line-height:1.4"></div>
