@@ -5770,9 +5770,9 @@ function _evalComputeAndRender(){
       // retail access (co-tenancy / visibility)
       let ret=0; for(const r of evalData.retail){ if(Math.abs(r.lat-la)>bRet) continue; const d=hav(la,lo,r.lat,r.lon); if(d<RET_R) ret+=(r.area?0.6:1)*_grav(d,RET_R); }
       // competition (border-aware gravity); scan all comps for the true nearest readout
-      let comp=0, nearC=Infinity, nearPE=Infinity; for(const c of comps){ const d=hav(la,lo,c.lat,c.lon); if(d<nearC)nearC=d; if(d<R){ comp+=(c.pe?1.6:1)*_revW(c.reviews,compMedRev)*_staffW(c.staffN)*(c.mult||1)*_grav(d,R); if(c.pe && d<nearPE) nearPE=d; } }
+      let comp=0, nearC=Infinity, nearPE=Infinity, nComp=0, nPE=0; for(const c of comps){ const d=hav(la,lo,c.lat,c.lon); if(d<nearC)nearC=d; if(d<R){ comp+=(c.pe?1.6:1)*_revW(c.reviews,compMedRev)*_staffW(c.staffN)*(c.mult||1)*_grav(d,R); nComp++; if(c.pe){ nPE++; if(d<nearPE) nearPE=d; } } }
       const affl=_cellAffl(la,lo); // per-cell ZIP demographics in area mode; constant in ZIP mode
-      grid.push({la,lo,dem,ret,comp,nearC,nearPE,affl,nearRoad,nearCls,aadt,aadtRoad,stepLa,stepLo,zone:zinfo?zinfo.label:null,zcity:zinfo?zinfo.city:null});
+      grid.push({la,lo,dem,ret,comp,nearC,nearPE,nComp,nPE,affl,nearRoad,nearCls,aadt,aadtRoad,stepLa,stepLo,zone:zinfo?zinfo.label:null,zcity:zinfo?zinfo.city:null});
     }
   evalCompsCache=comps;
   evalZoneStat={excluded:zEx, cities:[...evalZoneCities], counties:[...evalParcelCounties], usedOSM:(evalData.osmLU&&evalData.osmLU.length>0), on:evalZoning && (evalDataOk.zoning || evalDataOk.parcels || (evalData.osmLU&&evalData.osmLU.length>0))};
@@ -6028,6 +6028,7 @@ function _evalRenderSidebar(){
       <div class="eval-why">${nearStr}${roadStr?' · '+roadStr:''}</div>
       ${bar('Neighborhood demand', g.demandN, true)}
       ${bar('Low competition', g.lowComp, true)}
+      <div style="font-size:10px;color:#94a3b8;margin:-1px 0 4px">${g.nComp?`${g.nComp} competitor${g.nComp!==1?'s':''} within ${evalRadiusMi} mi (${g.nPE} PE · ${g.nComp-g.nPE} indep)`:`No clinics within ${evalRadiusMi} mi`}</div>
       ${bar('Retail access', g.retailN, hasRetail)}
       ${bar('Road visibility', g.accessN, hasRoads||hasAADT)}
       ${cn?`<div style="font-size:10.5px;color:#b45309;font-weight:600;margin-top:5px">${cn}</div>`:''}
