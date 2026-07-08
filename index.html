@@ -122,6 +122,18 @@ body.dev-mode .kpi{background:var(--amber-light);}
 #map{flex:1;}
 #zoom-msg{display:none;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(15,23,42,.88);color:white;padding:14px 22px;border-radius:var(--radius-lg);font-size:13.5px;text-align:center;pointer-events:none;z-index:400;line-height:1.7;backdrop-filter:blur(4px);}
 #map-pill{display:none;position:absolute;bottom:28px;left:50%;transform:translateX(-50%);background:rgba(15,23,42,.85);color:white;padding:6px 16px;border-radius:20px;font-size:12px;font-weight:500;z-index:400;pointer-events:none;letter-spacing:.02em;}
+#city-eval-prompt{display:none;position:absolute;top:16px;left:50%;transform:translateX(-50%) translateY(-6px);align-items:center;gap:12px;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:9px 10px 9px 14px;box-shadow:0 10px 34px rgba(15,23,42,.18);z-index:450;opacity:0;transition:opacity .2s,transform .2s;}
+#city-eval-prompt.show{display:flex;opacity:1;transform:translateX(-50%) translateY(0);}
+#city-eval-prompt .cep-pin{width:30px;height:30px;border-radius:8px;background:linear-gradient(150deg,#1e3a8a,#172554);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+#city-eval-prompt .cep-pin svg{width:16px;height:16px;stroke:#fff;}
+#city-eval-prompt .cep-text{display:flex;flex-direction:column;line-height:1.25;}
+#city-eval-prompt .cep-name{font-size:13.5px;font-weight:700;color:var(--text);letter-spacing:-.01em;max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+#city-eval-prompt .cep-sub{font-size:11px;color:var(--muted);}
+#city-eval-prompt .cep-go{border:none;background:var(--navy);color:#fff;font-family:inherit;font-size:12.5px;font-weight:600;padding:8px 14px;border-radius:9px;cursor:pointer;white-space:nowrap;box-shadow:0 4px 14px rgba(30,58,138,.22);transition:background .15s;}
+#city-eval-prompt .cep-go:hover{background:var(--navy-dark);}
+#city-eval-prompt .cep-x{border:none;background:none;color:var(--subtle);font-size:13px;cursor:pointer;padding:4px 6px;border-radius:6px;line-height:1;}
+#city-eval-prompt .cep-x:hover{color:var(--text);background:var(--bg2);}
+body.vf-opp #city-eval-prompt,body.vf-surface #city-eval-prompt{display:none!important;}
 
 /* Dev badge */
 .dev-badge{position:absolute;top:10px;left:50%;transform:translateX(-50%);background:var(--amber);color:#1a1a1a;font-size:10.5px;font-weight:700;padding:3px 12px;border-radius:20px;letter-spacing:.1em;text-transform:uppercase;z-index:1000;pointer-events:none;box-shadow:0 2px 8px rgba(217,119,6,.35);display:none;}
@@ -1001,6 +1013,12 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
     </div>
   </div>
   <div id="zoom-msg">Zoom in to see clinics<br><span style="font-size:12px;opacity:.75">Search a city above</span></div>
+  <div id="city-eval-prompt">
+    <div class="cep-pin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg></div>
+    <div class="cep-text"><span class="cep-name" id="cep-name">City</span><span class="cep-sub">Score the best clinic sites here</span></div>
+    <button class="cep-go" onclick="evaluateCity()">Evaluate area</button>
+    <button class="cep-x" onclick="dismissCityEval()" aria-label="Dismiss">✕</button>
+  </div>
   <div id="map-pill"></div>
   <div class="sidebar">
     <div class="sb-head">
@@ -3367,7 +3385,7 @@ async function fetchSugg(q){
     const r=await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=6&addressdetails=1&countrycodes=us&viewbox=-106.6,25.8,-93.5,36.5&bounded=1`,{headers:{'Accept-Language':'en'}});
     if(document.getElementById('loc').value.trim()!==q) return;   // a newer keystroke superseded this fetch
     const data=await r.json();
-    const places=data.map(d=>{const a=d.address||{};const parts=[a.city||a.town||a.village||a.county,a.state].filter(Boolean);return{label:parts.join(', ')||d.display_name.split(',').slice(0,2).join(','),lat:parseFloat(d.lat),lon:parseFloat(d.lon)};});
+    const places=data.map(d=>{const a=d.address||{};const parts=[a.city||a.town||a.village||a.county,a.state].filter(Boolean);return{label:parts.join(', ')||d.display_name.split(',').slice(0,2).join(','),lat:parseFloat(d.lat),lon:parseFloat(d.lon),bbox:d.boundingbox};});
     acI=clinicHits.concat(places);                          // clinics first, then place results
     renderSugg();
   }catch(e){ if(!clinicHits.length) closeSugg(); }          // on geocoder failure keep any clinic matches
@@ -3397,17 +3415,61 @@ function moveFocus(dir){
   acF=Math.max(0,Math.min(acI.length-1,acF+dir));
   items[acF].classList.add('focused');
 }
-function selectSugg(i){const s=acI[i];if(!s)return;document.getElementById('loc').value=s.label;closeSugg();if(s.clinic)_gotoClinic(s.lat,s.lon,s.label);else map.setView([s.lat,s.lon],13);}
+function selectSugg(i){const s=acI[i];if(!s)return;document.getElementById('loc').value=s.label;closeSugg();if(s.clinic){dismissCityEval();_gotoClinic(s.lat,s.lon,s.label);}else{map.setView([s.lat,s.lon],13);showCityEval(s.label,s.lat,s.lon,s.bbox);}}
 function closeSugg(){document.getElementById('sugg').classList.remove('open');acF=-1;}
+
+// ── "Evaluate this city" — after jumping to a searched place, offer to run the Evaluate
+// engine on a box around it (same spine as evaluateHexSpot / the Surface's "Evaluate this spot").
+let _lastPlace=null;
+function showCityEval(name,lat,lon,bbox){
+  _lastPlace={name:String(name||'this area').split(',')[0].trim(), lat, lon, bbox};
+  const el=document.getElementById('city-eval-prompt'); if(!el) return;
+  document.getElementById('cep-name').textContent=_lastPlace.name;
+  el.classList.add('show');
+}
+function dismissCityEval(){ const el=document.getElementById('city-eval-prompt'); if(el) el.classList.remove('show'); }
+function _placeEvalBox(p){
+  const MIN=1.8, MAX=3.5;                                     // miles, half-side — town core → clamp giant cities
+  let hLat=2.5, hLon=2.5;
+  const cos=Math.cos(p.lat*Math.PI/180);
+  if(p.bbox && p.bbox.length===4){
+    const s=+p.bbox[0], n=+p.bbox[1], w=+p.bbox[2], e=+p.bbox[3];
+    if([s,n,w,e].every(isFinite)){
+      hLat=Math.min(MAX,Math.max(MIN,(n-s)/2*69));
+      hLon=Math.min(MAX,Math.max(MIN,(e-w)/2*69*cos));
+    }
+  }
+  const dLat=hLat/69.0, dLon=hLon/(69.0*cos);
+  return { type:'poly', points:[{lat:p.lat-dLat,lng:p.lon-dLon},{lat:p.lat-dLat,lng:p.lon+dLon},{lat:p.lat+dLat,lng:p.lon+dLon},{lat:p.lat+dLat,lng:p.lon-dLon}] };
+}
+function evaluateCity(){
+  if(!_lastPlace) return;
+  const p=_lastPlace;
+  dismissCityEval();
+  if(typeof _hexTeardown==='function') _hexTeardown();       // in case Surface was up
+  const panel=document.getElementById('opp-panel'); if(panel) panel.classList.remove('show');
+  if(selectedZips.size) clearZipSelection();                 // area + ZIP selection can't coexist
+  drawnArea=_placeEvalBox(p);
+  switchSection('map');
+  setTimeout(()=>{
+    map.invalidateSize();
+    map.setView([p.lat,p.lon],12,{animate:false});
+    try{ captureAreaClinics(); }catch(e){}
+    openEvaluateArea();
+  },60);
+}
 async function jumpTo(){
   const loc=document.getElementById('loc').value.trim();if(!loc)return;closeSugg();
   const ch=_clinicSuggest(loc,1);                            // a clinic / doctor name beats the geocoder
-  if(ch.length){ document.getElementById('loc').value=ch[0].label; _gotoClinic(ch[0].lat,ch[0].lon,ch[0].label); return; }
+  if(ch.length){ document.getElementById('loc').value=ch[0].label; dismissCityEval(); _gotoClinic(ch[0].lat,ch[0].lon,ch[0].label); return; }
   try{
-    const r=await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(loc)}&format=json&limit=1&countrycodes=us`,{headers:{'Accept-Language':'en'}});
+    const r=await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(loc)}&format=json&limit=1&addressdetails=1&countrycodes=us`,{headers:{'Accept-Language':'en'}});
     const d=await r.json();
     if(!d.length){setStatus('Location not found',true);return;}
-    map.setView([parseFloat(d[0].lat),parseFloat(d[0].lon)],13);
+    const lat=parseFloat(d[0].lat), lon=parseFloat(d[0].lon);
+    map.setView([lat,lon],13);
+    const a=d[0].address||{}; const nm=[a.city||a.town||a.village||a.county,a.state].filter(Boolean).join(', ')||loc;
+    showCityEval(nm,lat,lon,d[0].boundingbox);
   }catch(e){setStatus('Failed to locate',true);}
 }
 document.getElementById('loc').addEventListener('keydown',e=>{if(e.key==='Enter'&&acF<0)jumpTo();});
@@ -5589,6 +5651,7 @@ function _evalStage(sb, title, msg){
     +`<div class="eval-load-bar"><i></i></div></div>`;
 }
 async function openEvaluateArea(){
+  if(typeof dismissCityEval==='function') dismissCityEval();  // any evaluate supersedes a stale search prompt
   if(!drawnArea){ vfToast('Draw an area first.'); return; }
   const feat=_drawnAreaToFeature();
   if(!feat){ vfToast('Could not read the drawn area — try redrawing it.'); return; }
