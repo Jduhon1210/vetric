@@ -4291,7 +4291,7 @@ function _hexOpenDetail(h){
   box.innerHTML=`<div style="font-weight:800;font-size:13px">${h.zip}${h.city?' · '+h.city:''}
       <span style="font-size:10px;font-weight:700;color:#fff;background:${st.color};padding:1px 7px;border-radius:10px;margin-left:4px;vertical-align:1px">${st.label}</span></div>
     <div style="font-size:10.5px;color:${st.color};font-weight:600;margin-top:3px">${st.land}${h.dens!=null?` · ~${Math.round(h.dens).toLocaleString()} homes/mi²`:''}</div>
-    ${(()=>{const d=_nearRetailMi(h.cLat,h.cLon); if(d==null&&!_oppRetailPts) return ''; return `<div style="font-size:10.5px;color:#64748b;margin-top:2px">${d==null?'No commercial fabric within 4 mi — land play or served elsewhere':d<0.4?'Commercial corridor at this spot':'Nearest commercial corridor ~'+d.toFixed(1)+' mi'}</div>`;})()}
+    ${(()=>{const d=_nearRetailMi(h.cLat,h.cLon); if(d==null&&!_oppRetailPts) return ''; return `<div style="font-size:10.5px;color:#64748b;margin-top:2px">${d==null?'No retail within 4 miles; likely a land play or served from nearby':d<0.4?'Commercial corridor at this spot':'Nearest commercial corridor about '+d.toFixed(1)+' mi'}</div>`;})()}
     <div style="font-size:11px;color:#475569;margin:6px 0">Income ${_fmtMoney(h.inc)} · Growth '21→'24 ${_fmtPct(h.grow)} · New construction ${h.cons!=null?Math.round(h.cons*100)+'%':'—'}</div>
     ${(()=>{const cE=(typeof dogData!=='undefined'&&dogData[h.zip]&&dogData[h.zip].catEst!=null)?dogData[h.zip].catEst:null;
       const v=h.dog!=null?Math.round(h.dog*OPP_VISITS_PER_DOGHH+(cE||0)*OPP_VISITS_PER_CATHH):null;
@@ -4644,10 +4644,10 @@ function _oppUnder(r){ return r.dog!=null ? r.dog/((r.dvm||0) + 1) : null; }   /
 function _oppFabricLine(r){
   if(r.retailN==null) return '';
   let txt, col;
-  if(r.retailN>=3){ txt=`${r.retailN} nodes — buildable corridors`; col='#15803d'; }
-  else if(r.retailN>=1){ txt=`limited — ${r.retailN} node${r.retailN>1?'s':''}`; col='#b45309'; }
-  else if((r.cons!=null&&r.cons>=0.33)||(r.grow!=null&&r.grow>=0.25)){ txt='none yet — retail still building out (land play)'; col='#0d9488'; }
-  else { txt='none — residential enclave; demand served by adjacent corridors'; col='#dc2626'; }
+  if(r.retailN>=3){ txt=`${r.retailN} retail sites nearby`; col='#15803d'; }
+  else if(r.retailN>=1){ txt=`Limited retail (${r.retailN} site${r.retailN>1?'s':''})`; col='#b45309'; }
+  else if((r.cons!=null&&r.cons>=0.33)||(r.grow!=null&&r.grow>=0.25)){ txt='Retail still developing'; col='#0d9488'; }
+  else { txt='Residential area, served nearby'; col='#dc2626'; }
   return `<div style="display:flex;justify-content:space-between;gap:10px;padding:2.5px 0;font-size:12px"><span style="color:#64748b;white-space:nowrap">Commercial fabric</span><span style="font-weight:700;color:${col};text-align:right">${txt}</span></div>`;
 }
 // ~2.4 vet visits per dog-owning household per year — industry planning average; display-only.
@@ -4663,27 +4663,29 @@ function renderOppDetail(r,i){
   const u=_oppUnder(r);
   const line=(label,val,sub)=>`<div style="display:flex;justify-content:space-between;padding:2.5px 0;font-size:12px"><span style="color:#64748b">${label}</span><span style="font-weight:700;color:#1f2933">${val}${sub?` <span style='color:#94a3b8;font-weight:500'>${sub}</span>`:''}</span></div>`;
   const sec=t=>`<div style="font-size:9.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:#94a3b8;margin:8px 0 2px">${t}</div>`;
+  const pill=(bg,bd,tc,title,body)=>`<div style="background:${bg};border:1px solid ${bd};border-radius:8px;padding:7px 10px;margin:5px 0 3px"><div style="font-size:11.5px;font-weight:700;color:${tc}">${title}</div><div style="font-size:11px;color:#475569;margin-top:2px;line-height:1.45">${body}</div></div>`;
   const hh=(typeof dogData!=='undefined'&&dogData[r.zip]&&dogData[r.zip].households)?dogData[r.zip].households:null;
   const catHH=(typeof dogData!=='undefined'&&dogData[r.zip]&&dogData[r.zip].catEst!=null)?dogData[r.zip].catEst:null;
   const visits=r.dog!=null?Math.round(r.dog*OPP_VISITS_PER_DOGHH+(catHH||0)*OPP_VISITS_PER_CATHH):null;
   const rank=(typeof i==='number'&&i>=0)?i+1:(oppScored.findIndex(x=>x.zip===r.zip)+1);
   return `<div class="opp-detail-inner">
     ${rank>0?`<div style="font-size:11px;font-weight:800;color:#1e3a8a">Ranks #${rank} of ${oppScored.length} ZIPs in ${oppRegion.name}</div>`:''}
-    ${sec('Demand walk — this ZIP as the service area')}
+    ${sec('Local demand, using this ZIP as the service area')}
     ${hh!=null?line('Households', Math.round(hh).toLocaleString()):''}
     ${line('Dog-owning households', r.dog!=null?Math.round(r.dog).toLocaleString():'—')}
     ${catHH!=null?line('Cat-owning households', Math.round(catHH).toLocaleString()):''}
-    ${visits!=null?line('Est. annual vet visits', '~'+visits.toLocaleString(), catHH!=null?'dogs + cats':''):''}
-    ${line('Veterinarians serving it (DVMs)', r.dvm!=null?r.dvm:'—')}
+    ${visits!=null?line('Estimated annual vet visits', '~'+visits.toLocaleString(), catHH!=null?'from dogs and cats':''):''}
+    ${line('Veterinarians practicing here', r.dvm!=null?r.dvm:'—')}
     ${(()=>{ if(visits==null) return '';
       const sustain=Math.max(1,Math.round(visits/OPP_VISITS_PER_DVM));
-      let verdict='';
-      if(r.dvm!=null){ const head=sustain-r.dvm;
-        if(head>=2) verdict=`<div style="font-size:11px;font-weight:700;color:#15803d;padding:1px 0 3px">Whitespace — demand for ~${head} more full-time DVMs than practice here today</div>`;
-        else if(head<=-2) verdict=`<div style="font-size:11px;font-weight:700;color:#475569;padding:1px 0 3px">Service hub — more vets than in-ZIP demand; they draw from surrounding ZIPs</div>`;
-        else verdict=`<div style="font-size:11px;font-weight:700;color:#64748b;padding:1px 0 3px">Balanced — supply roughly matches in-ZIP demand</div>`; }
-      return line('Demand sustains', '~'+sustain+' full-time DVM'+(sustain!==1?'s':''), r.dvm!=null?('vs '+r.dvm+' today'):'')+verdict; })()}
-    ${line('Dog households per vet', u!=null?Math.round(u).toLocaleString():'—','higher = more open market')}
+      const row=line('Demand supports', '~'+sustain+' full-time vet'+(sustain!==1?'s':''), r.dvm!=null?('vs '+r.dvm+' today'):'');
+      if(r.dvm==null) return row;
+      const head=sustain-r.dvm; let verdict;
+      if(head>=2) verdict=pill('#f0fdf4','#bbf7d0','#15803d','Whitespace opportunity',`Local demand could support about ${head} more full-time veterinarian${head!==1?'s':''} than practice here today.`);
+      else if(head<=-2) verdict=pill('#f8fafc','#e2e8f0','#475569','Established service hub',`This ZIP already has more veterinarians than its own residents need. They also draw patients from the surrounding area.`);
+      else verdict=pill('#f8fafc','#e2e8f0','#64748b','Balanced market',`Veterinary supply here is roughly in line with local demand.`);
+      return row+verdict; })()}
+    ${line('Dog households per vet', u!=null?Math.round(u).toLocaleString():'—','more per vet means less competition')}
     ${sec('Market context')}
     ${line('Median income', _fmtMoney(r.inc))}
     ${line('Population growth ’21→’24', _fmtPct(r.grow))}
@@ -4697,7 +4699,7 @@ function renderOppDetail(r,i){
       <button class="vm-export-btn" style="flex:1;justify-content:center" onclick="event.stopPropagation();oppSelect('${r.zip}')">View on map →</button>
       <span class="vm-star ${_inWatch&&_inWatch('market',r.zip)?'on':''}" title="Add to watchlist" onclick="event.stopPropagation();toggleWatchMarket('${r.zip}',this)">★</span>
     </div>
-    <div style="font-size:10.5px;color:#94a3b8;margin-top:8px;line-height:1.4">Sub-scores are relative <b>within ${oppRegion.name}</b> — not comparable across regions.</div>
+    <div style="font-size:10.5px;color:#94a3b8;margin-top:8px;line-height:1.4">Sub-scores are ranked <b>within ${oppRegion.name}</b> and do not compare across regions.</div>
   </div>`;
 }
 let _oppOpenZip=null;   // which ZIP's detail card is expanded — survives renderOppList rebuilds (slider drags)
@@ -4731,12 +4733,12 @@ function exportOppCSV(){
 
 function renderOppList(){
   const wrap=document.getElementById('opp-list-wrap');
-  const tEl=document.getElementById('opp-title'); if(tEl) tEl.textContent='Opportunity Scores — '+oppRegion.name;
+  const tEl=document.getElementById('opp-title'); if(tEl) tEl.textContent='Opportunity Scores · '+oppRegion.name;
   // Two funnel stages, captioned the way PE runs them: market screen → site scoring
   const seg=`<div><div class="opp-view-seg"><button class="${oppView==='list'?'on':''}" onclick="setOppView('list')">List</button><button class="${oppView==='surface'?'on':''}" onclick="setOppView('surface')">Surface</button></div>`+
     `<div style="font-size:9.5px;color:#94a3b8;font-weight:600;margin-top:3px;letter-spacing:.02em">${oppView==='surface'?'Site scoring · one-mile hexes':'Market screen · ranked ZIPs'}</div></div>`;
   if(oppView==='surface'){
-    document.getElementById('opp-sub').textContent=`${oppScored.length} ZIPs scored across ${oppRegion.name} · opportunity surface — best buildable spots`;
+    document.getElementById('opp-sub').textContent=`${oppScored.length} ZIPs scored across ${oppRegion.name} · opportunity surface showing the best buildable spots`;
     wrap.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">${seg}${oppScored.length?_exportBtn('exportOppCSV()','Export ZIP rankings'):''}</div>${_hexSurfaceCard()}`;
     renderHexSurface();
     _oppKpiTop();
