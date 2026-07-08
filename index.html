@@ -1203,8 +1203,8 @@ function checkPE(name, lat, lon, key, overrides) {
 // redraw. All vectors share this one renderer (no per-layer custom renderer — see
 // gotchas). 1.0 = the SVG is ~3× the viewport per axis; bigger smooths fast pans
 // but renders more off-screen choropleth polygons, so this balances the two.
-const map = L.map('map',{minZoom:4, boxZoom:false, renderer: L.svg({padding:1})}).setView([31.0,-99.0],7);
-const baseTiles=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap',maxZoom:19}).addTo(map);
+const map = L.map('map',{minZoom:4, boxZoom:false, attributionControl:false, renderer: L.svg({padding:1})}).setView([31.0,-99.0],7);
+const baseTiles=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map);
 
 // ── App-ready signal → drives the post-login loading screen ──────────────────
 // Hide the loader only once the things the user actually waits for are in: the base
