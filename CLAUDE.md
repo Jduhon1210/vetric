@@ -9,8 +9,10 @@ There is no build step, no bundler, no framework. Edit `index.html` directly and
 ```
 vetmetric/
 ├── index.html       # Everything: HTML + CSS + JS (~2,900 lines)
-├── pe-data.js       # PE-owned clinic coordinates statewide (~896 TX clinics; refreshed 2026-07-08
-│                    #   from a national PE list filtered to State==TX, deduped by name+coords)
+├── pe-data.js       # PE-owned VET CLINIC coordinates statewide (~852 TX clinics; refreshed 2026-07-08
+│                    #   from a national PE list filtered to State==TX, deduped by name+coords, then
+│                    #   44 pet-boarding/grooming/resort businesses removed so competition scoring
+│                    #   counts only real clinics — PetSuites/Destination Pet/kennels etc.)
 │                    # Defines window.PE_COORDS, window.PE_NAMES
 │                    # Loaded as <script src="pe-data.js"> — must be in same directory
 ├── tx-zips.json     # Texas ZIP boundary GeoJSON (ZCTA polygons, ~2MB)
