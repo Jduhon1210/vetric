@@ -5960,6 +5960,45 @@ function _evalRenderLegend(){
   el.classList.add('show');
 }
 function _evalHideLegend(){ const el=document.getElementById('eval-legend'); if(el) el.classList.remove('show'); }
+
+// ── "Find spaces to lease" — deep-link a recommended site's location into Crexi / LoopNet.
+// Vetric scores WHERE to build; these hand off to the live commercial-listing marketplaces for
+// what's actually available there. No API/scrape (Crexi/LoopNet have no free API) — just a
+// location-filtered search URL, so it stays inside the free-usage rule and their terms.
+const _leaseGeoCache=new Map();
+async function _leaseGeo(lat,lon){
+  const k=lat.toFixed(3)+','+lon.toFixed(3);
+  if(_leaseGeoCache.has(k)) return _leaseGeoCache.get(k);
+  const r=await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&addressdetails=1`,{headers:{'Accept-Language':'en'}});
+  const d=await r.json(); const a=d.address||{};
+  const city=a.city||a.town||a.village||a.municipality||a.hamlet||a.county||'';
+  const iso=a['ISO3166-2-lvl4']||''; // e.g. "US-TX"
+  const state=(iso.split('-')[1]||'').toUpperCase();
+  const info={city:String(city).replace(/\s+/g,' ').trim(), state};
+  _leaseGeoCache.set(k,info); return info;
+}
+// Open the tab SYNCHRONOUSLY (inside the click gesture) so popup blockers don't eat it, then
+// navigate once the reverse-geocode resolves.
+async function openLeaseSearch(lat,lon,site){
+  const w=window.open('','_blank');
+  try{
+    const {city,state}=await _leaseGeo(lat,lon);
+    let url;
+    if(site==='crexi'){
+      const cityPath=city?('/'+city.split(/\s+/).map(x=>x.charAt(0).toUpperCase()+x.slice(1).toLowerCase()).join('-')):'';
+      url=state?`https://www.crexi.com/lease/properties/${state}${cityPath}`:'https://www.crexi.com/lease/properties';
+    } else {
+      const slug=city?city.toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,''):'';
+      url=state?`https://www.loopnet.com/search/commercial-real-estate/${slug?slug+'-':''}${state.toLowerCase()}/for-lease/`:'https://www.loopnet.com/search/commercial-real-estate/for-lease/';
+    }
+    if(w){ w.opener=null; w.location=url; } else window.open(url,'_blank','noopener');
+  }catch(e){ if(w) w.close(); vfToast('Could not open listings — check your connection and try again.'); }
+}
+function _leaseLinks(la,lo){
+  return `<div style="margin-top:6px;font-size:10.5px;color:#64748b" onclick="event.stopPropagation()">Spaces to lease nearby: `
+    +`<a onclick="openLeaseSearch(${la},${lo},'crexi')" style="cursor:pointer;color:#0d9488;font-weight:700;text-decoration:none">Crexi ↗</a> · `
+    +`<a onclick="openLeaseSearch(${la},${lo},'loopnet')" style="cursor:pointer;color:#0d9488;font-weight:700;text-decoration:none">LoopNet ↗</a></div>`;
+}
 function _evalRenderSidebar(){
   const sb=document.querySelector('.sidebar'); if(!sb) return;
   const hasRetail=evalDataOk.retail, hasRoads=evalDataOk.roads, hasResid=evalDataOk.resid, hasAADT=evalDataOk.aadt;
@@ -5984,6 +6023,7 @@ function _evalRenderSidebar(){
         <span style="color:#94a3b8;font-family:'JetBrains Mono',monospace">${sid}</span>
         <span class="vm-star ${_inWatch('site',sid)?'on':''}" style="margin-left:auto" title="Save site to watchlist" onclick="toggleWatchSite(${g.la},${g.lo},${headline},this)">★</span>
       </div>
+      ${_leaseLinks(g.la,g.lo)}
       <div style="margin-top:7px" onclick="event.stopPropagation()">
         <button class="vm-export-btn" style="color:#6d28d9;background:#f3effd;border-color:#ddd0f7" onclick="evalDriveTime(${i},this)">◔ 10-min drive area</button>
         <div id="evd-${i}" style="font-size:11px;color:#6d28d9;margin-top:5px;line-height:1.4"></div>
