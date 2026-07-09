@@ -727,6 +727,7 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
         <div class="settings-pane show" data-pane="data">
           <div class="set-h">Options</div>
           <label class="set-opt"><input type="checkbox" id="opt-mobile" onchange="toggleIncludeMobile(this.checked)"><span><b>Count mobile / traveling vets as competition</b><span class="set-opt-note">Off by default — a mobile vet's listed address is usually a home or PO box, not a clinic location, so it doesn't anchor a real trade area. Turn on to fold them into competition counts everywhere (map, opportunity, evaluate).</span></span></label>
+          <label class="set-opt"><input type="checkbox" id="opt-equine" onchange="toggleCountEquine(this.checked)"><span><b>Count equine / large-animal vets as competition</b><span class="set-opt-note">Off by default — a practice whose name signals equine or livestock work only (no small-animal signal) doesn't compete for dog-and-cat visits, so it's left out of competition and saturation math in ranch-country markets. Mixed practices always count.</span></span></label>
           <label class="set-opt"><input type="checkbox" id="opt-hidepins" onchange="toggleHidePins(this.checked)"><span><b>Auto-hide clinic pins when zoomed out</b><span class="set-opt-note">On by default — pins clear when you zoom out past city level (and reappear as you zoom back in), keeping the map fast and uncluttered. Turn off to keep pins visible at every zoom.</span></span></label>
 
         </div>
@@ -1077,6 +1078,16 @@ const STREETVIEW = true;
 // toggle (vf_include_mobile) lets the user fold them back in. All three consumers
 // (map fetch, opportunity region, evaluate competitors) read through this one helper.
 function _vfIncludeMobile(){ try{ return localStorage.getItem('vf_include_mobile')==='1'; }catch(_){ return false; } }
+// Equine / large-animal practices don't compete for dog-and-cat visits (field-validated in 76226/
+// Argyle horse country, where they inflated the "saturated" read). Name-based and CONSERVATIVE:
+// only an unambiguous large-animal signal with NO small-animal signal counts — a mixed practice
+// ("Equine & Small Animal") still competes. \bcattle\b not /cattle/ (Cattleman St); no "dairy"
+// (Dairy Ashford Rd), no "ranch"/"horse" (Robson Ranch / Horseshoe Bay are place names).
+function _isLargeAnimal(n){ n=String(n||'').toLowerCase();
+  if(!/equine|large animal|livestock|\bcattle\b|bovine/.test(n)) return false;
+  if(/small animal|companion|\bpets?\b|feline|canine|\bcats?\b|\bdogs?\b|mixed/.test(n)) return false;
+  return true; }
+function _vfCountEquine(){ try{ return localStorage.getItem('vf_count_equine')==='1'; }catch(_){ return false; } }
 function _activeVetClinics(){
   if(typeof VET_CLINICS==='undefined' || !VET_CLINICS.length) return [];
   return _vfIncludeMobile() ? VET_CLINICS : VET_CLINICS.filter(v=>!v.mobile);
@@ -2490,6 +2501,7 @@ async function toggleDogLayer(on){
     const avgOwnerPct = ownerWeight>0 ? ownerWeighted/ownerWeight : 0.6;
     const avgSfPct = sfWeight>0 ? sfWeighted/sfWeight : 0.6;
 
+    try{ await ensureAgeData(); }catch(e){}   // best-effort senior-skew damp input
     // Step 4: per-ZIP modeled rate = base rate nudged by local vs statewide housing profile
     Object.keys(dogRaw).forEach(zip => {
       const z = dogRaw[zip];
@@ -2503,7 +2515,8 @@ async function toggleDogLayer(on){
       const ownerDev = (z.ownerPct!=null && avgOwnerPct>0) ? (z.ownerPct-avgOwnerPct)/avgOwnerPct : 0;
       let catRate = TX_CAT_BASE_RATE * (1 + Math.max(-0.15, Math.min(0.15, 0.5*ownerDev)));
       catRate = Math.max(0.15, Math.min(0.45, catRate));
-      dogData[zip] = { households: z.households, rate, est: Math.round(z.households*rate), catEst: Math.round(z.households*catRate) };
+      const aF=_ageDampF(zip); rate*=aF; catRate*=(1+(aF-1)*0.5);   // senior-skew damp (cats at half elasticity)
+      dogData[zip] = { households: z.households, rate, est: Math.round(z.households*rate), catEst: Math.round(z.households*catRate), ageF:aF };
     });
 
     // Step 5: build/refresh choropleth
@@ -4023,17 +4036,18 @@ function _hexStage(dens, traj, cons){
 // ── clinic spatial index (deduped, PE-flagged, reviews-carrying) ────────────
 function buildHexClinicIndex(){
   const overrides=getOverrides(), deleted=getDeleted(), byCell=new Map();
-  const add=(la,lo,pe,reviews)=>{
+  const add=(la,lo,pe,reviews,name)=>{
     const k=Math.round(la*1000)+'_'+Math.round(lo*1000);    // 110m dedup — exactly _evalCompetitors
     const _ov=overrides[k]; if(deleted[k]||(_ov&&_ov.exclude)||byCell.has(k)) return;
+    if(!_vfCountEquine() && !(_ov&&_ov.kind) && _isLargeAnimal(name)) return;
     byCell.set(k,{lat:la,lon:lo,pe:!!pe,reviews:(_ov&&_ov.reviewsOv!=null)?_ov.reviewsOv:(typeof reviews==='number'?reviews:null),mult:(_ov&&_ov.mult)||1,staffN:(_vetStaffAt(la,lo)||{}).n||null});
   };
   if(peLoaded && typeof PE_COORDS!=='undefined') for(const c of PE_COORDS){
     const enr=_vetEnrichAt(c[0],c[1]);                       // MUST be 'enr' (TDZ guard, CLAUDE.md)
-    add(c[0],c[1],true, enr&&enr.reviews);
+    add(c[0],c[1],true, enr&&enr.reviews, c[4]||(enr&&enr.name));
   }
   for(const v of _activeVetClinics()){
-    add(v.lat,v.lon, !!checkPE(v.name,v.lat,v.lon,null,overrides), v.reviews);
+    add(v.lat,v.lon, !!checkPE(v.name,v.lat,v.lon,null,overrides), v.reviews, v.name);
   }
   const idx=new Map(), revs=[];
   for(const c of byCell.values()){
@@ -4343,7 +4357,7 @@ async function ensureConstructionData(){
 // Opportunity under-counted them everywhere except where you'd already panned. This
 // fetches every vet clinic in the region once and keeps the ones NOT classified as PE.
 let oppRegionIndependents = []; // [{lat,lon}] — region-wide OSM independents (PE excluded)
-function _oppIndKey(k){ return 'vf_oppind_'+(k||oppRegion.key); }
+function _oppIndKey(k){ return 'vf_oppind_'+(k||oppRegion.key)+(_vfCountEquine()?'_e1':'_e0'); }   // cache varies with the equine toggle
 async function ensureRegionIndependents(){
   if(oppRegionIndependents.length) return;
   // Use VET_CLINICS static dataset when available — instant, no Overpass needed.
@@ -4355,6 +4369,7 @@ async function ensureRegionIndependents(){
       const key=`${Math.round(vc.lat*1000)}_${Math.round(vc.lon*1000)}`;
       if(deleted[key]) continue;
       if(checkPE(vc.name, vc.lat, vc.lon, key, overrides)) continue;
+      if(!_vfCountEquine() && _isLargeAnimal(vc.name)) continue;   // equine/large-animal: not dog-cat competition
       out.push({lat:vc.lat, lon:vc.lon});
     }
     if(out.length){ oppRegionIndependents=out; return; }
@@ -4533,6 +4548,7 @@ function buildOppBaseInputs(){
       for(const coord of PE_COORDS){
         const plat=coord[0], plon=coord[1];
         if(plat<bb.minLat||plat>bb.maxLat||plon<bb.minLon||plon>bb.maxLon) continue;
+        if(!_vfCountEquine() && _isLargeAnimal(coord[4])) continue;   // equine/large-animal: not dog-cat competition
         if(pointInGeoJSON(plat,plon,f)){ peCount++; dvm += (_vetStaffAt(plat,plon)||{}).n || 2; }
       }
     }
@@ -4692,6 +4708,7 @@ function renderOppDetail(r,i){
     ${line('Median income', _fmtMoney(r.inc))}
     ${line('Population growth ’21→’24', _fmtPct(r.grow))}
     ${line('New construction (2010+)', r.cons!=null?(r.cons*100).toFixed(0)+'%':'—')}
+    ${(()=>{const dd=(typeof dogData!=='undefined')&&dogData[r.zip]; const aF=dd&&dd.ageF; if(aF==null||aF>=0.97) return ''; const ma=(typeof ageData!=='undefined')&&ageData[r.zip]; return line('Senior-age adjustment', '−'+Math.round((1-aF)*100)+'% pet demand', ma?('median age '+Math.round(ma)):''); })()}
     ${line('Clinics', (r.peCount+r.indCount), `${r.peCount} PE / ${r.indCount} indep`)}
     ${_oppFabricLine(r)}
     <div style="height:1px;background:var(--border);margin:6px 0"></div>
@@ -4835,10 +4852,17 @@ function oppSelect(zip){
 function marketPickerNote(){ vfToast('Market presets are coming soon — search or pan to move around Texas for now.'); }
 
 /* ─── Settings modal ─────────────────────────────────────────────────────────*/
-function openSettings(){ const m=document.getElementById('opt-mobile'); if(m) m.checked=_vfIncludeMobile(); const h=document.getElementById('opt-hidepins'); if(h) h.checked=_vfHidePins(); document.getElementById('settings-overlay').classList.add('show'); }
+function openSettings(){ const m=document.getElementById('opt-mobile'); if(m) m.checked=_vfIncludeMobile(); const q=document.getElementById('opt-equine'); if(q) q.checked=_vfCountEquine(); const h=document.getElementById('opt-hidepins'); if(h) h.checked=_vfHidePins(); document.getElementById('settings-overlay').classList.add('show'); }
 function toggleHidePins(on){ try{ localStorage.setItem('vf_hidepins', on?'1':'0'); }catch(_){}; _applyPinZoomVisibility(); }
 // Toggle whether mobile/traveling vets count as competition. Refreshes every consumer
 // of the competitor set so the change is immediate everywhere.
+function toggleCountEquine(on){
+  try{ localStorage.setItem('vf_count_equine', on?'1':'0'); }catch(_){}
+  oppRegionIndependents=[]; oppBaseRows=[]; oppScored=[];
+  _areaClinCache={key:null};
+  if(typeof map!=='undefined' && map.getZoom()>=MIN_ZOOM) fetchClinics(); else refreshPins();
+  if(typeof evalActive!=='undefined' && evalActive && typeof _evalComputeAndRender==='function') _evalComputeAndRender();
+}
 function toggleIncludeMobile(on){
   try{ localStorage.setItem('vf_include_mobile', on?'1':'0'); }catch(_){}
   oppRegionIndependents=[]; oppBaseRows=[]; oppScored=[];                       // force opportunity to rebuild from the new set
@@ -5024,8 +5048,24 @@ async function ensureIncomeData(){
 }
 // Load + model the dog-ownership estimates without painting a layer. Mirrors the model in
 // toggleDogLayer (steps 2–4) — KEEP IN SYNC if that formula changes.
+// Median age per ZIP (ACS B01002) → a senior-skew damp on modeled pet demand. Field-validated
+// need: a 55+ community (Robson Ranch, 7,200 homes, own dog park) counted as full pet-demand
+// rooftops. AVMA: senior households own dogs at ~3/4 the average rate. Curve: no damp through
+// median age 48 (a normal suburb), then −1.1%/yr, floored at 0.75 (a fully-senior ZIP like Sun
+// City Georgetown ~0.76-0.78). Cats damp at HALF the elasticity (matches the cat model design).
+// ZIP-grain like everything else — a senior enclave inside a young ZIP still slips through.
+let ageData={};
+async function ensureAgeData(){
+  if(Object.keys(ageData).length) return;
+  const url='https://api.census.gov/data/2022/acs/acs5?get=B01002_001E&for=zip%20code%20tabulation%20area:*&key=3429f2401376a586a8f6ffc02bb5678ee32fbf44';
+  const res=await fetch(url,{cache:'force-cache'}); if(!res.ok) throw new Error('Census age '+res.status);
+  const rows=await res.json();
+  rows.slice(1).forEach(r=>{ const zip=r[r.length-1], v=parseFloat(r[0]); if(isFinite(v)&&v>10&&v<95) ageData[zip]=v; });
+}
+function _ageDampF(zip){ const a=ageData[zip]; if(a==null||a<=48) return 1; return Math.max(0.75, 1-0.011*(a-48)); }
 async function ensureDogData(){
   if(Object.keys(dogData).length>0) return;
+  try{ await ensureAgeData(); }catch(e){}   // best-effort — a failed age fetch must never break the dog layer
   if(!dogGeoData) dogGeoData = await loadZipGeometry();
   const txZips = new Set(dogGeoData.features.map(f => f.properties.zip));
   if(Object.keys(dogRaw).length===0){
@@ -5047,7 +5087,8 @@ async function ensureDogData(){
     let rate=TX_DOG_BASE_RATE*(1+m); rate=Math.max(0.2,Math.min(0.7,rate));
     const oDev=(z.ownerPct!=null&&avgOwner>0)?(z.ownerPct-avgOwner)/avgOwner:0;
     let cRate=TX_CAT_BASE_RATE*(1+Math.max(-0.15,Math.min(0.15,0.5*oDev))); cRate=Math.max(0.15,Math.min(0.45,cRate));
-    dogData[zip]={ households:z.households, rate, est:Math.round(z.households*rate), catEst:Math.round(z.households*cRate) }; });
+    const aF=_ageDampF(zip); rate*=aF; cRate*=(1+(aF-1)*0.5);   // senior-skew damp (cats at half elasticity)
+    dogData[zip]={ households:z.households, rate, est:Math.round(z.households*rate), catEst:Math.round(z.households*cRate), ageF:aF }; });
 }
 // Load + compute population growth ('21→'24) without painting a layer. Mirrors the fetch in
 // toggleGrowthLayer — KEEP IN SYNC if that changes.
@@ -5101,12 +5142,12 @@ function _drawAreaDemo(drawPoly){
 let _areaClinCache={key:null,n:0,dvm:0};
 function _areaClinicCount(){
   if(!drawnArea) return {n:0,dvm:0};
-  const sig=(drawnArea.type==='rect'&&drawnArea.bounds&&drawnArea.bounds.toBBoxString?drawnArea.bounds.toBBoxString():JSON.stringify(drawnArea.points||[]))+'|'+(_vfIncludeMobile()?'m1':'m0');
+  const sig=(drawnArea.type==='rect'&&drawnArea.bounds&&drawnArea.bounds.toBBoxString?drawnArea.bounds.toBBoxString():JSON.stringify(drawnArea.points||[]))+'|'+(_vfIncludeMobile()?'m1':'m0')+(_vfCountEquine()?'e1':'e0');
   if(_areaClinCache.key===sig) return _areaClinCache;
   const deleted=getDeleted(), overrides=getOverrides(), seen=new Set(); let n=0, dvm=0;
-  const add=(la,lo)=>{ const k=Math.round(la*1000)+'_'+Math.round(lo*1000); if(deleted[k]||(overrides[k]&&overrides[k].exclude)||seen.has(k))return; seen.add(k); if(isInDrawnArea(la,lo)){ n++; dvm += (_vetStaffAt(la,lo)||{}).n || 2; } };
-  if(peLoaded && typeof PE_COORDS!=='undefined') for(const c of PE_COORDS) add(c[0],c[1]);
-  for(const v of _activeVetClinics()) add(v.lat,v.lon);
+  const add=(la,lo,nm)=>{ const k=Math.round(la*1000)+'_'+Math.round(lo*1000); if(deleted[k]||(overrides[k]&&overrides[k].exclude)||seen.has(k))return; if(!_vfCountEquine() && !(overrides[k]&&overrides[k].kind) && _isLargeAnimal(nm)) return; seen.add(k); if(isInDrawnArea(la,lo)){ n++; dvm += (_vetStaffAt(la,lo)||{}).n || 2; } };
+  if(peLoaded && typeof PE_COORDS!=='undefined') for(const c of PE_COORDS) add(c[0],c[1],c[4]);
+  for(const v of _activeVetClinics()) add(v.lat,v.lon,v.name);
   _areaClinCache={key:sig,n,dvm}; return _areaClinCache;
 }
 let _drawDemoLoading=false;
@@ -5267,7 +5308,7 @@ function _evalZipAffluence(zip){
 function _evalCompetitors(feat, radiusMi){
   const {s,n,w,e}=_evalBuffer(feat, radiusMi);
   const deleted=getDeleted(), overrides=getOverrides(), byKey=new Map();
-  const add=(la,lo,pe,reviews,rating,name,owner)=>{ if(la<s||la>n||lo<w||lo>e) return; const k=`${Math.round(la*1000)}_${Math.round(lo*1000)}`; const _ov=overrides[k]; if(deleted[k]||(_ov&&_ov.exclude)) return; const _rev=(_ov&&_ov.reviewsOv!=null)?_ov.reviewsOv:(typeof reviews==='number'?reviews:null); if(!byKey.has(k)) byKey.set(k,{lat:la,lon:lo,pe:!!pe,reviews:_rev,rating:(typeof rating==='number'?rating:null),mult:(_ov&&_ov.mult)||1,name:name||null,owner:owner||null,staffN:(_vetStaffAt(la,lo)||{}).n||null}); }; // reviews/rating/name DISPLAY-only; mult is the per-clinic competition override (Settings → edit pin)
+  const add=(la,lo,pe,reviews,rating,name,owner)=>{ if(la<s||la>n||lo<w||lo>e) return; const k=`${Math.round(la*1000)}_${Math.round(lo*1000)}`; const _ov=overrides[k]; if(deleted[k]||(_ov&&_ov.exclude)) return; if(!_vfCountEquine() && !(_ov&&_ov.kind) && _isLargeAnimal(name)) return; const _rev=(_ov&&_ov.reviewsOv!=null)?_ov.reviewsOv:(typeof reviews==='number'?reviews:null); if(!byKey.has(k)) byKey.set(k,{lat:la,lon:lo,pe:!!pe,reviews:_rev,rating:(typeof rating==='number'?rating:null),mult:(_ov&&_ov.mult)||1,name:name||null,owner:owner||null,staffN:(_vetStaffAt(la,lo)||{}).n||null}); }; // reviews/rating/name DISPLAY-only; mult is the per-clinic competition override (Settings → edit pin)
   if(peLoaded && typeof PE_COORDS!=='undefined') for(const c of PE_COORDS){ if(c[0]<s||c[0]>n||c[1]<w||c[1]>e) continue; const enr=_vetEnrichAt(c[0],c[1]); add(c[0],c[1],true,enr&&enr.reviews,enr&&enr.rating, c[4]||(enr&&enr.name), c[2]); } // c[4]=clinic name, c[2]=owner/PE firm. NB: var must NOT be named 'e' — shadows the destructured east bound 'e' above → TDZ ReferenceError
   // SINGLE independent source: VET_CLINICS (Google Places, complete & not viewport-limited),
   // PE-typed via checkPE. Do NOT also fold in evalData.vets (Overpass) — that double-counted
@@ -5635,15 +5676,24 @@ function _drawnAreaToFeature(){
 async function _ensureEvalDemographics(){
   const have = Object.keys(incomeData).length || (typeof oppIncomeSnap!=='undefined' && Object.keys(oppIncomeSnap).length);
   if(!have){ try{ await fetchIncomeBatch([]); }catch(e){} } // all-TX income, cached, no choropleth paint
+  try{ await ensureAgeData(); }catch(e){}                    // senior-skew damp input (best-effort)
 }
 async function _buildAreaZips(feat){
   const geo=await loadZipGeometry(); const bb=_evalBBox(feat); const out=[];
   for(const f of geo.features){
     const zb=_evalBBox(f);
     if(zb.maxLa<bb.minLa||zb.minLa>bb.maxLa||zb.maxLo<bb.minLo||zb.minLo>bb.maxLo) continue; // bbox prefilter
-    out.push({feat:f, bb:zb, affl:_evalZipAffluence(f.properties.zip)});
+    out.push({feat:f, bb:zb, affl:_evalZipAffluence(f.properties.zip), zip:f.properties.zip});
   }
   return out;
+}
+function _cellAgeF(la,lo){
+  if(!evalAreaMode || !evalAreaZips) return _ageDampF(evalZip);      // ZIP mode: one value
+  for(const az of evalAreaZips){
+    if(la<az.bb.minLa||la>az.bb.maxLa||lo<az.bb.minLo||lo>az.bb.maxLo) continue;
+    if(pointInGeoJSON(la,lo,az.feat)) return _ageDampF(az.zip);
+  }
+  return 1;
 }
 function _cellAffl(la,lo){
   if(!evalAreaMode || !evalAreaZips) return evalZipAffluence; // ZIP mode: one value
@@ -5779,7 +5829,8 @@ function _evalComputeAndRender(){
       // competition (border-aware gravity); scan all comps for the true nearest readout
       let comp=0, nearC=Infinity, nearPE=Infinity, nComp=0, nPE=0; for(const c of comps){ const d=hav(la,lo,c.lat,c.lon); if(d<nearC)nearC=d; if(d<R){ comp+=(c.pe?1.6:1)*_revW(c.reviews,compMedRev)*_staffW(c.staffN)*(c.mult||1)*_grav(d,R); nComp++; if(c.pe){ nPE++; if(d<nearPE) nearPE=d; } } }
       const affl=_cellAffl(la,lo); // per-cell ZIP demographics in area mode; constant in ZIP mode
-      grid.push({la,lo,dem,ret,comp,nearC,nearPE,nComp,nPE,affl,nearRoad,nearCls,aadt,aadtRoad,stepLa,stepLo,zone:zinfo?zinfo.label:null,zcity:zinfo?zinfo.city:null});
+      const ageF=_cellAgeF(la,lo); // senior-skew demand damp for the containing ZIP
+      grid.push({la,lo,dem,ret,comp,nearC,nearPE,nComp,nPE,affl,ageF,nearRoad,nearCls,aadt,aadtRoad,stepLa,stepLo,zone:zinfo?zinfo.label:null,zcity:zinfo?zinfo.city:null});
     }
   evalCompsCache=comps;
   evalZoneStat={excluded:zEx, cities:[...evalZoneCities], counties:[...evalParcelCounties], usedOSM:(evalData.osmLU&&evalData.osmLU.length>0), on:evalZoning && (evalDataOk.zoning || evalDataOk.parcels || (evalData.osmLU&&evalData.osmLU.length>0))};
@@ -5787,7 +5838,7 @@ function _evalComputeAndRender(){
   const maxOf=f=>Math.max(1e-6,...grid.map(f));
   const maxDem=maxOf(g=>g.dem), maxRet=maxOf(g=>g.ret), maxComp=maxOf(g=>g.comp);
   for(const g of grid){
-    g.demandN = hasResid ? 0.55*(g.dem/maxDem)+0.45*g.affl : g.affl;
+    g.demandN = (hasResid ? 0.55*(g.dem/maxDem)+0.45*g.affl : g.affl) * (g.ageF||1);   // senior-skew damp
     g.retailN = hasRetail ? g.ret/maxRet : 0.5;
     // Road VISIBILITY: traffic volume on the frontage road (AADT) when a count is
     // near, else road class as a proxy. The drive-by / new-client revenue signal —
@@ -6251,7 +6302,7 @@ const AI_TOOLS = [
  {type:'function', function:{name:'show_section', description:'Navigate the app to a section.', parameters:{type:'object', properties:{section:{type:'string', enum:['map','opportunity','acquisitions','watchlist']}}, required:['section']}}},
  {type:'function', function:{name:'focus_zip', description:'Open a ZIP on the map with its boundary outlined (leaves the current section).', parameters:{type:'object', properties:{zip:{type:'string'}}, required:['zip']}}},
  {type:'function', function:{name:'toggle_map_layer', description:'Turn a map data layer on or off.', parameters:{type:'object', properties:{layer:{type:'string', enum:['income','pets','growth','density']}, on:{type:'boolean'}}, required:['layer','on']}}},
- {type:'function', function:{name:'set_preference', description:'Change an app setting: hide_pins (auto-hide clinic pins when zoomed out) or include_mobile (count mobile vets as competition).', parameters:{type:'object', properties:{preference:{type:'string', enum:['hide_pins','include_mobile']}, on:{type:'boolean'}}, required:['preference','on']}}},
+ {type:'function', function:{name:'set_preference', description:'Change an app setting: hide_pins (auto-hide clinic pins when zoomed out), include_mobile (count mobile vets as competition) or count_equine (count equine/large-animal vets as competition).', parameters:{type:'object', properties:{preference:{type:'string', enum:['hide_pins','include_mobile','count_equine']}, on:{type:'boolean'}}, required:['preference','on']}}},
  {type:'function', function:{name:'watchlist', description:'List, add or remove saved markets in the watchlist.', parameters:{type:'object', properties:{action:{type:'string', enum:['list','add','remove']}, zip:{type:'string', description:'Required for add/remove'}}, required:['action']}}},
  {type:'function', function:{name:'search_clinics', description:'Search clinics and veterinarians by name.', parameters:{type:'object', properties:{query:{type:'string'}}, required:['query']}}},
  {type:'function', function:{name:'save_report', description:'Save a finished markdown report — shows it in the chat with a download link. Call this LAST, after gathering data.', parameters:{type:'object', properties:{title:{type:'string'}, markdown:{type:'string'}}, required:['title','markdown']}}}
@@ -6353,7 +6404,7 @@ async function _aiEnsureOpp(){
   oppDogSnap={}; Object.keys(dogData).forEach(z=>oppDogSnap[z]=dogData[z].est);
   oppGrowthSnap={...growthData}; oppConstructionSnap={...constructionData};
   if(!oppRegionIndependents || !oppRegionIndependents.length){
-    oppRegionIndependents=_activeVetClinics().filter(v=>v.lat>=oppRegion.s&&v.lat<=oppRegion.n&&v.lon>=oppRegion.w&&v.lon<=oppRegion.e&&!checkPE(v.name,v.lat,v.lon,null,getOverrides())).map(v=>({lat:v.lat,lon:v.lon}));
+    oppRegionIndependents=_activeVetClinics().filter(v=>v.lat>=oppRegion.s&&v.lat<=oppRegion.n&&v.lon>=oppRegion.w&&v.lon<=oppRegion.e&&!checkPE(v.name,v.lat,v.lon,null,getOverrides())&&(_vfCountEquine()||!_isLargeAnimal(v.name))).map(v=>({lat:v.lat,lon:v.lon}));
   }
   buildOppBaseInputs(); rescoreAndRender();
 }
@@ -6427,6 +6478,7 @@ async function aiExecTool(name, a){
       const on=!!a.on;
       if(a.preference==='hide_pins'){ const cb=document.getElementById('opt-hidepins'); if(cb) cb.checked=on; toggleHidePins(on); return {preference:'hide_pins', on}; }
       if(a.preference==='include_mobile'){ const cb=document.getElementById('opt-mobile'); if(cb) cb.checked=on; toggleIncludeMobile(on); return {preference:'include_mobile', on}; }
+      if(a.preference==='count_equine'){ const cb=document.getElementById('opt-equine'); if(cb) cb.checked=on; toggleCountEquine(on); return {preference:'count_equine', on}; }
       return {error:'unknown preference'};
     }
     case 'watchlist': {
