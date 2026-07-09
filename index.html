@@ -863,6 +863,19 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
     <div class="layer-item">
       <div class="layer-row">
         <div>
+          <div class="layer-name">Communities (census tracts)</div>
+          <div class="layer-desc">1,730 DFW neighborhoods at census-tract grain, colored by community type — hover any tract for its profile. DFW region only.</div>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="toggle-tracts" onchange="toggleTractLayer(this.checked)"/>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <div class="layer-status" id="tracts-status">Off</div>
+    </div>
+    <div class="layer-item">
+      <div class="layer-row">
+        <div>
           <div class="layer-name">Available Properties</div>
           <div class="layer-desc">Curated lease / sale / lot listings</div>
         </div>
@@ -933,6 +946,17 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
       <div class="legend-scale-item"><div class="legend-scale-color" style="background:#c7d2fe"></div> 40% – 45%</div>
       <div class="legend-scale-item"><div class="legend-scale-color" style="background:#e0e7ff"></div> Under 40%</div>
       <div class="legend-scale-item"><div class="legend-scale-color" style="background:#e2e8f0"></div> No data</div>
+    </div>
+  </div>
+  <div class="income-legend" id="tracts-legend">
+    <div class="legend-title">Community type</div>
+    <div class="legend-scale">
+      <div class="legend-scale-item"><div class="legend-scale-color" style="background:#15803d"></div> Young-family growth</div>
+      <div class="legend-scale-item"><div class="legend-scale-color" style="background:#1e3a8a"></div> Established affluent</div>
+      <div class="legend-scale-item"><div class="legend-scale-color" style="background:#475569"></div> Established suburban</div>
+      <div class="legend-scale-item"><div class="legend-scale-color" style="background:#b45309"></div> 55+ / active-adult</div>
+      <div class="legend-scale-item"><div class="legend-scale-color" style="background:#6d28d9"></div> Renter-heavy / urban</div>
+      <div class="legend-scale-item"><div class="legend-scale-color" style="background:#94a3b8"></div> Rural / low-density</div>
     </div>
   </div>
   <div class="dog-legend" id="growth-legend">
@@ -2354,6 +2378,10 @@ async function toggleIncomeLayer(on){
     document.getElementById('toggle-growth').checked = false;
     await toggleGrowthLayer(false);
   }
+  if(tractLayer){
+    document.getElementById('toggle-tracts').checked = false;
+    await toggleTractLayer(false);
+  }
   status.textContent = 'Loading boundaries...';
   try{
     // Step 1: load ZIP boundaries once (shared across layers)
@@ -2460,6 +2488,10 @@ async function toggleDogLayer(on){
   if(growthLayer){
     document.getElementById('toggle-growth').checked = false;
     await toggleGrowthLayer(false);
+  }
+  if(tractLayer){
+    document.getElementById('toggle-tracts').checked = false;
+    await toggleTractLayer(false);
   }
   status.textContent = 'Loading boundaries...';
   try{
@@ -2600,6 +2632,7 @@ async function toggleGrowthLayer(on){
   // Mutual exclusion: only one choropleth fill at a time.
   if(incomeLayer){ document.getElementById('toggle-income').checked = false; await toggleIncomeLayer(false); }
   if(dogLayer){ document.getElementById('toggle-pets').checked = false; await toggleDogLayer(false); }
+  if(tractLayer){ document.getElementById('toggle-tracts').checked = false; await toggleTractLayer(false); }
 
   status.textContent = 'Loading boundaries...';
   try{
@@ -4224,11 +4257,51 @@ function setOppView(v){
   }
   renderOppList();
 }
+// ── Communities (census tracts) fill layer — archetype-colored tract polygons ────────────────
+// Joins the choropleth single-fill rule (mutually exclusive with income/pets/growth). Hover any
+// tract for its community profile — this is the "how precise are these tracts" inspection layer.
+let tractLayer=null;
+async function toggleTractLayer(on){
+  if(on && typeof _hexView!=='undefined' && _hexView) setOppView('list');
+  const status=document.getElementById('tracts-status');
+  const legend=document.getElementById('tracts-legend');
+  if(!on){
+    if(tractLayer){ map.removeLayer(tractLayer); tractLayer=null; }
+    if(legend) legend.classList.remove('show');
+    if(status) status.textContent='Off';
+    return;
+  }
+  if(incomeLayer){ document.getElementById('toggle-income').checked=false; await toggleIncomeLayer(false); }
+  if(dogLayer){ document.getElementById('toggle-pets').checked=false; await toggleDogLayer(false); }
+  if(growthLayer){ document.getElementById('toggle-growth').checked=false; await toggleGrowthLayer(false); }
+  if(status) status.textContent='Loading tracts…';
+  const geo=await _loadTracts();
+  if(!geo){ if(status) status.textContent='Data unavailable'; const cb=document.getElementById('toggle-tracts'); if(cb) cb.checked=false; return; }
+  if(tractLayer){ map.removeLayer(tractLayer); tractLayer=null; }
+  const esc=v=>String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  tractLayer=L.geoJSON(geo,{
+    style:f=>({ color:'#ffffff', weight:0.7, opacity:0.7, fillColor:_communityType(f.properties).c, fillOpacity:0.42 }),
+    onEachFeature:(f,layer)=>{
+      const t=f.properties, ct=_communityType(t);
+      const bits=[];
+      if(t.age!=null) bits.push('median age '+Math.round(t.age));
+      if(t.inc!=null) bits.push('$'+Math.round(t.inc/1000)+'k income');
+      if(t.own!=null) bits.push(Math.round(t.own*100)+'% owner-occupied');
+      if(t.cons!=null) bits.push(Math.round(t.cons*100)+'% built 2010+');
+      if(t.hh!=null) bits.push('~'+t.hh.toLocaleString()+' households');
+      layer.bindTooltip(`<div style="font-size:11.5px;line-height:1.5"><b style="color:${ct.c}">${esc(ct.label)}</b><br>${bits.join(' · ')}<br><span style="color:#94a3b8;font-size:10px">tract ${esc(t.g)}</span></div>`,{sticky:true,opacity:0.95});
+    }
+  }).addTo(map);
+  if(tractLayer.bringToBack) tractLayer.bringToBack();
+  if(legend) legend.classList.add('show');
+  if(status) status.textContent='On · '+geo.features.length.toLocaleString()+' tracts';
+}
 function _oppKillChoropleths(){
   const off=(id,fn)=>{ const el=document.getElementById(id); if(el&&el.checked){ fn(false); el.checked=false; } };
   off('toggle-income', toggleIncomeLayer);
   off('toggle-pets',   toggleDogLayer);
   off('toggle-growth', toggleGrowthLayer);
+  off('toggle-tracts', toggleTractLayer);
 }
 function _hexTeardown(){
   _hexView=false; oppView='list'; _hexClearSel();              // reset the view flag so re-entry lands clean (avoids opaque-panel-over-surface desync)
