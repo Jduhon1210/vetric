@@ -2447,7 +2447,10 @@ const TX_DOG_BASE_RATE = 0.45;
 // dogs but with HALF the homeownership elasticity and NO single-family loading: cat ownership tracks
 // owning-vs-renting weakly and is largely housing-type independent (apartments suit cats) — using the
 // dog adjustment verbatim would fake precision. Clamped tighter (±15% -> rate 0.15–0.45).
-const TX_CAT_BASE_RATE = 0.28;
+// 0.25 (was 0.28, trimmed 2026-07-09 per AVMA research): Texas is structurally CAT-LIGHT — the AVMA
+// state table put TX at 20.5-21% vs 25.4% national (~17% below); applying that gap to today's
+// ~30-32.6% national rate triangulates TX at ~25-27%. 0.25 = the honest midpoint.
+const TX_CAT_BASE_RATE = 0.25;
 let dogRaw = {};      // zip -> {households, ownerPct, sfPct}
 let dogData = {};     // zip -> {households, rate, est}
 let dogGeoData = null;
@@ -2548,7 +2551,8 @@ async function toggleDogLayer(on){
       let catRate = TX_CAT_BASE_RATE * (1 + Math.max(-0.15, Math.min(0.15, 0.5*ownerDev)));
       catRate = Math.max(0.15, Math.min(0.45, catRate));
       const aF=_ageDampF(zip); rate*=aF; catRate*=(1+(aF-1)*0.5);   // senior-skew damp (cats at half elasticity)
-      dogData[zip] = { households: z.households, rate, est: Math.round(z.households*rate), catEst: Math.round(z.households*catRate), ageF:aF };
+      const iF=_incDampF(zip); rate*=iF; catRate*=(1+(iF-1)*0.5);   // low-income damp (bottom tail only)
+      dogData[zip] = { households: z.households, rate, est: Math.round(z.households*rate), catEst: Math.round(z.households*catRate), ageF:aF, incF:iF };
     });
 
     // Step 5: build/refresh choropleth
@@ -4843,6 +4847,7 @@ function renderOppDetail(r,i){
     ${line('Population growth ’21→’24', _fmtPct(r.grow))}
     ${line('New construction (2010+)', r.cons!=null?(r.cons*100).toFixed(0)+'%':'—')}
     ${(()=>{const dd=(typeof dogData!=='undefined')&&dogData[r.zip]; const aF=dd&&dd.ageF; if(aF==null||aF>=0.97) return ''; const ma=(typeof ageData!=='undefined')&&ageData[r.zip]; return line('Senior-age adjustment', '−'+Math.round((1-aF)*100)+'% pet demand', ma?('median age '+Math.round(ma)):''); })()}
+    ${(()=>{const dd=(typeof dogData!=='undefined')&&dogData[r.zip]; const iF=dd&&dd.incF; if(iF==null||iF>=0.97) return ''; return line('Low-income adjustment', '−'+Math.round((1-iF)*100)+'% pet demand', 'ownership rates dip in low-income areas'); })()}
     ${line('Clinics', (r.peCount+r.indCount), `${r.peCount} PE / ${r.indCount} indep`)}
     ${_oppFabricLine(r)}
     <div style="height:1px;background:var(--border);margin:6px 0"></div>
@@ -5188,15 +5193,27 @@ async function ensureIncomeData(){
 // median age 48 (a normal suburb), then −1.1%/yr, floored at 0.75 (a fully-senior ZIP like Sun
 // City Georgetown ~0.76-0.78). Cats damp at HALF the elasticity (matches the cat model design).
 // ZIP-grain like everything else — a senior enclave inside a young ZIP still slips through.
-let ageData={};
+let ageData={}, modelIncome={};   // modelIncome: ownership-model copy of median income — NEVER cleared (incomeData is wiped on layer toggle-off)
 async function ensureAgeData(){
   if(Object.keys(ageData).length) return;
-  const url='https://api.census.gov/data/2024/acs/acs5?get=B01002_001E&for=zip%20code%20tabulation%20area:*&key=3429f2401376a586a8f6ffc02bb5678ee32fbf44';
+  const url='https://api.census.gov/data/2024/acs/acs5?get=B01002_001E,B19013_001E&for=zip%20code%20tabulation%20area:*&key=3429f2401376a586a8f6ffc02bb5678ee32fbf44';
   const res=await fetch(url,{cache:'force-cache'}); if(!res.ok) throw new Error('Census age '+res.status);
   const rows=await res.json();
-  rows.slice(1).forEach(r=>{ const zip=r[r.length-1], v=parseFloat(r[0]); if(isFinite(v)&&v>10&&v<95) ageData[zip]=v; });
+  rows.slice(1).forEach(r=>{ const zip=r[r.length-1], v=parseFloat(r[0]), inc=parseFloat(r[1]);
+    if(isFinite(v)&&v>10&&v<95) ageData[zip]=v;
+    if(isFinite(inc)&&inc>0) modelIncome[zip]=inc; });
 }
 function _ageDampF(zip){ const a=ageData[zip]; if(a==null||a<=48) return 1; return Math.max(0.75, 1-0.011*(a-48)); }
+// Low-income damp on modeled OWNERSHIP (2026-07-09, AVMA research: ownership rises with income
+// then PLATEAUS — the published signal is a bottom-tail suppression, not a top-end boost).
+// No damp at median income ≥ $55k; linear down to the 0.85 floor at ≤ $30k (the published
+// suppression band was ~$25-45k in 2017 dollars; ×1.28 CPI puts it at ~$30-55k in the 2024-ACS
+// dollars this model now runs on — fires on the bottom ~20% of ZIPs). Deliberately a damp
+// with NO boost: affluence already earns points in the Income factor (20% of the composite), the
+// underservice utilization damper, and the Surface spend index — a linear income multiplier here
+// would triple-count wealth. Cats at HALF elasticity (flatter income curve, matches cat design).
+// Evaluate cells deliberately do NOT get this (their demandN already prices income via affl).
+function _incDampF(zip){ const inc=modelIncome[zip]; if(inc==null||inc>=55000) return 1; return Math.max(0.85, 1-0.15*(55000-inc)/25000); }
 async function ensureDogData(){
   if(Object.keys(dogData).length>0) return;
   try{ await ensureAgeData(); }catch(e){}   // best-effort — a failed age fetch must never break the dog layer
@@ -5222,7 +5239,8 @@ async function ensureDogData(){
     const oDev=(z.ownerPct!=null&&avgOwner>0)?(z.ownerPct-avgOwner)/avgOwner:0;
     let cRate=TX_CAT_BASE_RATE*(1+Math.max(-0.15,Math.min(0.15,0.5*oDev))); cRate=Math.max(0.15,Math.min(0.45,cRate));
     const aF=_ageDampF(zip); rate*=aF; cRate*=(1+(aF-1)*0.5);   // senior-skew damp (cats at half elasticity)
-    dogData[zip]={ households:z.households, rate, est:Math.round(z.households*rate), catEst:Math.round(z.households*cRate), ageF:aF }; });
+    const iF=_incDampF(zip); rate*=iF; cRate*=(1+(iF-1)*0.5);   // low-income damp (bottom tail only)
+    dogData[zip]={ households:z.households, rate, est:Math.round(z.households*rate), catEst:Math.round(z.households*cRate), ageF:aF, incF:iF }; });
 }
 // Load + compute population growth ('21→'24) without painting a layer. Mirrors the fetch in
 // toggleGrowthLayer — KEEP IN SYNC if that changes.
