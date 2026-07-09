@@ -4062,6 +4062,7 @@ function buildHexClinicIndex(){
 
 // ── build pass (once per region/data load): ZIP join + competition join ─────
 async function buildHexBaseInputs(){
+  _loadTracts();                                             // community layer (display) — fire-and-forget
   await loadZipGeometry();
   await _loadHexWater();                                          // real lake outlines → skip grading open water
   await _loadOppRetail();                                         // commercial-fabric nodes → hex-card "nearest retail" read
@@ -4287,6 +4288,64 @@ function _hexFocus(h, doZoom){
   }
   _hexOpenDetail(h);
 }
+// ── Community layer (census tracts — Phase 1, display-only) ─────────────────
+// dfw-tracts.json: 1,730 DFW tracts (TIGERweb 2020 boundaries, server-generalized) with ACS 2022
+// demographics embedded per tract {g,inc,hh,own,sf,cons,age,pop}. A tract ≈ one community
+// (~4k people), fixing the ZIP-grain blind spot (Robson Ranch's tract reads median age 70.9 vs
+// its ZIP's 39.9). Free + static; graceful null when absent (non-DFW). DISPLAY-ONLY in Phase 1 —
+// scoring still runs on ZIP demographics.
+let _tractsGeo=null, _tractsP=null, _tractIdx=null;
+function _loadTracts(){
+  if(_tractsP) return _tractsP;
+  _tractsP=fetch('dfw-tracts.json',{cache:'force-cache'}).then(r=>r.ok?r.json():null).then(g=>{
+    _tractsGeo=(g&&g.features&&g.features.length)?g:null; return _tractsGeo;
+  }).catch(()=>null);
+  return _tractsP;
+}
+function _tractBBox(f){
+  if(f._bb) return f._bb;
+  let minLa=90,maxLa=-90,minLo=180,maxLo=-180;
+  const rings=f.geometry.type==='Polygon'?f.geometry.coordinates:f.geometry.coordinates.flat();
+  for(const ring of rings) for(const p of ring){ if(p[1]<minLa)minLa=p[1]; if(p[1]>maxLa)maxLa=p[1]; if(p[0]<minLo)minLo=p[0]; if(p[0]>maxLo)maxLo=p[0]; }
+  return f._bb={minLa,maxLa,minLo,maxLo};
+}
+function _tractAt(lat,lon){
+  if(!_tractsGeo) return null;
+  if(!_tractIdx){ _tractIdx=new Map();
+    for(const f of _tractsGeo.features){ const b=_tractBBox(f);
+      for(let i=Math.floor(b.minLa/0.05);i<=Math.floor(b.maxLa/0.05);i++)
+        for(let j=Math.floor(b.minLo/0.05);j<=Math.floor(b.maxLo/0.05);j++){
+          const k=i+'_'+j; let a=_tractIdx.get(k); if(!a){a=[];_tractIdx.set(k,a);} a.push(f);
+        } } }
+  const arr=_tractIdx.get(Math.floor(lat/0.05)+'_'+Math.floor(lon/0.05)); if(!arr) return null;
+  for(const f of arr){ const b=f._bb; if(lat<b.minLa||lat>b.maxLa||lon<b.minLo||lon>b.maxLo) continue;
+    if(pointInGeoJSON(lat,lon,f)) return f.properties; }
+  return null;
+}
+// Community archetype — order matters (senior first; renter before young-family since a young
+// renter tract hits both). Validated anchors: Robson Ranch 70.9→55+, Lantana 38.7/$172k/45% new
+// →young-family growth, Uptown Dallas own 0.11→renter-heavy.
+function _communityType(t){
+  if(t.age!=null && t.age>=58) return {label:'55+ / active-adult community', c:'#b45309', senior:true};
+  if(t.own!=null && t.own<0.40) return {label:'Renter-heavy / urban', c:'#6d28d9'};
+  if(t.cons!=null && t.cons>=0.35 && t.age!=null && t.age<42) return {label:'Young-family growth community', c:'#15803d'};
+  if(t.inc!=null && t.inc>=140000) return {label:'Established affluent community', c:'#1e3a8a'};
+  if((t.pop!=null && t.pop<1200)||(t.hh!=null && t.hh<400)) return {label:'Rural / low-density', c:'#64748b'};
+  return {label:'Established suburban', c:'#475569'};
+}
+// Compact community block for cards. Returns '' until dfw-tracts.json is loaded / outside DFW.
+function _communityHTML(lat,lon,opts){
+  const t=_tractAt(lat,lon); if(!t) return '';
+  const ct=_communityType(t);
+  const bits=[];
+  if(t.age!=null) bits.push('median age '+Math.round(t.age));
+  if(t.inc!=null) bits.push('$'+Math.round(t.inc/1000)+'k income');
+  if(t.cons!=null) bits.push(Math.round(t.cons*100)+'% built 2010+');
+  if(t.own!=null) bits.push(Math.round(t.own*100)+'% owner-occupied');
+  const warn=ct.senior?`<div style="font-size:10px;color:#b45309;font-weight:600;margin-top:1px">Senior community at this spot — expect lower pet demand than the ZIP average suggests.</div>`:'';
+  const small=opts&&opts.small;
+  return `<div style="margin-top:${small?'5':'6'}px;font-size:10.5px;color:#64748b"><span style="font-weight:800;color:${ct.c}">${ct.label}</span> · ${bits.join(' · ')}${warn}</div>`;
+}
 // Nearest commercial-fabric node in miles (cell-indexed over _oppRetailPts; null if data absent or >4mi).
 let _retailIdx=null;
 function _nearRetailMi(lat,lon){
@@ -4308,6 +4367,7 @@ function _hexOpenDetail(h){
       <span style="font-size:10px;font-weight:700;color:#fff;background:${st.color};padding:1px 7px;border-radius:10px;margin-left:4px;vertical-align:1px">${st.label}</span></div>
     <div style="font-size:10.5px;color:${st.color};font-weight:600;margin-top:3px">${st.land}${h.dens!=null?` · ~${Math.round(h.dens).toLocaleString()} homes/mi²`:''}</div>
     ${(()=>{const d=_nearRetailMi(h.cLat,h.cLon); if(d==null&&!_oppRetailPts) return ''; return `<div style="font-size:10.5px;color:#64748b;margin-top:2px">${d==null?'No retail within 4 miles; likely a land play or served from nearby':d<0.4?'Commercial corridor at this spot':'Nearest commercial corridor about '+d.toFixed(1)+' mi'}</div>`;})()}
+    ${_communityHTML(h.cLat,h.cLon)}
     <div style="font-size:11px;color:#475569;margin:6px 0">Income ${_fmtMoney(h.inc)} · Growth '21→'24 ${_fmtPct(h.grow)} · New construction ${h.cons!=null?Math.round(h.cons*100)+'%':'—'}</div>
     ${(()=>{const cE=(typeof dogData!=='undefined'&&dogData[h.zip]&&dogData[h.zip].catEst!=null)?dogData[h.zip].catEst:null;
       const v=h.dog!=null?Math.round(h.dog*OPP_VISITS_PER_DOGHH+(cE||0)*OPP_VISITS_PER_CATHH):null;
@@ -5674,6 +5734,7 @@ function _drawnAreaToFeature(){
   return {type:'Feature', properties:{}, geometry:{type:'Polygon', coordinates:[ring]}};
 }
 async function _ensureEvalDemographics(){
+  _loadTracts();                                             // community layer (display) — fire-and-forget
   const have = Object.keys(incomeData).length || (typeof oppIncomeSnap!=='undefined' && Object.keys(oppIncomeSnap).length);
   if(!have){ try{ await fetchIncomeBatch([]); }catch(e){} } // all-TX income, cached, no choropleth paint
   try{ await ensureAgeData(); }catch(e){}                    // senior-skew damp input (best-effort)
@@ -6119,6 +6180,7 @@ function _evalRenderSidebar(){
         <span style="color:#94a3b8;font-family:'JetBrains Mono',monospace">${sid}</span>
         <span class="vm-star ${_inWatch('site',sid)?'on':''}" style="margin-left:auto" title="Save site to watchlist" onclick="toggleWatchSite(${g.la},${g.lo},${headline},this)">★</span>
       </div>
+      ${_communityHTML(g.la,g.lo,{small:true})}
       ${_leaseBlock(g)}
       <div style="margin-top:7px" onclick="event.stopPropagation()">
         <button class="vm-export-btn" style="color:#6d28d9;background:#f3effd;border-color:#ddd0f7" onclick="evalDriveTime(${i},this)">◔ 10-min drive area</button>
