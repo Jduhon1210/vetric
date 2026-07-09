@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // build-tracts.mjs — one-time builder for dfw-tracts.json: DFW-region census TRACT boundaries
-// (Census TIGERweb, server-generalized) with 2022 ACS 5-yr demographics embedded per tract.
+// (Census TIGERweb, server-generalized) with 2024 ACS 5-yr demographics embedded per tract.
 // Tracts are the "community" grain (~4k people — a neighborhood / subdivision / master-planned
 // community), fixing the ZIP-grain blind spot where a 7,200-home 55+ community (Robson Ranch)
 // disappears into a college town's median age. Free: TIGERweb + api.census.gov, no keys beyond
@@ -40,11 +40,11 @@ async function fetchGeom(){
   return feats;
 }
 
-// ---- 2) ACS 2022 5-yr demographics for every TX tract (one call, filter later) ----
+// ---- 2) ACS 2024 5-yr demographics for every TX tract (one call, filter later) ----
 // income, households, owner-occupancy, single-family share, built-2010+, median age, population
 async function fetchACS(){
   const vars='B19013_001E,B11001_001E,B25003_001E,B25003_002E,B25024_001E,B25024_002E,B25034_001E,B25034_002E,B25034_003E,B01002_001E,B01003_001E';
-  const u=`https://api.census.gov/data/2022/acs/acs5?get=${vars}&for=tract:*&in=state:48&in=county:*&key=${KEY}`;
+  const u=`https://api.census.gov/data/2024/acs/acs5?get=${vars}&for=tract:*&in=state:48&in=county:*&key=${KEY}`;
   const rows=await jget(u);
   const hdr=rows[0], out=new Map();
   for(const r of rows.slice(1)){
@@ -80,7 +80,7 @@ function roundGeom(geom){
 (async function main(){
   console.log('Fetching DFW tract boundaries (TIGERweb)…');
   const feats=await fetchGeom();
-  console.log('Fetching ACS 2022 tract demographics…');
+  console.log('Fetching ACS 2024 tract demographics…');
   const acs=await fetchACS();
   let joined=0, skipped=0;
   const out=[];
@@ -92,7 +92,7 @@ function roundGeom(geom){
     joined++;
     out.push({type:'Feature',properties:{g,...d},geometry:roundGeom(f.geometry)});
   }
-  const fc={type:'FeatureCollection',vintage:'ACS 2022 5yr · TIGERweb 2020 tracts · DFW box',features:out};
+  const fc={type:'FeatureCollection',vintage:'ACS 2024 5yr · TIGERweb 2020 tracts · DFW box',features:out};
   fs.writeFileSync(OUT, JSON.stringify(fc));
   const kb=Math.round(fs.statSync(OUT).size/1024);
   console.log(`\nWrote ${OUT}: ${joined} tracts joined (${skipped} skipped), ${kb} KB`);

@@ -2341,7 +2341,7 @@ function deselectZip(zip){
 async function fetchIncomeBatch(zips){
   // Fetch income for a batch of zip codes from Census ACS
   const zipStr = zips.join(',');
-  const res = await fetch('https://api.census.gov/data/2022/acs/acs5?get=B19013_001E&for=zip%20code%20tabulation%20area:*&key=3429f2401376a586a8f6ffc02bb5678ee32fbf44', {cache:'force-cache'});
+  const res = await fetch('https://api.census.gov/data/2024/acs/acs5?get=B19013_001E&for=zip%20code%20tabulation%20area:*&key=3429f2401376a586a8f6ffc02bb5678ee32fbf44', {cache:'force-cache'});
   if(!res.ok) throw new Error('Census API error '+res.status);
   const rows = await res.json();
   rows.slice(1).forEach(row => {
@@ -2504,7 +2504,7 @@ async function toggleDogLayer(on){
     // Step 2: fetch Census housing data (households, owner-occupancy, single-family %)
     if(Object.keys(dogRaw).length === 0){
       status.textContent = 'Loading pet data...';
-      const url = 'https://api.census.gov/data/2022/acs/acs5?get=B11001_001E,B25003_001E,B25003_002E,B25024_001E,B25024_002E&for=zip%20code%20tabulation%20area:*&key=3429f2401376a586a8f6ffc02bb5678ee32fbf44';
+      const url = 'https://api.census.gov/data/2024/acs/acs5?get=B11001_001E,B25003_001E,B25003_002E,B25024_001E,B25024_002E&for=zip%20code%20tabulation%20area:*&key=3429f2401376a586a8f6ffc02bb5678ee32fbf44';
       const res = await fetch(url, {cache:'force-cache'});
       if(!res.ok) throw new Error('Census API error '+res.status);
       const rows = await res.json();
@@ -4362,15 +4362,16 @@ function _hexFocus(h, doZoom){
   _hexOpenDetail(h);
 }
 // ── Community layer (census tracts — Phase 1, display-only) ─────────────────
-// dfw-tracts.json: 1,730 DFW tracts (TIGERweb 2020 boundaries, server-generalized) with ACS 2022
+// dfw-tracts.json: 1,730 DFW tracts (TIGERweb 2020 boundaries, server-generalized) with ACS 2024
 // demographics embedded per tract {g,inc,hh,own,sf,cons,age,pop}. A tract ≈ one community
 // (~4k people), fixing the ZIP-grain blind spot (Robson Ranch's tract reads median age 70.9 vs
 // its ZIP's 39.9). Free + static; graceful null when absent (non-DFW). DISPLAY-ONLY in Phase 1 —
 // scoring still runs on ZIP demographics.
 let _tractsGeo=null, _tractsP=null, _tractIdx=null;
 function _loadTracts(){
+  // URL is version-busted (?v=): force-cache never revalidates a same-URL entry, so vintage bumps MUST change the URL.
   if(_tractsP) return _tractsP;
-  _tractsP=fetch('dfw-tracts.json',{cache:'force-cache'}).then(r=>r.ok?r.json():null).then(g=>{
+  _tractsP=fetch('dfw-tracts.json?v=acs2024',{cache:'force-cache'}).then(r=>r.ok?r.json():null).then(g=>{
     _tractsGeo=(g&&g.features&&g.features.length)?g:null; return _tractsGeo;
   }).catch(()=>null);
   return _tractsP;
@@ -4555,8 +4556,8 @@ async function openOpportunity(){
     await Promise.all([
       loadZipGeometry().catch(()=>{}),
       _loadOppRetail(),   // commercial-fabric nodes for the "why are there no vets here" read (108KB, cached)
-      _cw(`https://api.census.gov/data/2022/acs/acs5?get=B19013_001E&for=zip%20code%20tabulation%20area:*&key=${_K}`),
-      _cw(`https://api.census.gov/data/2022/acs/acs5?get=B11001_001E,B25003_001E,B25003_002E,B25024_001E,B25024_002E&for=zip%20code%20tabulation%20area:*&key=${_K}`),
+      _cw(`https://api.census.gov/data/2024/acs/acs5?get=B19013_001E&for=zip%20code%20tabulation%20area:*&key=${_K}`),
+      _cw(`https://api.census.gov/data/2024/acs/acs5?get=B11001_001E,B25003_001E,B25003_002E,B25024_001E,B25024_002E&for=zip%20code%20tabulation%20area:*&key=${_K}`),
       _cw(`https://api.census.gov/data/${GROWTH_YEAR_NEW}/acs/acs5?get=B01003_001E&for=zip%20code%20tabulation%20area:*&key=${_K}`),
       _cw(`https://api.census.gov/data/${GROWTH_YEAR_OLD}/acs/acs5?get=B01003_001E&for=zip%20code%20tabulation%20area:*&key=${_K}`)
     ]);
@@ -4919,7 +4920,7 @@ function renderOppList(){
       <div class="opp-score" style="background:${col}">${Math.round(r.score)}</div>
     </div>`;
   }).join('');
-  const methodNote=`<details class="vm-method-note" style="margin-top:14px"><summary>How these scores are computed</summary><div style="margin-top:6px">Four factors — income (Census ACS 2022), pet demand (<b>modeled</b> from ACS 2022 housing), low competition (pet households per PE-weighted clinic), and growth (ACS 2021→2024 population + new construction) — each scaled 0–100 across this region's ZIPs and blended by your weights. Sub-scores are <b>region-relative percentiles</b>, not absolute. Competition is radius-based, not drive-time. A screening signal — verify before diligence.</div></details>`;
+  const methodNote=`<details class="vm-method-note" style="margin-top:14px"><summary>How these scores are computed</summary><div style="margin-top:6px">Four factors — income (Census ACS 2024), pet demand (<b>modeled</b> from ACS 2024 housing), low competition (pet households per PE-weighted clinic), and growth (ACS 2021→2024 population + new construction) — each scaled 0–100 across this region's ZIPs and blended by your weights. Sub-scores are <b>region-relative percentiles</b>, not absolute. Competition is radius-based, not drive-time. A screening signal — verify before diligence.</div></details>`;
   wrap.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">${seg}<div style="flex:1;text-align:right;margin-right:10px;font-size:10.5px;color:#94a3b8;font-weight:600">Scores are relative to this region · click a ZIP to expand</div>${oppScored.length?_exportBtn('exportOppCSV()','Export'):''}</div>${rows}${methodNote}`;
   _oppKpiTop();
 }
@@ -5190,7 +5191,7 @@ async function ensureIncomeData(){
 let ageData={};
 async function ensureAgeData(){
   if(Object.keys(ageData).length) return;
-  const url='https://api.census.gov/data/2022/acs/acs5?get=B01002_001E&for=zip%20code%20tabulation%20area:*&key=3429f2401376a586a8f6ffc02bb5678ee32fbf44';
+  const url='https://api.census.gov/data/2024/acs/acs5?get=B01002_001E&for=zip%20code%20tabulation%20area:*&key=3429f2401376a586a8f6ffc02bb5678ee32fbf44';
   const res=await fetch(url,{cache:'force-cache'}); if(!res.ok) throw new Error('Census age '+res.status);
   const rows=await res.json();
   rows.slice(1).forEach(r=>{ const zip=r[r.length-1], v=parseFloat(r[0]); if(isFinite(v)&&v>10&&v<95) ageData[zip]=v; });
@@ -5202,7 +5203,7 @@ async function ensureDogData(){
   if(!dogGeoData) dogGeoData = await loadZipGeometry();
   const txZips = new Set(dogGeoData.features.map(f => f.properties.zip));
   if(Object.keys(dogRaw).length===0){
-    const url='https://api.census.gov/data/2022/acs/acs5?get=B11001_001E,B25003_001E,B25003_002E,B25024_001E,B25024_002E&for=zip%20code%20tabulation%20area:*&key=3429f2401376a586a8f6ffc02bb5678ee32fbf44';
+    const url='https://api.census.gov/data/2024/acs/acs5?get=B11001_001E,B25003_001E,B25003_002E,B25024_001E,B25024_002E&for=zip%20code%20tabulation%20area:*&key=3429f2401376a586a8f6ffc02bb5678ee32fbf44';
     const res=await fetch(url,{cache:'force-cache'}); if(!res.ok) throw new Error('Census '+res.status);
     const rows=await res.json();
     rows.slice(1).forEach(row=>{ const [hh,totOcc,ownOcc,totUnits,sfUnits,zip]=row; if(!txZips.has(zip)) return;
