@@ -4443,11 +4443,24 @@ async function toggleMpcLayer(on){
   for(const m of d.list){
     const announced = m.status==='announced';
     const style={ color:'#0d9488', weight: announced?1.6:2, dashArray: announced?'6 5':null, opacity:0.85, fillColor:'#14b8a6', fillOpacity: announced?0.10:0.18 };
-    // Real OSM-mapped boundary where available (20/30); a homes-scaled circle otherwise.
-    const circ = (m.polys && m.polys.length)
-      ? L.polygon(m.polys.map(ring=>[ring.map(pt=>[pt[1],pt[0]])]), style)
-      : L.circle([m.lat,m.lon],{ radius: Math.sqrt(m.homes)*30, ...style });
-    circ.bindTooltip(`<b>${esc(m.n)}</b> · ${m.homes.toLocaleString()} homes planned${m.polys?'':' · approx. area'}`,{sticky:true,opacity:0.95});
+    // Real OSM boundary where it covers the community; where OSM only has FRAGMENTS (early
+    // phases of a mostly-unbuilt community — Furst Ranch's one 173-acre piece made it vanish at
+    // metro zoom), keep the homes-scaled context circle AND overlay the real fragments on top.
+    const _ringArea=r=>{ let a=0; for(let i=0;i<r.length-1;i++) a+=r[i][0]*r[i+1][1]-r[i+1][0]*r[i][1]; const la=(r.reduce((t,p)=>t+p[1],0)/r.length)*Math.PI/180; return Math.abs(a)/2*111.32*111.32*Math.cos(la); };
+    let circ, mapNote='';
+    if(m.polys && m.polys.length){
+      const mapped=m.polys.reduce((t,r)=>t+_ringArea(r),0);
+      const implied=m.homes/618;                     // km² at ~2.5 homes/gross-acre, typical MPC density
+      const poly=L.polygon(m.polys.map(ring=>[ring.map(pt=>[pt[1],pt[0]])]), style);
+      if(mapped >= implied*0.45){ circ=poly; }
+      else {
+        const ctx=L.circle([m.lat,m.lon],{ radius: Math.sqrt(m.homes)*30, color:'#0d9488', weight:1.4, dashArray:'6 5', opacity:0.55, fillColor:'#14b8a6', fillOpacity:0.06 });
+        circ=L.featureGroup([ctx, poly]); mapNote=' · partly mapped';
+      }
+    } else {
+      circ=L.circle([m.lat,m.lon],{ radius: Math.sqrt(m.homes)*30, ...style }); mapNote=' · approx. area';
+    }
+    circ.bindTooltip(`<b>${esc(m.n)}</b> · ${m.homes.toLocaleString()} homes planned${mapNote}`,{sticky:true,opacity:0.95});
     const residents=Math.round(m.homes*3.0), dogHH=Math.round(m.homes*0.55);
     const kfmtM=v=>v>=1000?((v/1000).toFixed(v>=10000?0:1).replace(/\.0$/,'')+'k'):String(v);
     const stat=(v,l)=>`<div style="flex:1;text-align:center;padding:8px 4px"><div style="font-size:17px;font-weight:800;color:#0f172a;letter-spacing:-.02em">${v}</div><div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#94a3b8;margin-top:1px">${l}</div></div>`;
