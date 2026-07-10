@@ -2918,6 +2918,7 @@ function togglePropertyAddMode(){
 map.on('click', e => {
   if(drawingMode || _suppressClear) return;
   if(e.originalEvent && e.originalEvent._vfZipClick) return;   // a ZIP polygon was clicked — don't treat as click-away
+  if(typeof evalActive!=='undefined' && evalActive) return;    // an ACTIVE ANALYSIS is sticky — only its Clear button closes it (user rule; clearArea/clearZipSelection keep their teardown guards as the backstop for programmatic clears)
   if(drawnArea){ clearArea(); return; }                       // click away from a drawn area clears it
   if(selectedZips.size){ clearZipSelection(); return; }        // ditto for a ZIP selection
   if(!devMode) return;
