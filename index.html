@@ -4660,6 +4660,16 @@ function exportMpcCSV(){
     {label:'Growth score',get:x=>x.r.fGrowth.toFixed(0)}
   ], 'vetric-communities-'+(oppRegion.key||'region')+'.csv');
 }
+// Sticky tooltips on vector layers strand when a click-drag starts on the polygon (Leaflet
+// never delivers the mouseout mid-drag), leaving tooltip cards scattered over the map. Sweep
+// them closed whenever the map starts moving; the next hover reopens one cleanly.
+function _stickyTipSweep(){
+  for(const lay of [typeof tractLayer!=='undefined'?tractLayer:null, typeof mpcLayer!=='undefined'?mpcLayer:null]){
+    if(!lay) continue;
+    lay.eachLayer(l=>{ try{ l.closeTooltip(); }catch(_){} });
+  }
+}
+map.on('movestart', _stickyTipSweep);
 function _oppKillChoropleths(){
   const off=(id,fn)=>{ const el=document.getElementById(id); if(el&&el.checked){ fn(false); el.checked=false; } };
   off('toggle-income', toggleIncomeLayer);
@@ -5052,6 +5062,21 @@ function buildOppBaseInputs(){
   }
   const inRegion=(lat,lon)=> lat>=oppRegion.s&&lat<=oppRegion.n&&lon>=oppRegion.w&&lon<=oppRegion.e;
 
+  // Master-planned pipeline sample points: 9 per community (center + ring at ~0.55× the implied
+  // footprint radius). A community straddling ZIP lines apportions its remaining homes by the
+  // share of points each ZIP contains, instead of crediting everything to the center's ZIP.
+  let _mpcPts=null;
+  if(typeof _mpcData!=='undefined' && _mpcData){
+    _mpcPts=_mpcData.list.map(m=>{
+      const rem=_mpcRemaining(m); if(rem<=0) return null;
+      const rKm=Math.sqrt((m.homes/618)/Math.PI), d=rKm*0.55;
+      const dLat=d/111.32, dLon=d/(111.32*Math.cos(m.lat*Math.PI/180));
+      const pts=[[m.lat,m.lon]];
+      for(let k=0;k<8;k++){ const ang=k*Math.PI/4; pts.push([m.lat+Math.sin(ang)*dLat, m.lon+Math.cos(ang)*dLon]); }
+      return {n:m.n, rem, pts};
+    }).filter(Boolean);
+  }
+
   const rows=[];
   for(const f of geo.features){
     const zip=f.properties.zip;
@@ -5090,17 +5115,21 @@ function buildOppBaseInputs(){
         if(pointInGeoJSON(p[0],p[1],f)) retailN++;
       }
     }
-    // Master-planned pipeline: announced-but-unbuilt homes from MPCs centered in this ZIP.
-    // null = MPC data not loaded (graceful); 0 = loaded, no communities here (a real zero).
+    // Master-planned pipeline: announced-but-unbuilt homes, apportioned by footprint overlap
+    // (share of the community's 9 sample points inside this ZIP — a straddling community splits
+    // across the ZIPs it covers). null = MPC data not loaded; 0 = loaded, none here (real zero).
     let mpcRem=null, mpcNames=null;
-    if(typeof _mpcData!=='undefined' && _mpcData){
+    if(_mpcPts){
       mpcRem=0; mpcNames=[];
-      for(const m of _mpcData.list){
-        if(m.lat<bb.minLat||m.lat>bb.maxLat||m.lon<bb.minLon||m.lon>bb.maxLon) continue;
-        if(!pointInGeoJSON(m.lat,m.lon,f)) continue;
-        const rem=_mpcRemaining(m);
-        if(rem>0){ mpcRem+=rem; mpcNames.push(m.n); }
+      for(const mp of _mpcPts){
+        let hit=0;
+        for(const pt of mp.pts){
+          if(pt[0]<bb.minLat||pt[0]>bb.maxLat||pt[1]<bb.minLon||pt[1]>bb.maxLon) continue;
+          if(pointInGeoJSON(pt[0],pt[1],f)) hit++;
+        }
+        if(hit){ mpcRem+=mp.rem*hit/mp.pts.length; mpcNames.push(mp.n); }
       }
+      mpcRem=Math.round(mpcRem);
     }
     // Pipeline intensity: future dog households the pipeline adds, relative to today's base
     // (capped ×4 so one mega-community can't pin the scale). Needs a demand base to be meaningful.
