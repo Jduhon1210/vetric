@@ -913,7 +913,7 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
       <div class="layer-row">
         <div>
           <div class="layer-name">Developing communities (master-planned)</div>
-          <div class="layer-desc">30 major DFW master-planned communities under development, with resident and pet-household estimates at buildout. Real mapped boundaries where available (20 of 30); circles sized by announced homes elsewhere. Dashed = announced, not yet selling. Combinable with any fill layer.</div>
+          <div class="layer-desc">30 major DFW master-planned communities under development, with resident and pet-household estimates at buildout. Real mapped boundaries where available (20 of 30); circles sized by announced homes elsewhere. Bold teal = in the pad-engagement window (approaching the 1,500–2,500-rooftop trigger or anchor committed — when chains sign sites, 12–24 months before opening). Dashed = announced. Combinable with any fill layer.</div>
         </div>
         <label class="toggle">
           <input type="checkbox" id="toggle-mpc" onchange="toggleMpcLayer(this.checked)"/>
@@ -4426,9 +4426,43 @@ async function toggleTractLayer(on){
 // (family SF average) and dog households ≈ homes × 0.55 (these communities profile as
 // young-family growth tracts, the top of the ownership model's range). Display-only.
 let _mpcData=null, _mpcP=null, mpcLayer=null;
+// Shared ring-area (km²) for buildout-progress estimates.
+function _mpcRingArea(r){ let a=0; for(let i=0;i<r.length-1;i++) a+=r[i][0]*r[i+1][1]-r[i+1][0]*r[i][1]; const la=(r.reduce((t,p)=>t+p[1],0)/r.length)*Math.PI/180; return Math.abs(a)/2*111.32*111.32*Math.cos(la); }
+// Pad-engagement phase. The industry motion: chains sign MPC pad deals 12-24 months before
+// opening, triggered around 1,500-2,500 closed rooftops or a grocery-anchor commitment.
+// Built-homes estimate = mapped OSM footprint / implied full footprint × announced homes.
+// 'sweet' = engage now · 'watch' = pre-threshold · 'late' = threshold passed, pads likely committed.
+function _mpcPhase(m){
+  if(m.phase==='sweet') return {k:'sweet', why:'multi-phase runway keeps pad windows opening'};
+  if(m.phase==='late')  return {k:'late',  why:'buildout largely complete'};
+  const anchor=(m.note||'').match(/h-?e-?b|kroger|tom thumb|grocery|anchor/i);
+  if(m.status==='announced') return anchor
+    ? {k:'sweet', why:'anchor committed ('+anchor[0].toUpperCase()+') — the trade-area starting gun'}
+    : {k:'watch', why:'announced, pre-rooftops'};
+  if(m.polys && m.polys.length){
+    const mapped=m.polys.reduce((t,r)=>t+_mpcRingArea(r),0);
+    const progress=Math.min(1, mapped/(m.homes/618));
+    const est=Math.round(progress*m.homes);
+    if(progress>=0.8) return {k:'late', why:'~'+est.toLocaleString()+' of '+m.homes.toLocaleString()+' homes built — pads likely committed'};
+    if(est>=700) return {k:'sweet', why:'est. ~'+est.toLocaleString()+' of '+m.homes.toLocaleString()+' homes built — inside the 1,500-2,500-rooftop trigger zone'};
+    return {k:'watch', why:'est. ~'+est.toLocaleString()+' homes built — early rooftops'};
+  }
+  return {k:'watch', why:'selling; buildout stage unverified'};
+}
+// Nearest sweet-spot community within 4 mi of a point (for Evaluate site cards).
+function _mpcSweetNear(la,lo){
+  if(!_mpcData) return null;
+  let best=null, bd=1e9;
+  for(const m of _mpcData.list){
+    const ph=_mpcPhase(m); if(ph.k!=='sweet') continue;
+    const d=hav(la,lo,m.lat,m.lon);
+    if(d<bd){ bd=d; best={m, ph, mi:d/1609.344}; }
+  }
+  return (best && best.mi<=4) ? best : null;
+}
 function _loadMpc(){
   if(_mpcP) return _mpcP;
-  _mpcP=fetch('dfw-mpc.json?v=3',{cache:'force-cache'}).then(r=>r.ok?r.json():null).then(d=>(_mpcData=(d&&d.list&&d.list.length)?d:null)).catch(()=>null);
+  _mpcP=fetch('dfw-mpc.json?v=4',{cache:'force-cache'}).then(r=>r.ok?r.json():null).then(d=>(_mpcData=(d&&d.list&&d.list.length)?d:null)).catch(()=>null);
   return _mpcP;
 }
 async function toggleMpcLayer(on){
@@ -4442,7 +4476,9 @@ async function toggleMpcLayer(on){
   mpcLayer=L.layerGroup();
   for(const m of d.list){
     const announced = m.status==='announced';
-    const style={ color:'#0d9488', weight: announced?1.6:2, dashArray: announced?'6 5':null, opacity:0.85, fillColor:'#14b8a6', fillOpacity: announced?0.10:0.18 };
+    const ph=_mpcPhase(m);
+    const sweet=ph.k==='sweet';
+    const style={ color: sweet?'#0f766e':'#0d9488', weight: sweet?3:(announced?1.6:2), dashArray: announced?'6 5':null, opacity: sweet?1:0.85, fillColor:'#14b8a6', fillOpacity: sweet?0.26:(announced?0.10:0.18) };
     // Real OSM boundary where it covers the community; where OSM only has FRAGMENTS (early
     // phases of a mostly-unbuilt community — Furst Ranch's one 173-acre piece made it vanish at
     // metro zoom), keep the homes-scaled context circle AND overlay the real fragments on top.
@@ -4460,7 +4496,7 @@ async function toggleMpcLayer(on){
     } else {
       circ=L.circle([m.lat,m.lon],{ radius: Math.sqrt(m.homes)*30, ...style }); mapNote=' · approx. area';
     }
-    circ.bindTooltip(`<b>${esc(m.n)}</b> · ${m.homes.toLocaleString()} homes planned${mapNote}`,{sticky:true,opacity:0.95});
+    circ.bindTooltip(`${sweet?'⚡ ':''}<b>${esc(m.n)}</b> · ${m.homes.toLocaleString()} homes planned${sweet?' · engagement window':''}${mapNote}`,{sticky:true,opacity:0.95});
     const residents=Math.round(m.homes*3.0), dogHH=Math.round(m.homes*0.55);
     const kfmtM=v=>v>=1000?((v/1000).toFixed(v>=10000?0:1).replace(/\.0$/,'')+'k'):String(v);
     const stat=(v,l)=>`<div style="flex:1;text-align:center;padding:8px 4px"><div style="font-size:17px;font-weight:800;color:#0f172a;letter-spacing:-.02em">${v}</div><div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#94a3b8;margin-top:1px">${l}</div></div>`;
@@ -4479,6 +4515,9 @@ async function toggleMpcLayer(on){
         ${stat('~'+kfmtM(dogHH),'dog homes')}
       </div>
       ${m.note?`<div style="font-size:11px;color:#475569;line-height:1.45;margin-bottom:7px">${esc(m.note)}</div>`:''}
+      ${ph.k==='sweet'
+        ? `<div style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:9px;padding:7px 10px;margin-bottom:8px"><div style="font-size:10.5px;font-weight:800;color:#0f766e">⚡ PAD-ENGAGEMENT WINDOW</div><div style="font-size:10.5px;color:#134e4a;margin-top:2px;line-height:1.45">${esc(ph.why)}. Chains typically sign MPC sites 12–24 months before opening.</div></div>`
+        : `<div style="font-size:10.5px;color:#94a3b8;margin-bottom:7px">${ph.k==='late'?'Established':'Watch list'} — ${esc(ph.why)}.</div>`}
       <a href="${detailsHref}" target="_blank" rel="noopener" style="display:block;text-align:center;background:var(--navy,#1e3a8a);color:#fff;font-size:12px;font-weight:700;text-decoration:none;border-radius:9px;padding:8px 0">${m.web?'Community website ↗':'Find details ↗'}</a>
       <div style="font-size:9.5px;color:#94a3b8;margin-top:6px;line-height:1.4">Announced totals (${esc(m.src||'public sources')}) · buildout 10–20 yrs · est. 3.0 people, 0.55 dog households per home.</div>
     </div>`);
@@ -6040,6 +6079,7 @@ function _drawnAreaToFeature(){
 }
 async function _ensureEvalDemographics(){
   try{ await _loadTracts(); }catch(e){}                      // tract-grain demand weighting + community cards (1MB, force-cached)
+  try{ await _loadMpc(); }catch(e){}                         // MPC pad-engagement highlights on site cards (tiny, force-cached)
   const have = Object.keys(incomeData).length || (typeof oppIncomeSnap!=='undefined' && Object.keys(oppIncomeSnap).length);
   if(!have){ try{ await fetchIncomeBatch([]); }catch(e){} } // all-TX income, cached, no choropleth paint
   try{ await ensureAgeData(); }catch(e){}                    // senior-skew damp input (best-effort)
@@ -6516,6 +6556,8 @@ function _evalRenderSidebar(){
         <span class="vm-star ${_inWatch('site',sid)?'on':''}" style="margin-left:auto" title="Save site to watchlist" onclick="toggleWatchSite(${g.la},${g.lo},${headline},this)">★</span>
       </div>
       ${_communityHTML(g.la,g.lo,{small:true})}
+      ${(()=>{ const sw=_mpcSweetNear(g.la,g.lo); if(!sw) return '';
+        return `<div style="margin-top:5px;font-size:10.5px;background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;padding:5px 9px"><span style="font-weight:800;color:#0f766e">⚡ ${_ceEsc(sw.m.n)}</span> <span style="color:#134e4a">is ${sw.mi.toFixed(1)} mi away and in its pad-engagement window (${_ceEsc(sw.ph.why)}). Chains typically sign MPC sites 12–24 months before opening.</span></div>`; })()}
       ${_leaseBlock(g)}
       <div style="margin-top:7px" onclick="event.stopPropagation()">
         <button class="vm-export-btn" style="color:#6d28d9;background:#f3effd;border-color:#ddd0f7" onclick="evalDriveTime(${i},this)">◔ 10-min drive area</button>
