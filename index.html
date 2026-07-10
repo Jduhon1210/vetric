@@ -630,6 +630,15 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
 .set-opt input{margin-top:2px;flex-shrink:0;width:16px;height:16px;cursor:pointer;accent-color:var(--navy);}
 .set-opt b{color:var(--text);font-weight:600;}
 .set-opt-note{display:block;color:#64748b;font-size:12px;margin-top:2px;}
+/* ── Species-unverified modal ── */
+.spov{position:fixed;inset:0;background:rgba(15,23,42,.52);backdrop-filter:blur(4px);z-index:2100;display:none;align-items:center;justify-content:center;padding:24px;}
+.spov.show{display:flex;}
+.spmod{background:linear-gradient(180deg,#fff 0%,#fffdf5 100%);border:1px solid #fde68a;border-radius:18px;box-shadow:0 24px 80px rgba(15,23,42,.38);width:520px;max-width:100%;max-height:80vh;display:flex;flex-direction:column;overflow:hidden;animation:vfPop .28s cubic-bezier(.2,.85,.3,1.15);}
+.spmod-head{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;font-size:14.5px;font-weight:800;color:#b45309;border-bottom:1px solid #fef3c7;}
+.spmod-body{padding:14px 18px;overflow-y:auto;}
+.spmod-foot{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 18px;border-top:1px solid #fef3c7;}
+.spmod .chip{display:inline-block;margin:3px 6px 3px 0;padding:5px 12px;background:#fffbeb;border:1px solid #fde68a;border-radius:9px;font-size:12px;font-weight:600;color:#92400e;cursor:pointer;transition:transform .1s,background .15s;}
+.spmod .chip:hover{background:#fef3c7;transform:translateY(-1px);}
 /* ── Vetric AI drawer ─────────────────────────────────────────────────────── */
 #nav-ai-btn{color:#93c5fd;font-weight:700;}
 #nav-ai-btn.on{color:#fff;background:rgba(147,197,253,.18);border-radius:9px;border-bottom-color:transparent;}
@@ -1064,7 +1073,20 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
     </div>
   </div>
   <div id="zoom-msg">Zoom in to see clinics<br><span style="font-size:12px;opacity:.75">Search a city above</span></div>
-  <div id="city-eval-prompt">
+  <div class="spov" id="species-overlay" onclick="if(event.target===this)_speciesModalClose()">
+  <div class="spmod">
+    <div class="spmod-head"><span id="spmod-title">Competitors not species-verified</span><button class="settings-close" onclick="_speciesModalClose()" aria-label="Close">✕</button></div>
+    <div class="spmod-body">
+      <div style="font-size:12.5px;color:#78350f;line-height:1.55;margin-bottom:10px">These clinics are in this analysis's competition, but their websites couldn't be read — so they're judged by <b>name only</b>, which can over- or under-count large-animal practices. Click one to open its pin and set its practice type with the ⚙ editor — your classification wins everywhere and the analysis updates on save.</div>
+      <div id="spmod-chips"></div>
+    </div>
+    <div class="spmod-foot">
+      <button class="vm-export-btn" onclick="evalSpeciesIgnore()">Ignore for this analysis</button>
+      <button class="eval-btn" style="width:auto;margin:0;padding:8px 16px" onclick="_speciesModalClose()">I'll review them</button>
+    </div>
+  </div>
+</div>
+<div id="city-eval-prompt">
     <div class="cep-pin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg></div>
     <div class="cep-text"><span class="cep-name" id="cep-name">City</span><span class="cep-sub">Score the best clinic sites here</span></div>
     <button class="cep-go" onclick="evaluateCity()">Evaluate area</button>
@@ -5493,7 +5515,7 @@ const EVAL_TOP_N=3;
 // is no good site in a location" — validated against 76226 where 45/41/39 sites looked like picks).
 const EVAL_STRONG=0.50, EVAL_FLOOR=0.26;
 let evalTopMode=null, evalShowWeak=false;   // 'good' | 'fair' | 'none' ; reveal-weak-sites toggle
-let evalSpeciesIgnored=false;               // 'Ignore' on the unverified-species prompt (per analysis)
+let evalSpeciesIgnored=false, evalSpeciesPrompted=false;   // unverified-species popup state (per analysis)
 const _grav=(d,R)=>d<R?1-d/R:0;
 // Review count NO LONGER weights competition (2026-07-08, user decision): a brand-new PE clinic
 // with 1 Google review is still a real, well-capitalized competitor, so down-weighting it by
@@ -5964,6 +5986,7 @@ async function openEvaluateArea(){
   const feat=_drawnAreaToFeature();
   if(!feat){ vfToast('Could not read the drawn area — try redrawing it.'); return; }
   evalActive=true; evalAreaMode=true; evalAreaZips=null; evalZip=null; evalFeat=feat; evalZipAffluence=0.5;
+  evalSpeciesIgnored=false; evalSpeciesPrompted=false;
   const sb=document.querySelector('.sidebar');
   const setStage=msg=>_evalStage(sb,'Evaluating this area',msg);
   setStage('loading demographics…');
@@ -5982,6 +6005,7 @@ async function openEvaluate(){
   try{ await _loadTracts(); }catch(e){}                      // tract-grain demand weighting (ZIP mode skips _ensureEvalDemographics)
   const zip=[...selectedZips.keys()][0];
   evalActive=true; evalAreaMode=false; evalAreaZips=null; evalZip=zip; evalFeat=selectedZips.get(zip).feat;
+  evalSpeciesIgnored=false; evalSpeciesPrompted=false;
   const sb=document.querySelector('.sidebar');
   const setStage=msg=>_evalStage(sb,'Evaluating ZIP '+zip,msg);
   setStage('starting…');
@@ -6142,6 +6166,8 @@ function _evalComputeAndRender(){
   evalShowWeak=false;
   _evalRenderLayers();
   _evalRenderSidebar();
+  // Screen popup (once per analysis): urge classifying the unverified competitors, or ignore.
+  if(!evalSpeciesPrompted && !evalSpeciesIgnored && _speciesUnverified().length){ evalSpeciesPrompted=true; _speciesModalOpen(); }
 }
 // Plain-language reasons why this area has no strong site — read off the best cell + the
 // saturation diagnostics. Used by the honest-verdict banner.
@@ -6154,8 +6180,24 @@ function _evalWeakWhy(best){
   return r.join('; ');
 }
 function evalRevealWeak(){ evalShowWeak=true; _evalRenderLayers(); _evalRenderSidebar(); }
-function evalSpeciesIgnore(){ evalSpeciesIgnored=true; _evalRenderSidebar(); }
-function _evalGotoComp(i){ const c=evalCompsCache[i]; if(!c) return; _gotoClinic(c.lat, c.lon, c.name||''); vfToast('Open the pin\'s ⚙ to set its practice type — the analysis updates on save.'); }
+function _speciesUnverified(){
+  if(typeof VET_SPECIES==='undefined') return [];
+  const un=[]; (evalCompsCache||[]).forEach((c,i)=>{ if(!c.name) return;
+    if(_speciesAt(c.lat,c.lon)!=null) return;
+    if(_ovKindAt(Math.round(c.lat*1000)+'_'+Math.round(c.lon*1000))) return;
+    un.push({i, name:c.name}); });
+  return un;
+}
+function _speciesModalOpen(){
+  const un=_speciesUnverified(); if(!un.length) return;
+  document.getElementById('spmod-title').textContent=un.length+' competitor'+(un.length!==1?'s':'')+' not species-verified';
+  document.getElementById('spmod-chips').innerHTML=un.map(u=>`<span class="chip" onclick="_evalGotoComp(${u.i})">${_ceEsc(u.name.length>44?u.name.slice(0,43)+'…':u.name)}</span>`).join('');
+  document.getElementById('species-overlay').classList.add('show');
+}
+function _speciesModalClose(){ const el=document.getElementById('species-overlay'); if(el) el.classList.remove('show'); }
+function evalSpeciesIgnore(){ evalSpeciesIgnored=true; _speciesModalClose(); _evalRenderSidebar(); }
+function _evalGotoComp(i){ const c=evalCompsCache[i]; if(!c) return; _speciesModalClose(); _gotoClinic(c.lat, c.lon, c.name||''); vfToast('Open the pin\'s ⚙ to set its practice type — the analysis updates on save.'); }
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') _speciesModalClose(); });
 function _evalClearLayers(){ for(const k in evalLayers){ if(evalLayers[k]){ map.removeLayer(evalLayers[k]); evalLayers[k]=null; } } }
 function _evalColor(t){
   t=t<0?0:t>1?1:t;
@@ -6410,23 +6452,12 @@ function _evalRenderSidebar(){
     verdictBanner=`<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:9px 12px;margin:8px 0"><div style="font-size:12px;font-weight:800;color:#dc2626">No recommendable site in this area</div><div style="font-size:11.5px;color:#7f1d1d;margin-top:3px;line-height:1.5">Every buildable spot scores under ${Math.round(EVAL_FLOOR*100)}/100 (best: ${_bestSc}) — ${_evalWeakWhy(_bestG)}. Honest call: do not force a new build here. Acquiring an incumbent or picking a different market is the better play.</div>${evalShowWeak?'':`<button class="vm-export-btn" style="margin-top:7px" onclick="evalRevealWeak()">Show the ${evalTop.length} best spots anyway →</button>`}</div>`;
   }
   const hideCards = evalTopMode==='none' && !evalShowWeak;
-  // Unverified-species prompt: competitors in range whose species we could NOT read from a
-  // website and the analyst hasn't classified — currently judged by name heuristics only.
+  // Unverified-species: the full prompt is a SCREEN MODAL (auto-pops once per analysis from
+  // _evalComputeAndRender); the sidebar keeps only a slim reopen link.
   let speciesPrompt='';
-  if(!evalSpeciesIgnored && typeof VET_SPECIES!=='undefined'){
-    const un=[]; evalCompsCache.forEach((c,i)=>{ if(!c.name) return;
-      if(_speciesAt(c.lat,c.lon)!=null) return;
-      if(_ovKindAt(Math.round(c.lat*1000)+'_'+Math.round(c.lon*1000))) return;
-      un.push({i, name:c.name}); });
-    if(un.length){
-      const chips=un.slice(0,6).map(u=>`<span onclick="_evalGotoComp(${u.i})" style="display:inline-block;margin:2px 4px 2px 0;padding:2.5px 9px;background:#fff;border:1px solid #fde68a;border-radius:9px;font-size:10.5px;font-weight:600;color:#92400e;cursor:pointer">${_ceEsc(u.name.length>34?u.name.slice(0,33)+'…':u.name)}</span>`).join('');
-      speciesPrompt=`<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:9px 12px;margin:8px 0">
-        <div style="font-size:11.5px;font-weight:800;color:#b45309">${un.length} competitor${un.length!==1?'s':''} not species-verified</div>
-        <div style="font-size:11px;color:#78350f;margin:3px 0 5px;line-height:1.5">Their websites couldn't be read, so they're judged by name only (may over- or under-count large-animal practices). Click one to open its pin and set its practice type — your classification wins everywhere.</div>
-        ${chips}${un.length>6?`<span style="font-size:10.5px;color:#92400e"> +${un.length-6} more</span>`:''}
-        <div style="margin-top:6px"><button class="vm-export-btn" style="font-size:10.5px;padding:3px 10px" onclick="evalSpeciesIgnore()">Ignore for this analysis</button></div>
-      </div>`;
-    }
+  if(!evalSpeciesIgnored){
+    const un=_speciesUnverified();
+    if(un.length) speciesPrompt=`<div style="font-size:11px;font-weight:700;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:9px;padding:6px 10px;margin:8px 0;cursor:pointer" onclick="_speciesModalOpen()">⚠ ${un.length} competitor${un.length!==1?'s':''} not species-verified — review</div>`;
   }
   sb.innerHTML=`
     <div class="area-header">
@@ -6547,7 +6578,7 @@ async function evalDriveTime(i, btn){
 // heatmap on the map. Does NOT re-render the sidebar — the caller decides what view to restore.
 function _evalResetState(){
   evalActive=false; evalAreaMode=false; evalAreaZips=null; evalSat=null; evalZoneStat=null; evalZoneCities=[]; evalParcelCounties=[];
-  evalTopMode=null; evalShowWeak=false; evalSpeciesIgnored=false;
+  evalTopMode=null; evalShowWeak=false; evalSpeciesIgnored=false; evalSpeciesPrompted=false; _speciesModalClose();
   _evalClearLayers(); _evalHideLegend(); _evalClearDrive();
   evalData={vets:[], retail:[], resid:[], roads:[], aadt:[], zoning:[], osmLU:[], parcels:[]}; evalDataOk={retail:false,roads:false,resid:false,aadt:false,zoning:false,parcels:false};
   evalCells=[]; evalTop=[]; evalCompsCache=[];
