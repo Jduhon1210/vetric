@@ -659,6 +659,32 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
 .vf-ai-send:disabled{opacity:.5;cursor:default;}
 .vf-ai-report{align-self:flex-start;max-width:92%;border:1px solid var(--border2);border-radius:10px;padding:10px 13px;font-size:12px;background:#fff;}
 .vf-ai-report a{color:var(--navy);font-weight:700;text-decoration:none;font-size:12px;}
+/* ── AI chat motion ── */
+@keyframes vfPop{from{opacity:0;transform:translateY(10px) scale(.96);}to{opacity:1;transform:translateY(0) scale(1);}}
+@keyframes vfBounce{0%,80%,100%{transform:translateY(0);opacity:.4;}40%{transform:translateY(-4px);opacity:1;}}
+@keyframes vfSpin{to{transform:rotate(360deg);}}
+.vf-ai-m{animation:vfPop .3s cubic-bezier(.2,.85,.3,1.15);}
+.vf-ai-m.user{transform-origin:bottom right;}
+.vf-ai-m.assistant{transform-origin:bottom left;}
+.vf-ai-act{animation:vfPop .25s ease-out;transform-origin:bottom left;transition:color .25s,background .25s,border-color .25s;}
+.vf-ai-act .g{display:inline-block;animation:vfSpin 1.1s linear infinite;}
+.vf-ai-act.done .g{animation:none;}
+.vf-ai-act.done{color:#15803d;background:#f0fdf4;border-color:#bbf7d0;}
+.vf-ai-report{animation:vfPop .35s ease-out;transform-origin:bottom left;}
+.vf-ai-chips .vf-ai-chip{opacity:0;animation:vfPop .3s ease-out forwards;}
+.vf-ai-chips .vf-ai-chip:nth-child(1){animation-delay:.04s;}
+.vf-ai-chips .vf-ai-chip:nth-child(2){animation-delay:.10s;}
+.vf-ai-chips .vf-ai-chip:nth-child(3){animation-delay:.16s;}
+.vf-ai-chips .vf-ai-chip:nth-child(4){animation-delay:.22s;}
+.vf-ai-chip{transition:transform .12s,background .15s;}
+.vf-ai-chip:hover{transform:translateX(3px);}
+.vf-ai-typing-b{display:inline-flex;gap:5px;align-items:center;padding:12px 14px;}
+.vf-ai-dot{width:7px;height:7px;border-radius:50%;background:#94a3b8;animation:vfBounce 1.2s infinite ease-in-out;}
+.vf-ai-dot:nth-child(2){animation-delay:.15s;}
+.vf-ai-dot:nth-child(3){animation-delay:.3s;}
+.vf-ai-send{transition:opacity .15s,transform .1s;}
+.vf-ai-send:active:not(:disabled){transform:scale(.9);}
+@media (prefers-reduced-motion:reduce){#vf-ai *{animation:none!important;transition:none!important;}}
 /* ── App loading screen (bridges the server-authenticated visit → fully-ready app) ───── */
 #app-loader{position:fixed;inset:0;z-index:9000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;background:var(--bg);transition:opacity .4s ease;}
 #app-loader.hidden{opacity:0;pointer-events:none;}
@@ -6527,12 +6553,15 @@ function aiAddMsg(role, text){
   const box=document.getElementById('vf-ai-msgs');
   const d=document.createElement('div'); d.className='vf-ai-m '+role;
   d.innerHTML=_aiMd(text);
-  box.appendChild(d); box.scrollTop=box.scrollHeight;
+  box.appendChild(d); box.scrollTo({top:box.scrollHeight,behavior:'smooth'});
 }
 function aiAddAction(name){
   const box=document.getElementById('vf-ai-msgs');
-  const d=document.createElement('div'); d.className='vf-ai-act'; d.textContent='⚙ '+name;
-  box.appendChild(d); box.scrollTop=box.scrollHeight;
+  const d=document.createElement('div'); d.className='vf-ai-act';
+  const g=document.createElement('span'); g.className='g'; g.textContent='⚙';
+  d.appendChild(g); d.appendChild(document.createTextNode(' '+name));
+  box.appendChild(d); box.scrollTo({top:box.scrollHeight,behavior:'smooth'});
+  return d;
 }
 function _aiContext(){
   const w=(typeof getOppWeights==='function')?getOppWeights():null;
@@ -6550,8 +6579,9 @@ async function aiSend(){
   aiHistory.push({role:'user', content:q});
   aiBusy=true; document.getElementById('vf-ai-send').disabled=true;
   const box=document.getElementById('vf-ai-msgs');
-  const typing=document.createElement('div'); typing.className='vf-ai-typing'; typing.textContent='Vetric AI is working…';
-  box.appendChild(typing); box.scrollTop=box.scrollHeight;
+  const typing=document.createElement('div'); typing.className='vf-ai-m assistant vf-ai-typing-b';
+  typing.innerHTML='<span class="vf-ai-dot"></span><span class="vf-ai-dot"></span><span class="vf-ai-dot"></span>';
+  box.appendChild(typing); box.scrollTo({top:box.scrollHeight,behavior:'smooth'});
   try{ await _aiTurn(); }catch(e){ aiAddMsg('assistant','⚠ '+(e&&e.message||'Something went wrong.')); }
   typing.remove();
   aiBusy=false; document.getElementById('vf-ai-send').disabled=false;
@@ -6569,10 +6599,11 @@ async function _aiTurn(){
         const name=tc.name||(tc.function&&tc.function.name)||'';
         let args=tc.arguments||(tc.function&&tc.function.arguments)||{};
         if(typeof args==='string'){ try{ args=JSON.parse(args); }catch(e){ args={}; } }
-        aiAddAction(name);
+        const chip=aiAddAction(name);
         let result;
         try{ result=await aiExecTool(name, args); }
         catch(e){ result={error:String(e&&e.message||e)}; }
+        if(chip){ chip.classList.add('done'); const g=chip.querySelector('.g'); if(g) g.textContent='✓'; }
         aiHistory.push({role:'tool', name, content:JSON.stringify(result).slice(0,6000)});
       }
       continue;
@@ -6688,7 +6719,7 @@ async function aiExecTool(name, a){
       const d=document.createElement('div'); d.className='vf-ai-report';
       const url=URL.createObjectURL(new Blob([md], {type:'text/markdown'}));
       d.innerHTML='<b>'+_aiEsc(title)+'</b><div style="margin:6px 0 8px;max-height:220px;overflow-y:auto">'+_aiMd(md)+'</div><a href="'+url+'" download="'+_aiEsc(title.replace(/[^a-z0-9]+/gi,'-').toLowerCase())+'.md">↓ Download report (.md)</a>';
-      box.appendChild(d); box.scrollTop=box.scrollHeight;
+      box.appendChild(d); box.scrollTo({top:box.scrollHeight,behavior:'smooth'});
       return { saved:true, title };
     }
     default: return {error:'unknown tool '+name};
