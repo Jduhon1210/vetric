@@ -1116,6 +1116,7 @@ function vetricSignOut(){
 <script src="pe-data.js" defer></script>
 <script src="vet-clinics.js" defer></script>
 <script src="vet-staff.js" defer onerror="window.VET_STAFF=window.VET_STAFF||{}"></script><!-- DVMs-on-staff (build-vets.mjs); optional, app degrades gracefully if absent -->
+<script src="vet-species.js" defer onerror="window.VET_SPECIES=window.VET_SPECIES||{}"></script><!-- species focus small/large/mixed (build-species.mjs); optional -->
 <script>
 const NAVY='#1e3a8a', RED='#dc2626', AMBER='#f59e0b';
 // Set to true to revert to Overpass for independent clinics (one-line rollback)
@@ -1138,6 +1139,28 @@ function _isLargeAnimal(n){ n=String(n||'').toLowerCase();
   if(/small animal|companion|\bpets?\b|feline|canine|\bcats?\b|\bdogs?\b|mixed/.test(n)) return false;
   return true; }
 function _vfCountEquine(){ try{ return localStorage.getItem('vf_count_equine')==='1'; }catch(_){ return false; } }
+// Website-read species focus (vet-species.js, built by build-species.mjs): "small" | "large" |
+// "mixed" per clinic cell. Exact cell first, then a ~330m window (PE_COORDS coords differ
+// slightly from the scrape's VET_CLINICS coords — same tolerance as _vetStaffAt/checkPE).
+function _speciesAt(la,lo){
+  if(typeof VET_SPECIES==='undefined') return null;
+  const ci=Math.round(la*1000), cj=Math.round(lo*1000);
+  const hit=VET_SPECIES[ci+'_'+cj]; if(hit) return hit;
+  for(let di=-3;di<=3;di++) for(let dj=-4;dj<=4;dj++){ const v=VET_SPECIES[(ci+di)+'_'+(cj+dj)]; if(v) return v; }
+  return null;
+}
+// The competition-exclusion test, upgraded: the WEBSITE-read species wins when we have it
+// ("large" → excluded; "small"/"mixed" → competes — a mixed practice's site says so even when
+// its name doesn't, e.g. Argyle Vet); the conservative NAME classifier is only the fallback for
+// clinics with no readable site.
+function _isLargeAnimalAt(name,la,lo){
+  const sp=(la!=null&&lo!=null)?_speciesAt(la,lo):null;
+  if(sp==='large') return true;                    // site-verified large-animal — excluded even with a benign name (Elgin Vet)
+  if(sp==='mixed') return false;                   // site PROVES small-animal service alongside — competes (Argyle Vet)
+  // sp==='small' or no data: a bare thin-page 'small' verdict can't overturn an explicit equine
+  // name (audit: 'Waller Equine Hospital → small' was a one-generic-term artifact) — name decides.
+  return _isLargeAnimal(name);
+}
 function _activeVetClinics(){
   if(typeof VET_CLINICS==='undefined' || !VET_CLINICS.length) return [];
   return _vfIncludeMobile() ? VET_CLINICS : VET_CLINICS.filter(v=>!v.mobile);
@@ -4102,7 +4125,7 @@ function buildHexClinicIndex(){
   const add=(la,lo,pe,reviews,name)=>{
     const k=Math.round(la*1000)+'_'+Math.round(lo*1000);    // 110m dedup — exactly _evalCompetitors
     const _ov=overrides[k]; if(deleted[k]||(_ov&&_ov.exclude)||byCell.has(k)) return;
-    if(!_vfCountEquine() && !(_ov&&_ov.kind) && _isLargeAnimal(name)) return;
+    if(!_vfCountEquine() && !(_ov&&_ov.kind) && _isLargeAnimalAt(name,la,lo)) return;
     byCell.set(k,{lat:la,lon:lo,pe:!!pe,reviews:(_ov&&_ov.reviewsOv!=null)?_ov.reviewsOv:(typeof reviews==='number'?reviews:null),mult:(_ov&&_ov.mult)||1,staffN:(_vetStaffAt(la,lo)||{}).n||null});
   };
   if(peLoaded && typeof PE_COORDS!=='undefined') for(const c of PE_COORDS){
@@ -4558,7 +4581,7 @@ async function ensureRegionIndependents(){
       const key=`${Math.round(vc.lat*1000)}_${Math.round(vc.lon*1000)}`;
       if(deleted[key]) continue;
       if(checkPE(vc.name, vc.lat, vc.lon, key, overrides)) continue;
-      if(!_vfCountEquine() && _isLargeAnimal(vc.name)) continue;   // equine/large-animal: not dog-cat competition
+      if(!_vfCountEquine() && _isLargeAnimalAt(vc.name,vc.lat,vc.lon)) continue;   // equine/large-animal: not dog-cat competition
       out.push({lat:vc.lat, lon:vc.lon});
     }
     if(out.length){ oppRegionIndependents=out; return; }
@@ -4737,7 +4760,7 @@ function buildOppBaseInputs(){
       for(const coord of PE_COORDS){
         const plat=coord[0], plon=coord[1];
         if(plat<bb.minLat||plat>bb.maxLat||plon<bb.minLon||plon>bb.maxLon) continue;
-        if(!_vfCountEquine() && _isLargeAnimal(coord[4])) continue;   // equine/large-animal: not dog-cat competition
+        if(!_vfCountEquine() && _isLargeAnimalAt(coord[4],plat,plon)) continue;   // equine/large-animal: not dog-cat competition
         if(pointInGeoJSON(plat,plon,f)){ peCount++; dvm += (_vetStaffAt(plat,plon)||{}).n || 2; }
       }
     }
@@ -5348,7 +5371,7 @@ function _areaClinicCount(){
   const sig=(drawnArea.type==='rect'&&drawnArea.bounds&&drawnArea.bounds.toBBoxString?drawnArea.bounds.toBBoxString():JSON.stringify(drawnArea.points||[]))+'|'+(_vfIncludeMobile()?'m1':'m0')+(_vfCountEquine()?'e1':'e0');
   if(_areaClinCache.key===sig) return _areaClinCache;
   const deleted=getDeleted(), overrides=getOverrides(), seen=new Set(); let n=0, dvm=0;
-  const add=(la,lo,nm)=>{ const k=Math.round(la*1000)+'_'+Math.round(lo*1000); if(deleted[k]||(overrides[k]&&overrides[k].exclude)||seen.has(k))return; if(!_vfCountEquine() && !(overrides[k]&&overrides[k].kind) && _isLargeAnimal(nm)) return; seen.add(k); if(isInDrawnArea(la,lo)){ n++; dvm += (_vetStaffAt(la,lo)||{}).n || 2; } };
+  const add=(la,lo,nm)=>{ const k=Math.round(la*1000)+'_'+Math.round(lo*1000); if(deleted[k]||(overrides[k]&&overrides[k].exclude)||seen.has(k))return; if(!_vfCountEquine() && !(overrides[k]&&overrides[k].kind) && _isLargeAnimalAt(nm,la,lo)) return; seen.add(k); if(isInDrawnArea(la,lo)){ n++; dvm += (_vetStaffAt(la,lo)||{}).n || 2; } };
   if(peLoaded && typeof PE_COORDS!=='undefined') for(const c of PE_COORDS) add(c[0],c[1],c[4]);
   for(const v of _activeVetClinics()) add(v.lat,v.lon,v.name);
   _areaClinCache={key:sig,n,dvm}; return _areaClinCache;
@@ -5511,7 +5534,7 @@ function _evalZipAffluence(zip){
 function _evalCompetitors(feat, radiusMi){
   const {s,n,w,e}=_evalBuffer(feat, radiusMi);
   const deleted=getDeleted(), overrides=getOverrides(), byKey=new Map();
-  const add=(la,lo,pe,reviews,rating,name,owner)=>{ if(la<s||la>n||lo<w||lo>e) return; const k=`${Math.round(la*1000)}_${Math.round(lo*1000)}`; const _ov=overrides[k]; if(deleted[k]||(_ov&&_ov.exclude)) return; if(!_vfCountEquine() && !(_ov&&_ov.kind) && _isLargeAnimal(name)) return; const _rev=(_ov&&_ov.reviewsOv!=null)?_ov.reviewsOv:(typeof reviews==='number'?reviews:null); if(!byKey.has(k)) byKey.set(k,{lat:la,lon:lo,pe:!!pe,reviews:_rev,rating:(typeof rating==='number'?rating:null),mult:(_ov&&_ov.mult)||1,name:name||null,owner:owner||null,staffN:(_vetStaffAt(la,lo)||{}).n||null}); }; // reviews/rating/name DISPLAY-only; mult is the per-clinic competition override (Settings → edit pin)
+  const add=(la,lo,pe,reviews,rating,name,owner)=>{ if(la<s||la>n||lo<w||lo>e) return; const k=`${Math.round(la*1000)}_${Math.round(lo*1000)}`; const _ov=overrides[k]; if(deleted[k]||(_ov&&_ov.exclude)) return; if(!_vfCountEquine() && !(_ov&&_ov.kind) && _isLargeAnimalAt(name,la,lo)) return; const _rev=(_ov&&_ov.reviewsOv!=null)?_ov.reviewsOv:(typeof reviews==='number'?reviews:null); if(!byKey.has(k)) byKey.set(k,{lat:la,lon:lo,pe:!!pe,reviews:_rev,rating:(typeof rating==='number'?rating:null),mult:(_ov&&_ov.mult)||1,name:name||null,owner:owner||null,staffN:(_vetStaffAt(la,lo)||{}).n||null}); }; // reviews/rating/name DISPLAY-only; mult is the per-clinic competition override (Settings → edit pin)
   if(peLoaded && typeof PE_COORDS!=='undefined') for(const c of PE_COORDS){ if(c[0]<s||c[0]>n||c[1]<w||c[1]>e) continue; const enr=_vetEnrichAt(c[0],c[1]); add(c[0],c[1],true,enr&&enr.reviews,enr&&enr.rating, c[4]||(enr&&enr.name), c[2]); } // c[4]=clinic name, c[2]=owner/PE firm. NB: var must NOT be named 'e' — shadows the destructured east bound 'e' above → TDZ ReferenceError
   // SINGLE independent source: VET_CLINICS (Google Places, complete & not viewport-limited),
   // PE-typed via checkPE. Do NOT also fold in evalData.vets (Overpass) — that double-counted
@@ -6622,7 +6645,7 @@ async function _aiEnsureOpp(){
   oppDogSnap={}; Object.keys(dogData).forEach(z=>oppDogSnap[z]=dogData[z].est);
   oppGrowthSnap={...growthData}; oppConstructionSnap={...constructionData};
   if(!oppRegionIndependents || !oppRegionIndependents.length){
-    oppRegionIndependents=_activeVetClinics().filter(v=>v.lat>=oppRegion.s&&v.lat<=oppRegion.n&&v.lon>=oppRegion.w&&v.lon<=oppRegion.e&&!checkPE(v.name,v.lat,v.lon,null,getOverrides())&&(_vfCountEquine()||!_isLargeAnimal(v.name))).map(v=>({lat:v.lat,lon:v.lon}));
+    oppRegionIndependents=_activeVetClinics().filter(v=>v.lat>=oppRegion.s&&v.lat<=oppRegion.n&&v.lon>=oppRegion.w&&v.lon<=oppRegion.e&&!checkPE(v.name,v.lat,v.lon,null,getOverrides())&&(_vfCountEquine()||!_isLargeAnimalAt(v.name,v.lat,v.lon))).map(v=>({lat:v.lat,lon:v.lon}));
   }
   buildOppBaseInputs(); rescoreAndRender();
 }
