@@ -4458,6 +4458,15 @@ function _mpcIncome(m){
   const typical=(m.price[0]+(m.price[1]-m.price[0])*0.35)*1000;
   return Math.round(typical/3.7);
 }
+// Remaining (unbuilt) announced homes — the forward-demand pipeline a community still holds.
+// Buildout progress from the mapped OSM footprint where we have it (same estimate _mpcPhase
+// uses); announced = nothing built; selling-but-unmapped = assume mid-buildout (conservative).
+function _mpcRemaining(m){
+  let progress=0;
+  if(m.polys&&m.polys.length){ const mapped=m.polys.reduce((t,r)=>t+_mpcRingArea(r),0); progress=Math.min(1,mapped/(m.homes/618)); }
+  else if(m.status!=='announced') progress=0.5;
+  return Math.round(m.homes*(1-progress));
+}
 // Nearest sweet-spot community within 4 mi of a point (for Evaluate site cards).
 function _mpcSweetNear(la,lo){
   if(!_mpcData) return null;
@@ -4991,6 +5000,7 @@ async function openOpportunity(){
     return;
   }
 
+  try{ await _loadMpc(); }catch(_){}     // master-planned pipeline feeds the growth factor
   buildOppBaseInputs();
   oppLoading=false;
   rescoreAndRender();
@@ -5080,7 +5090,22 @@ function buildOppBaseInputs(){
         if(pointInGeoJSON(p[0],p[1],f)) retailN++;
       }
     }
-    rows.push({ zip, feat:f, city:(f.properties.city||f.properties.po_name||''), inc, dog, grow, cons, peCount, indCount, dvm, retailN });
+    // Master-planned pipeline: announced-but-unbuilt homes from MPCs centered in this ZIP.
+    // null = MPC data not loaded (graceful); 0 = loaded, no communities here (a real zero).
+    let mpcRem=null, mpcNames=null;
+    if(typeof _mpcData!=='undefined' && _mpcData){
+      mpcRem=0; mpcNames=[];
+      for(const m of _mpcData.list){
+        if(m.lat<bb.minLat||m.lat>bb.maxLat||m.lon<bb.minLon||m.lon>bb.maxLon) continue;
+        if(!pointInGeoJSON(m.lat,m.lon,f)) continue;
+        const rem=_mpcRemaining(m);
+        if(rem>0){ mpcRem+=rem; mpcNames.push(m.n); }
+      }
+    }
+    // Pipeline intensity: future dog households the pipeline adds, relative to today's base
+    // (capped ×4 so one mega-community can't pin the scale). Needs a demand base to be meaningful.
+    const mpcPipe=(mpcRem!=null && dog!=null) ? Math.min(mpcRem*0.55/Math.max(dog,50), 4) : null;
+    rows.push({ zip, feat:f, city:(f.properties.city||f.properties.po_name||''), inc, dog, grow, cons, peCount, indCount, dvm, retailN, mpcRem, mpcNames, mpcPipe });
   }
   oppBaseRows=rows;
 }
@@ -5123,6 +5148,11 @@ function rescoreAndRender(){
   const growMM=grows.length?mm(grows):{mn:0,mx:1,rng:1};
   const consMM=conss.length?mm(conss):{mn:0,mx:1,rng:1};
   const underMM=unders.length?mm(unders):{mn:0,mx:1,rng:1};
+  // Master-planned pipeline sub-index (log-spread like underservice: pipeline is heavy-tailed —
+  // most ZIPs are 0, a Celina holds several communities at once). null = MPC data not loaded.
+  const _pipeL=r=> r.mpcPipe!=null?Math.log(1+r.mpcPipe):null;
+  const pipes=oppBaseRows.map(_pipeL).filter(v=>v!=null);
+  const pipeMM=pipes.length?mm(pipes):{mn:0,mx:1,rng:1};
 
   // A missing factor scores NEUTRAL 50, not 0 — null used to mean "worst percentile in the region",
   // so a ZIP missing one Census variable sank dozens of ranks on a data gap. Mirrors the Surface's
@@ -5135,7 +5165,16 @@ function rescoreAndRender(){
     // forward signals). Construction is computed internally, not a separate dial.
     const gN = r.grow!=null ? (r.grow-growMM.mn)/growMM.rng*100 : null;
     const cN = r.cons!=null ? (r.cons-consMM.mn)/consMM.rng*100 : null;
-    const fGrowth = (gN!=null && cN!=null) ? 0.6*gN+0.4*cN : (gN!=null ? gN : (cN!=null ? cN : 50));
+    // Third growth component: announced master-planned buildout still to come (forward-looking,
+    // where ACS growth + construction share are backward-looking). Weights renormalize when a
+    // piece is missing, so pre-MPC behavior is unchanged if the data file is absent.
+    const pLv=_pipeL(r);
+    const pN = pLv!=null ? (pLv-pipeMM.mn)/pipeMM.rng*100 : null;
+    let _gAcc=0,_gW=0;
+    if(gN!=null){ _gAcc+=0.45*gN; _gW+=0.45; }
+    if(cN!=null){ _gAcc+=0.30*cN; _gW+=0.30; }
+    if(pN!=null){ _gAcc+=0.25*pN; _gW+=0.25; }
+    const fGrowth = _gW ? _gAcc/_gW : 50;
     const u=_underL(r);   // LOG-space, matching how underMM was built above
     // Competition factor is computed as underservice internally — demand-relative,
     // so a small ZIP no longer looks open just because it has a low raw clinic count.
@@ -5222,6 +5261,7 @@ function renderOppDetail(r,i){
     ${line('Median income', _fmtMoney(r.inc))}
     ${line('Population growth ’21→’24', _fmtPct(r.grow))}
     ${line('New construction (2010+)', r.cons!=null?(r.cons*100).toFixed(0)+'%':'—')}
+    ${r.mpcRem?line('Master-planned pipeline', '~'+r.mpcRem.toLocaleString()+' homes to come', (r.mpcNames||[]).slice(0,2).join(', ')+((r.mpcNames||[]).length>2?' +'+(r.mpcNames.length-2)+' more':'')):''}
     ${(()=>{const dd=(typeof dogData!=='undefined')&&dogData[r.zip]; const aF=dd&&dd.ageF; if(aF==null||aF>=0.97) return ''; const ma=(typeof ageData!=='undefined')&&ageData[r.zip]; return line('Senior-age adjustment', '−'+Math.round((1-aF)*100)+'% pet demand', ma?('median age '+Math.round(ma)):''); })()}
     ${(()=>{const dd=(typeof dogData!=='undefined')&&dogData[r.zip]; const iF=dd&&dd.incF; if(iF==null||iF>=0.97) return ''; return line('Low-income adjustment', '−'+Math.round((1-iF)*100)+'% pet demand', 'ownership rates dip in low-income areas'); })()}
     ${line('Clinics', (r.peCount+r.indCount), `${r.peCount} PE / ${r.indCount} indep`)}
@@ -5256,6 +5296,7 @@ function exportOppCSV(){
     {label:'Demand sustains DVMs (est.)',get:x=>{ if(x.r.dog==null) return ''; const cE=(typeof dogData!=='undefined'&&dogData[x.r.zip]&&dogData[x.r.zip].catEst!=null)?dogData[x.r.zip].catEst:0; return Math.max(1,Math.round((x.r.dog*OPP_VISITS_PER_DOGHH+cE*OPP_VISITS_PER_CATHH)/OPP_VISITS_PER_DVM)); }},
     {label:'Growth 21-24',get:x=>x.r.grow!=null?(x.r.grow*100).toFixed(1)+'%':''},
     {label:'New construction %',get:x=>x.r.cons!=null?(x.r.cons*100).toFixed(0):''},
+    {label:'MPC pipeline homes',get:x=>x.r.mpcRem!=null?x.r.mpcRem:''},
     {label:'PE clinics',get:x=>x.r.peCount},
     {label:'Indep clinics',get:x=>x.r.indCount},
     {label:'Income score',get:x=>x.r.fIncome.toFixed(0)},
@@ -5350,7 +5391,7 @@ function renderOppList(){
       <div class="opp-score" style="background:${col}">${Math.round(r.score)}</div>
     </div>`;
   }).join('');
-  const methodNote=`<details class="vm-method-note" style="margin-top:14px"><summary>How these scores are computed</summary><div style="margin-top:6px">Four factors — income (Census ACS 2024), pet demand (<b>modeled</b> from ACS 2024 housing), low competition (pet households per PE-weighted clinic), and growth (ACS 2021→2024 population + new construction) — each scaled 0–100 across this region's ZIPs and blended by your weights. Sub-scores are <b>region-relative percentiles</b>, not absolute. Competition is radius-based, not drive-time. A screening signal — verify before diligence.</div></details>`;
+  const methodNote=`<details class="vm-method-note" style="margin-top:14px"><summary>How these scores are computed</summary><div style="margin-top:6px">Four factors — income (Census ACS 2024), pet demand (<b>modeled</b> from ACS 2024 housing), low competition (pet households per PE-weighted clinic), and growth (ACS 2021→2024 population + new construction + announced master-planned buildout still to come) — each scaled 0–100 across this region's ZIPs and blended by your weights. Sub-scores are <b>region-relative percentiles</b>, not absolute. Competition is radius-based, not drive-time. A screening signal — verify before diligence.</div></details>`;
   wrap.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">${seg}<div style="flex:1;text-align:right;margin-right:10px;font-size:10.5px;color:#94a3b8;font-weight:600">Scores are relative to this region · click a ZIP to expand</div>${oppScored.length?_exportBtn('exportOppCSV()','Export'):''}</div>${rows}${methodNote}`;
   _oppKpiTop();
 }
@@ -7025,7 +7066,7 @@ async function _aiTurn(){
 }
 async function _aiEnsureOpp(){
   if(typeof oppScored!=='undefined' && oppScored.length) return;
-  await Promise.all([ensureIncomeData(), ensureDogData(), ensureGrowthData(), ensureConstructionData(), loadZipGeometry(), _loadOppRetail()]);
+  await Promise.all([ensureIncomeData(), ensureDogData(), ensureGrowthData(), ensureConstructionData(), loadZipGeometry(), _loadOppRetail(), _loadMpc()]);
   oppGeoSnap=incomeGeoData||_zipGeoCache; oppIncomeSnap={...incomeData};
   oppDogSnap={}; Object.keys(dogData).forEach(z=>oppDogSnap[z]=dogData[z].est);
   oppGrowthSnap={...growthData}; oppConstructionSnap={...constructionData};
