@@ -913,7 +913,7 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
       <div class="layer-row">
         <div>
           <div class="layer-name">Developing communities (master-planned)</div>
-          <div class="layer-desc">30 major DFW master-planned communities under development, sized by announced homes — with resident and pet-household estimates at buildout. Combinable with any fill layer. Dashed = announced, not yet selling.</div>
+          <div class="layer-desc">30 major DFW master-planned communities under development, with resident and pet-household estimates at buildout. Real mapped boundaries where available (20 of 30); circles sized by announced homes elsewhere. Dashed = announced, not yet selling. Combinable with any fill layer.</div>
         </div>
         <label class="toggle">
           <input type="checkbox" id="toggle-mpc" onchange="toggleMpcLayer(this.checked)"/>
@@ -4428,7 +4428,7 @@ async function toggleTractLayer(on){
 let _mpcData=null, _mpcP=null, mpcLayer=null;
 function _loadMpc(){
   if(_mpcP) return _mpcP;
-  _mpcP=fetch('dfw-mpc.json?v=1',{cache:'force-cache'}).then(r=>r.ok?r.json():null).then(d=>(_mpcData=(d&&d.list&&d.list.length)?d:null)).catch(()=>null);
+  _mpcP=fetch('dfw-mpc.json?v=2',{cache:'force-cache'}).then(r=>r.ok?r.json():null).then(d=>(_mpcData=(d&&d.list&&d.list.length)?d:null)).catch(()=>null);
   return _mpcP;
 }
 async function toggleMpcLayer(on){
@@ -4442,12 +4442,12 @@ async function toggleMpcLayer(on){
   mpcLayer=L.layerGroup();
   for(const m of d.list){
     const announced = m.status==='announced';
-    const circ=L.circle([m.lat,m.lon],{
-      radius: Math.sqrt(m.homes)*30,
-      color:'#0d9488', weight: announced?1.6:2, dashArray: announced?'6 5':null, opacity:0.85,
-      fillColor:'#14b8a6', fillOpacity: announced?0.10:0.18
-    });
-    circ.bindTooltip(`<b>${esc(m.n)}</b> · ${m.homes.toLocaleString()} homes planned`,{sticky:true,opacity:0.95});
+    const style={ color:'#0d9488', weight: announced?1.6:2, dashArray: announced?'6 5':null, opacity:0.85, fillColor:'#14b8a6', fillOpacity: announced?0.10:0.18 };
+    // Real OSM-mapped boundary where available (20/30); a homes-scaled circle otherwise.
+    const circ = (m.polys && m.polys.length)
+      ? L.polygon(m.polys.map(ring=>[ring.map(pt=>[pt[1],pt[0]])]), style)
+      : L.circle([m.lat,m.lon],{ radius: Math.sqrt(m.homes)*30, ...style });
+    circ.bindTooltip(`<b>${esc(m.n)}</b> · ${m.homes.toLocaleString()} homes planned${m.polys?'':' · approx. area'}`,{sticky:true,opacity:0.95});
     const residents=Math.round(m.homes*3.0), dogHH=Math.round(m.homes*0.55), catHH=Math.round(m.homes*0.25);
     circ.bindPopup(`<div style="font-size:12.5px;min-width:210px">
       <b>${esc(m.n)}</b> <span style="color:#64748b">· ${esc(m.city)}</span><br>
