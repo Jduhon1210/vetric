@@ -3961,7 +3961,7 @@ function closeRegionPicker(){ document.getElementById('region-overlay').classLis
 async function selectOppRegion(key){
   const r=OPP_REGIONS.find(x=>x.key===key); if(!r) return;
   oppRegion=r;
-  oppRegionIndependents=[]; oppBaseRows=[]; oppScored=[]; // force a full rebuild for the new region
+  oppRegionIndependents=[]; oppBaseRows=[]; oppScored=[]; _mpcBase=null; _mpcScored=[]; // force a full rebuild for the new region
   hexBaseRows=[]; hexScored=[]; _hexBuiltKey=''; _hexClinicIndex=null; _hexZipBuckets=null; _hexView=false;
   oppView='list'; hexStrategy='all'; document.body.classList.remove('vf-surface'); // land in List for the new region; re-entering Surface re-fits the map
   { const _p=document.getElementById('opp-panel'); if(_p) _p.classList.remove('surface-mode'); }
@@ -4081,7 +4081,7 @@ function _hexInWater(lat,lon){
   return false;
 }
 // Module state
-let oppView='list';              // 'list' | 'surface'
+let oppView='list';              // 'list' | 'surface' | 'mpc' (Communities ranking)
 let hexStrategy='all';           // 'all' | 'developed' | 'emerging' — surface strategy filter
 let _hexSelIdx=-1, _hexRegionIdx=null;     // selected hex + the surrounding-hex "region" set
 const HEX_REGION_MI=1.4;                    // radius (mi) that captures the ring of immediate neighbors
@@ -4496,6 +4496,7 @@ async function toggleMpcLayer(on){
     } else {
       circ=L.circle([m.lat,m.lon],{ radius: Math.sqrt(m.homes)*30, ...style }); mapNote=' · approx. area';
     }
+    circ._mpcN=m.n;                                  // handle for the Opportunity Communities view to find + open this popup
     circ.bindTooltip(`${sweet?'⚡ ':''}<b>${esc(m.n)}</b> · ${m.homes.toLocaleString()} homes planned${sweet?' · engagement window':''}${mapNote}`,{sticky:true,opacity:0.95});
     const residents=Math.round(m.homes*3.0), dogHH=Math.round(m.homes*0.55);
     const kfmtM=v=>v>=1000?((v/1000).toFixed(v>=10000?0:1).replace(/\.0$/,'')+'k'):String(v);
@@ -4532,6 +4533,108 @@ async function toggleMpcLayer(on){
   }
   mpcLayer.addTo(map);
   if(status) status.textContent='On · '+d.list.length+' communities · '+d.list.reduce((a,m)=>a+m.homes,0).toLocaleString()+' homes planned';
+}
+/* ── Opportunity · Communities view — rank the master-planned communities with the SAME four
+   weight sliders as the ZIP list. Same factor semantics, future-demand grain:
+   income/growth = the surrounding ZIP (snapshots), demand = announced buildout dog households
+   (homes × 0.55, log-scaled — announced totals are heavy-tailed, 15k Walsh vs 1.4k Furst),
+   competition = future dog households per DVM within 3 mi of the community (log, mirrors the
+   List's log-space underservice). Missing factor = neutral 50, like the List. Display grain:
+   pad-engagement phase + opened year ride along untouched (never scored). */
+let _mpcBase=null, _mpcScored=[];
+async function _buildMpcBase(){
+  await _loadMpc();
+  if(!_mpcData){ _mpcBase=[]; return; }
+  const geo=oppGeoSnap||_zipGeoCache;
+  const incSrc=Object.keys(oppIncomeSnap).length?oppIncomeSnap:incomeData;
+  const growthSrc=Object.keys(oppGrowthSnap).length?oppGrowthSnap:growthData;
+  const list=_mpcData.list.filter(m=>m.lat>=oppRegion.s&&m.lat<=oppRegion.n&&m.lon>=oppRegion.w&&m.lon<=oppRegion.e);
+  // ZIP containing each community center (bbox prefilter, 30 points — cheap)
+  const zipAt=(la,lo)=>{
+    if(!geo) return null;
+    for(const f of geo.features){
+      const g=f.geometry; if(!g||!f.properties||!f.properties.zip) continue;
+      const rings=g.type==='Polygon'?g.coordinates:(g.type==='MultiPolygon'?g.coordinates.flat():[]);
+      let inBB=false;
+      for(const ring of rings){ let mnLa=90,mxLa=-90,mnLo=180,mxLo=-180;
+        for(const pt of ring){ if(pt[1]<mnLa)mnLa=pt[1]; if(pt[1]>mxLa)mxLa=pt[1]; if(pt[0]<mnLo)mnLo=pt[0]; if(pt[0]>mxLo)mxLo=pt[0]; }
+        if(la>=mnLa&&la<=mxLa&&lo>=mnLo&&lo<=mxLo){ inBB=true; break; } }
+      if(inBB && pointInGeoJSON(la,lo,f)) return f.properties.zip;
+    }
+    return null;
+  };
+  const R3=3*1609.344, ov=getOverrides();
+  const rows=[];
+  for(const m of list){
+    const zip=zipAt(m.lat,m.lon);
+    const inc=zip!=null&&incSrc[zip]!=null?incSrc[zip]:null;
+    const grow=zip!=null&&growthSrc[zip]!=null?growthSrc[zip]:null;
+    const dogFut=Math.round(m.homes*0.55);
+    // DVMs within 3 mi — same per-clinic rules as the List's ZIP dvm sum (roster else 2,
+    // equine + analyst-exclude respected, PE ∪ independents deduped by ~110m cell)
+    let dvm=0, nClin=0; const seen=new Set();
+    const add=(name,la,lo)=>{
+      if(hav(m.lat,m.lon,la,lo)>R3) return;
+      const k=Math.round(la*1000)+'_'+Math.round(lo*1000);
+      if(seen.has(k)) return; seen.add(k);
+      if((ov[k]||{}).exclude) return;
+      if(!_vfCountEquine() && _isLargeAnimalAt(name,la,lo)) return;
+      dvm+=(_vetStaffAt(la,lo)||{}).n||2; nClin++;
+    };
+    if(peLoaded && typeof PE_COORDS!=='undefined') for(const c of PE_COORDS) add(c[4],c[0],c[1]);
+    for(const v of _activeVetClinics()){ if(!checkPE(v.name,v.lat,v.lon,null,ov)) add(v.name,v.lat,v.lon); }
+    rows.push({ m, zip, inc, grow, dogFut, dvm, nClin, ph:_mpcPhase(m) });
+  }
+  _mpcBase=rows;
+}
+function _rankMpcs(){
+  if(!_mpcBase||!_mpcBase.length) return [];
+  const w=getOppWeights();
+  const mm=(v,arr)=>{ if(v==null||!arr.length) return 50; const mn=Math.min(...arr),mx=Math.max(...arr); return mx>mn?((v-mn)/(mx-mn))*100:50; };
+  const incA=_mpcBase.map(r=>r.inc).filter(v=>v!=null);
+  const groA=_mpcBase.map(r=>r.grow).filter(v=>v!=null);
+  const demA=_mpcBase.map(r=>Math.log(1+r.dogFut));
+  const undA=_mpcBase.map(r=>Math.log(1+r.dogFut/(r.dvm+1)));
+  _mpcScored=_mpcBase.map((r,i)=>{
+    const fIncome=mm(r.inc,incA), fGrowth=mm(r.grow,groA);
+    const fDemand=mm(demA[i],demA), fComp=mm(undA[i],undA);
+    const score=fIncome*w.income+fDemand*w.demand+fComp*w.comp+fGrowth*w.growth;
+    return {...r,fIncome,fDemand,fComp,fGrowth,score};
+  }).sort((a,b)=>b.score-a.score);
+  return _mpcScored;
+}
+// Click a ranked community → map view, MPC layer on, fly there, open its popup.
+async function oppMpcGo(i){
+  const r=_mpcScored[i]; if(!r) return;
+  switchSection('map');
+  const cb=document.getElementById('toggle-mpc'); if(cb) cb.checked=true;
+  if(!mpcLayer) await toggleMpcLayer(true);
+  setTimeout(()=>{
+    map.invalidateSize();
+    map.setView([r.m.lat,r.m.lon],13,{animate:false});
+    if(mpcLayer) mpcLayer.eachLayer(l=>{ if(l._mpcN===r.m.n && l.openPopup) l.openPopup(); });
+  },80);
+}
+function exportMpcCSV(){
+  downloadCSV((_mpcScored||[]).map((r,i)=>({r,i})), [
+    {label:'Rank',get:x=>x.i+1},
+    {label:'Community',get:x=>x.r.m.n},
+    {label:'City',get:x=>x.r.m.city||''},
+    {label:'Composite score',get:x=>Math.round(x.r.score)},
+    {label:'Announced homes',get:x=>x.r.m.homes},
+    {label:'First homes',get:x=>x.r.m.opened||'TBD'},
+    {label:'Pad-engagement phase',get:x=>x.r.ph.k},
+    {label:'Future dog households (est.)',get:x=>x.r.dogFut},
+    {label:'ZIP',get:x=>x.r.zip||''},
+    {label:'ZIP median income',get:x=>x.r.inc!=null?Math.round(x.r.inc):''},
+    {label:'ZIP growth 21-24',get:x=>x.r.grow!=null?(x.r.grow*100).toFixed(1)+'%':''},
+    {label:'Clinics within 3 mi',get:x=>x.r.nClin},
+    {label:'DVMs within 3 mi',get:x=>x.r.dvm},
+    {label:'Income score',get:x=>x.r.fIncome.toFixed(0)},
+    {label:'Demand score',get:x=>x.r.fDemand.toFixed(0)},
+    {label:'Competition score',get:x=>x.r.fComp.toFixed(0)},
+    {label:'Growth score',get:x=>x.r.fGrowth.toFixed(0)}
+  ], 'vetric-communities-'+(oppRegion.key||'region')+'.csv');
 }
 function _oppKillChoropleths(){
   const off=(id,fn)=>{ const el=document.getElementById(id); if(el&&el.checked){ fn(false); el.checked=false; } };
@@ -5147,12 +5250,60 @@ function exportOppCSV(){
   ], 'vetric-opportunity-'+(oppRegion.key||'region')+'.csv');
 }
 
+function _renderMpcList(wrap, seg){
+  document.getElementById('opp-sub').textContent =
+    'Master-planned communities ranked by your weights · demand is the announced buildout, not today\'s rooftops';
+  if(_mpcBase===null){
+    wrap.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">${seg}</div><div class="opp-empty">Scoring the region\'s master-planned communities…</div>`;
+    _buildMpcBase().then(()=>{ if(oppView==='mpc') renderOppList(); });
+    return;
+  }
+  const ranked=_rankMpcs();
+  if(!ranked.length){
+    wrap.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">${seg}</div><div class="opp-empty">No tracked master-planned communities in ${oppRegion.name} yet.<br>The curated set currently covers DFW.</div>`;
+    return;
+  }
+  const esc=v=>String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const yrNow=new Date().getFullYear();
+  const phBadge=ph=> ph.k==='sweet'
+    ? `<span style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#0f766e;background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;padding:1.5px 7px">⚡ engage now</span>`
+    : ph.k==='late'
+      ? `<span style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#64748b;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:1.5px 7px">pads likely committed</span>`
+      : `<span style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:1.5px 7px">watch</span>`;
+  const openTxt=r=>{
+    const o=r.m.opened;
+    if(!o) return r.m.status==='announced'?'first homes TBD':'buildout stage unverified';
+    return o>yrNow ? 'first homes expected '+o : 'first homes '+o+' · selling '+Math.max(1,yrNow-o)+' yr'+(yrNow-o===1?'':'s');
+  };
+  const rows=ranked.map((r,i)=>{
+    const col=oppScoreColor(r.score);
+    return `<div class="opp-row" onclick="oppMpcGo(${i})">
+      <div class="opp-rank ${i<3?'top':''}">${i+1}</div>
+      <div class="opp-main">
+        <div class="opp-zip" style="display:flex;align-items:center;gap:7px">${esc(r.m.n)} ${phBadge(r.ph)}</div>
+        <div class="opp-city">${esc(r.m.city)} · ${r.m.homes.toLocaleString()} homes planned · ${openTxt(r)}</div>
+        <div class="opp-city" style="margin-top:1px">~${r.dogFut.toLocaleString()} dog households at buildout · ${r.nClin} clinic${r.nClin===1?'':'s'} / ${r.dvm} DVMs within 3 mi${r.zip?' · ZIP '+r.zip:''}</div>
+        <div class="opp-factors">
+          <div class="opp-fbar"><i style="width:${r.fIncome.toFixed(0)}%;background:#15803d"></i></div>
+          <div class="opp-fbar"><i style="width:${r.fDemand.toFixed(0)}%;background:#4338ca"></i></div>
+          <div class="opp-fbar"><i style="width:${r.fComp.toFixed(0)}%;background:#b45309"></i></div>
+          <div class="opp-fbar"><i style="width:${r.fGrowth.toFixed(0)}%;background:#0d9488"></i></div>
+        </div>
+        <div class="opp-flabel"><span>Income</span><span>Demand</span><span>Competition</span><span>Growth</span></div>
+      </div>
+      <div class="opp-score" style="background:${col}">${Math.round(r.score)}</div>
+    </div>`;
+  }).join('');
+  const methodNote=`<details class="vm-method-note" style="margin-top:14px"><summary>How communities are scored</summary><div style="margin-top:6px">Same four weights as the ZIP list, applied at the community grain: <b>demand</b> is the announced buildout (homes × 0.55 dog households, log-scaled), <b>competition</b> is future dog households per veterinarian already within 3 miles (log-scaled), <b>income and growth</b> come from the surrounding ZIP (Census ACS 2024). The engagement badge is timing, not score — chains typically sign community pad sites 12–24 months before opening. Announced totals are developer figures; verify before diligence.</div></details>`;
+  wrap.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">${seg}<div style="flex:1;text-align:right;margin-right:10px;font-size:10.5px;color:#94a3b8;font-weight:600">Click a community to see it on the map</div>${_exportBtn('exportMpcCSV()','Export')}</div>${rows}${methodNote}`;
+}
 function renderOppList(){
   const wrap=document.getElementById('opp-list-wrap');
   const tEl=document.getElementById('opp-title'); if(tEl) tEl.textContent='Opportunity Scores · '+oppRegion.name;
   // Two funnel stages, captioned the way PE runs them: market screen → site scoring
-  const seg=`<div><div class="opp-view-seg"><button class="${oppView==='list'?'on':''}" onclick="setOppView('list')">List</button><button class="${oppView==='surface'?'on':''}" onclick="setOppView('surface')">Surface</button></div>`+
-    `<div style="font-size:9.5px;color:#94a3b8;font-weight:600;margin-top:3px;letter-spacing:.02em">${oppView==='surface'?'Site scoring · one-mile hexes':'Market screen · ranked ZIPs'}</div></div>`;
+  const seg=`<div><div class="opp-view-seg"><button class="${oppView==='list'?'on':''}" onclick="setOppView('list')">List</button><button class="${oppView==='surface'?'on':''}" onclick="setOppView('surface')">Surface</button><button class="${oppView==='mpc'?'on':''}" onclick="setOppView('mpc')">Communities</button></div>`+
+    `<div style="font-size:9.5px;color:#94a3b8;font-weight:600;margin-top:3px;letter-spacing:.02em">${oppView==='surface'?'Site scoring · one-mile hexes':(oppView==='mpc'?'Future demand · master-planned buildouts':'Market screen · ranked ZIPs')}</div></div>`;
+  if(oppView==='mpc'){ _renderMpcList(wrap, seg); return; }
   if(oppView==='surface'){
     document.getElementById('opp-sub').textContent=`${oppScored.length} ZIPs scored across ${oppRegion.name} · opportunity surface showing the best buildable spots`;
     wrap.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">${seg}${oppScored.length?_exportBtn('exportOppCSV()','Export ZIP rankings'):''}</div>${_hexSurfaceCard()}`;
