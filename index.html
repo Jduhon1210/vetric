@@ -4411,6 +4411,31 @@ function _communityType(t){
   if((t.pop!=null && t.pop<1200)||(t.hh!=null && t.hh<400)) return {label:'Rural / low-density', c:'#64748b'};
   return {label:'Established suburban', c:'#475569'};
 }
+// ── Tract-grain modeled pet rate (Phase 2 — feeds Evaluate demand weighting) ────────────────
+// The FULL ownership model recomputed at census-tract grain: housing modifier (owner-occ +
+// single-family deviation from the DFW household-weighted average, clamped ±40% — wider than the
+// ZIP model's ±30% because tract extremes are real (Uptown tract owner-occ 0.068) and the AHS
+// tenure gap supports it) × the same senior-age curve × the same low-income damp. Cached per tract.
+let _tractPetStats=null;
+function _tractPetRate(t){
+  if(t._pr!==undefined) return t._pr;
+  if(!_tractPetStats){
+    let oW=0,oT=0,sW=0,sT=0;
+    for(const f of _tractsGeo.features){ const p=f.properties;
+      if(p.own!=null&&p.hh){oW+=p.own*p.hh;oT+=p.hh;} if(p.sf!=null&&p.hh){sW+=p.sf*p.hh;sT+=p.hh;} }
+    _tractPetStats={avgOwn:oT?oW/oT:0.6, avgSf:sT?sW/sT:0.6};
+  }
+  const A=_tractPetStats; let m=0,n=0;
+  if(t.own!=null&&A.avgOwn>0){ m+=(t.own-A.avgOwn)/A.avgOwn; n++; }
+  if(t.sf!=null&&A.avgSf>0){ m+=(t.sf-A.avgSf)/A.avgSf; n++; }
+  m=n?Math.max(-0.40,Math.min(0.40,m/n)):0;
+  const ageF=(t.age==null||t.age<=48)?1:Math.max(0.75,1-0.011*(t.age-48));
+  const incF=(t.inc==null||t.inc>=55000)?1:Math.max(0.85,1-0.15*(55000-t.inc)/25000);
+  return t._pr=0.45*(1+m)*ageF*incF;
+}
+// Rooftop pet-weight for the Evaluate demand sum: this point's tract rate relative to the 0.45
+// base, clamped so one tract can at most ~halve/1.6x a rooftop. null = outside tract coverage.
+function _tractPetW(lat,lon){ const t=_tractAt(lat,lon); if(!t) return null; return Math.max(0.4, Math.min(1.6, _tractPetRate(t)/0.45)); }
 // Compact community block for cards. Returns '' until dfw-tracts.json is loaded / outside DFW.
 function _communityHTML(lat,lon,opts){
   const t=_tractAt(lat,lon); if(!t) return '';
@@ -5826,7 +5851,7 @@ function _drawnAreaToFeature(){
   return {type:'Feature', properties:{}, geometry:{type:'Polygon', coordinates:[ring]}};
 }
 async function _ensureEvalDemographics(){
-  _loadTracts();                                             // community layer (display) — fire-and-forget
+  try{ await _loadTracts(); }catch(e){}                      // tract-grain demand weighting + community cards (1MB, force-cached)
   const have = Object.keys(incomeData).length || (typeof oppIncomeSnap!=='undefined' && Object.keys(oppIncomeSnap).length);
   if(!have){ try{ await fetchIncomeBatch([]); }catch(e){} } // all-TX income, cached, no choropleth paint
   try{ await ensureAgeData(); }catch(e){}                    // senior-skew damp input (best-effort)
@@ -5888,6 +5913,7 @@ async function openEvaluateArea(){
 }
 async function openEvaluate(){
   if(selectedZips.size!==1){ vfToast('Select a single ZIP to evaluate placement.'); return; }
+  try{ await _loadTracts(); }catch(e){}                      // tract-grain demand weighting (ZIP mode skips _ensureEvalDemographics)
   const zip=[...selectedZips.keys()][0];
   evalActive=true; evalAreaMode=false; evalAreaZips=null; evalZip=zip; evalFeat=selectedZips.get(zip).feat;
   const sb=document.querySelector('.sidebar');
@@ -5915,6 +5941,11 @@ function _evalComputeAndRender(){
   // scales the same way — fixes the long-standing 6mi over-penalty (was a known limitation).
   const A_OWN=2.5*Math.pow(evalRadiusMi/3,2), GAMMA=1.0, PE_NEAR_HARD=700;
   const comps=_evalCompetitors(feat, evalRadiusMi);
+  // Tract-grain rooftop weights (Phase 2): tag each residential point once per context-fetch.
+  // When tracts are loaded, the rooftops carry the FULL pet model (housing+age+income) at tract
+  // grain — so the ZIP-grain ageF multiplier is skipped below to avoid double-damping.
+  const tractsOn = !!_tractsGeo;
+  if(tractsOn) for(const r of evalData.resid){ if(r._pw===undefined){ const w=_tractPetW(r.lat,r.lon); r._pw=(w==null?1:w); } }
   const _cr=comps.map(c=>c.reviews).filter(r=>typeof r==='number'&&r>0).sort((a,b)=>a-b);
   const compMedRev=_cr.length?_cr[Math.floor(_cr.length/2)]:150; // median competitor review count → review-weight baseline
   const hasRetail=evalDataOk.retail, hasRoads=evalDataOk.roads, hasResid=evalDataOk.resid, hasAADT=evalDataOk.aadt;
@@ -5975,8 +6006,10 @@ function _evalComputeAndRender(){
       // frontage traffic: busiest AADT station within ~450m = the road this cell fronts
       let aadt=0, aadtRoad=null;
       for(const a of evalData.aadt){ if(Math.abs(a.lat-la)>bVis) continue; const d=hav(la,lo,a.lat,a.lon); if(d<VIS_R && a.v>aadt){ aadt=a.v; aadtRoad=a.road; } }
-      // neighborhood demand — the rooftops within ~2.5mi this site can draw from
-      let dem=0; for(const r of evalData.resid){ if(Math.abs(r.lat-la)>bDem) continue; const d=hav(la,lo,r.lat,r.lon); if(d<DEM_R) dem+=(r.w||1)*_grav(d,DEM_R); }
+      // neighborhood demand — the rooftops within ~2.5mi this site can draw from, each WEIGHTED
+      // by its census tract's modeled pet rate (tractsOn) so sites gravitate toward high-pet
+      // neighborhoods and away from senior/renter pockets, sub-ZIP (user ask, Phase 2).
+      let dem=0; for(const r of evalData.resid){ if(Math.abs(r.lat-la)>bDem) continue; const d=hav(la,lo,r.lat,r.lon); if(d<DEM_R) dem+=(r.w||1)*(tractsOn?(r._pw||1):1)*_grav(d,DEM_R); }
       // retail access (co-tenancy / visibility)
       let ret=0; for(const r of evalData.retail){ if(Math.abs(r.lat-la)>bRet) continue; const d=hav(la,lo,r.lat,r.lon); if(d<RET_R) ret+=(r.area?0.6:1)*_grav(d,RET_R); }
       // competition (border-aware gravity); scan all comps for the true nearest readout
@@ -5991,7 +6024,7 @@ function _evalComputeAndRender(){
   const maxOf=f=>Math.max(1e-6,...grid.map(f));
   const maxDem=maxOf(g=>g.dem), maxRet=maxOf(g=>g.ret), maxComp=maxOf(g=>g.comp);
   for(const g of grid){
-    g.demandN = (hasResid ? 0.55*(g.dem/maxDem)+0.45*g.affl : g.affl) * (g.ageF||1);   // senior-skew damp
+    g.demandN = (hasResid ? 0.55*(g.dem/maxDem)+0.45*g.affl : g.affl) * (tractsOn ? 1 : (g.ageF||1));   // ZIP ageF only as the non-tract fallback
     g.retailN = hasRetail ? g.ret/maxRet : 0.5;
     // Road VISIBILITY: traffic volume on the frontage road (AADT) when a count is
     // near, else road class as a proxy. The drive-by / new-client revenue signal —
@@ -6324,7 +6357,7 @@ function _evalRenderSidebar(){
     </div>
     <div class="eval-toggle-row">${chip('heat','Heatmap')}${chip('hoods','Neighborhoods')}${chip('retail','Retail')}${chip('comp','Competitor range')}${chip('zoning','Zoning map')}<span class="eval-chip ${evalZoning?'on':''}" onclick="evalToggleZoning()">Zoning filter</span></div>
     <div class="eval-cards">${hideCards?'':cards}</div>
-    <div class="eval-note">Sites are limited to commercial land — either zoned/parceled commercial, or (where that's unavailable) within a real retail/commercial area; residential, civic and rural parcels are excluded, and arterial frontage alone is not enough. Coverage is layered: municipal zoning in the 16 mapped cities, county appraisal-district parcels (Collin / Denton / Dallas) for the exurbs, and OpenStreetMap land-use elsewhere. Road visibility is weighted by TxDOT traffic counts (AADT), so a busier frontage scores higher${hasAADT?'':' (traffic data unavailable here — using road class)'}. Competition counts every clinic within range, including ones just over the ZIP border. A recommended site can sit just past the boundary (within ~0.5&nbsp;mi) where the market actually peaks — catchments don't stop at the line.</div>
+    <div class="eval-note">Neighborhood demand is weighted at census-tract grain — rooftops in higher pet-ownership communities pull sites harder than senior or renter-heavy pockets. Sites are limited to commercial land — either zoned/parceled commercial, or (where that's unavailable) within a real retail/commercial area; residential, civic and rural parcels are excluded, and arterial frontage alone is not enough. Coverage is layered: municipal zoning in the 16 mapped cities, county appraisal-district parcels (Collin / Denton / Dallas) for the exurbs, and OpenStreetMap land-use elsewhere. Road visibility is weighted by TxDOT traffic counts (AADT), so a busier frontage scores higher${hasAADT?'':' (traffic data unavailable here — using road class)'}. Competition counts every clinic within range, including ones just over the ZIP border. A recommended site can sit just past the boundary (within ~0.5&nbsp;mi) where the market actually peaks — catchments don't stop at the line.</div>
     </div>
     <div class="status-bar" id="status"></div>`;
 }
