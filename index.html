@@ -4428,7 +4428,7 @@ async function toggleTractLayer(on){
 let _mpcData=null, _mpcP=null, mpcLayer=null;
 function _loadMpc(){
   if(_mpcP) return _mpcP;
-  _mpcP=fetch('dfw-mpc.json?v=2',{cache:'force-cache'}).then(r=>r.ok?r.json():null).then(d=>(_mpcData=(d&&d.list&&d.list.length)?d:null)).catch(()=>null);
+  _mpcP=fetch('dfw-mpc.json?v=3',{cache:'force-cache'}).then(r=>r.ok?r.json():null).then(d=>(_mpcData=(d&&d.list&&d.list.length)?d:null)).catch(()=>null);
   return _mpcP;
 }
 async function toggleMpcLayer(on){
@@ -4448,14 +4448,26 @@ async function toggleMpcLayer(on){
       ? L.polygon(m.polys.map(ring=>[ring.map(pt=>[pt[1],pt[0]])]), style)
       : L.circle([m.lat,m.lon],{ radius: Math.sqrt(m.homes)*30, ...style });
     circ.bindTooltip(`<b>${esc(m.n)}</b> · ${m.homes.toLocaleString()} homes planned${m.polys?'':' · approx. area'}`,{sticky:true,opacity:0.95});
-    const residents=Math.round(m.homes*3.0), dogHH=Math.round(m.homes*0.55), catHH=Math.round(m.homes*0.25);
-    circ.bindPopup(`<div style="font-size:12.5px;min-width:210px">
-      <b>${esc(m.n)}</b> <span style="color:#64748b">· ${esc(m.city)}</span><br>
-      <span style="display:inline-block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:${announced?'#b45309':'#0f766e'};background:${announced?'#fffbeb':'#f0fdfa'};border-radius:10px;padding:2px 8px;margin:4px 0">${announced?'Announced':'Selling now'}</span><br>
-      <b>${m.homes.toLocaleString()}</b> homes planned${m.dev?` · ${esc(m.dev)}`:''}<br>
-      <span style="color:#475569">At buildout: ~<b>${residents.toLocaleString()}</b> residents · ~<b>${dogHH.toLocaleString()}</b> dog + ~${catHH.toLocaleString()} cat households</span>
-      ${m.note?`<div style="font-size:11px;color:#64748b;margin-top:3px">${esc(m.note)}</div>`:''}
-      <div style="font-size:10px;color:#94a3b8;margin-top:5px">Developer-announced totals (${esc(m.src||'public sources')}); buildout typically 10–20 yrs. Estimates: 3.0 people & 0.55 dog-HH per home (young-family profile).</div>
+    const residents=Math.round(m.homes*3.0), dogHH=Math.round(m.homes*0.55);
+    const kfmtM=v=>v>=1000?((v/1000).toFixed(v>=10000?0:1).replace(/\.0$/,'')+'k'):String(v);
+    const stat=(v,l)=>`<div style="flex:1;text-align:center;padding:8px 4px"><div style="font-size:17px;font-weight:800;color:#0f172a;letter-spacing:-.02em">${v}</div><div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#94a3b8;margin-top:1px">${l}</div></div>`;
+    const detailsHref = m.web || ('https://www.google.com/search?q='+encodeURIComponent(m.n+' '+m.city+' TX master planned community'));
+    circ.bindPopup(`<div style="font-size:12.5px;width:248px;font-family:'Inter',system-ui,sans-serif">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+        <div><div style="font-size:14.5px;font-weight:800;color:#0f172a;letter-spacing:-.01em;line-height:1.2">${esc(m.n)}</div>
+        <div style="font-size:11px;color:#64748b;margin-top:1px">${esc(m.city)}${m.dev?' · '+esc(m.dev):''}</div></div>
+        <span style="flex-shrink:0;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:${announced?'#b45309':'#0f766e'};background:${announced?'#fffbeb':'#f0fdfa'};border:1px solid ${announced?'#fde68a':'#99f6e4'};border-radius:9px;padding:2.5px 8px;margin-top:2px">${announced?'Announced':'Selling'}</span>
+      </div>
+      <div style="display:flex;background:#f8fafc;border:1px solid #eef2f7;border-radius:10px;margin:9px 0 7px">
+        ${stat(kfmtM(m.homes),'homes')}
+        <div style="width:1px;background:#eef2f7;margin:8px 0"></div>
+        ${stat('~'+kfmtM(residents),'residents')}
+        <div style="width:1px;background:#eef2f7;margin:8px 0"></div>
+        ${stat('~'+kfmtM(dogHH),'dog homes')}
+      </div>
+      ${m.note?`<div style="font-size:11px;color:#475569;line-height:1.45;margin-bottom:7px">${esc(m.note)}</div>`:''}
+      <a href="${detailsHref}" target="_blank" rel="noopener" style="display:block;text-align:center;background:var(--navy,#1e3a8a);color:#fff;font-size:12px;font-weight:700;text-decoration:none;border-radius:9px;padding:8px 0">${m.web?'Community website ↗':'Find details ↗'}</a>
+      <div style="font-size:9.5px;color:#94a3b8;margin-top:6px;line-height:1.4">Announced totals (${esc(m.src||'public sources')}) · buildout 10–20 yrs · est. 3.0 people, 0.55 dog households per home.</div>
     </div>`);
     circ.addTo(mpcLayer);
   }
