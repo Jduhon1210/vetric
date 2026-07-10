@@ -1153,7 +1153,23 @@ function _speciesAt(la,lo){
 // ("large" → excluded; "small"/"mixed" → competes — a mixed practice's site says so even when
 // its name doesn't, e.g. Argyle Vet); the conservative NAME classifier is only the fallback for
 // clinics with no readable site.
+// Cached read-only view of analyst clinic-type overrides (kind only) — reparses ONLY when the
+// stored string changes, so per-clinic competition loops stay cheap (same pattern as _vetStaffOv).
+let _ovKindRaw=null, _ovKindObj={};
+function _ovKindAt(k){
+  let raw; try{ raw=localStorage.getItem('vf_overrides')||''; }catch(_){ raw=''; }
+  if(raw!==_ovKindRaw){ _ovKindRaw=raw; _ovKindObj={};
+    try{ const o=JSON.parse(raw||'{}'); for(const kk in o){ if(o[kk]&&o[kk].kind) _ovKindObj[kk]=o[kk].kind; } }catch(_){}
+  }
+  return _ovKindObj[k]||null;
+}
 function _isLargeAnimalAt(name,la,lo){
+  if(la!=null&&lo!=null){
+    // The ANALYST's clinic-type override is authoritative in BOTH directions: kind 'large'
+    // (the editor's "Large animal / equine") excludes; any other explicit kind competes.
+    const kv=_ovKindAt(Math.round(la*1000)+'_'+Math.round(lo*1000));
+    if(kv) return kv==='large';
+  }
   const sp=(la!=null&&lo!=null)?_speciesAt(la,lo):null;
   if(sp==='large') return true;                    // site-verified large-animal — excluded even with a benign name (Elgin Vet)
   if(sp==='mixed') return false;                   // site PROVES small-animal service alongside — competes (Argyle Vet)
@@ -4125,7 +4141,7 @@ function buildHexClinicIndex(){
   const add=(la,lo,pe,reviews,name)=>{
     const k=Math.round(la*1000)+'_'+Math.round(lo*1000);    // 110m dedup — exactly _evalCompetitors
     const _ov=overrides[k]; if(deleted[k]||(_ov&&_ov.exclude)||byCell.has(k)) return;
-    if(!_vfCountEquine() && !(_ov&&_ov.kind) && _isLargeAnimalAt(name,la,lo)) return;
+    if(!_vfCountEquine() && _isLargeAnimalAt(name,la,lo)) return;
     byCell.set(k,{lat:la,lon:lo,pe:!!pe,reviews:(_ov&&_ov.reviewsOv!=null)?_ov.reviewsOv:(typeof reviews==='number'?reviews:null),mult:(_ov&&_ov.mult)||1,staffN:(_vetStaffAt(la,lo)||{}).n||null});
   };
   if(peLoaded && typeof PE_COORDS!=='undefined') for(const c of PE_COORDS){
@@ -5371,7 +5387,7 @@ function _areaClinicCount(){
   const sig=(drawnArea.type==='rect'&&drawnArea.bounds&&drawnArea.bounds.toBBoxString?drawnArea.bounds.toBBoxString():JSON.stringify(drawnArea.points||[]))+'|'+(_vfIncludeMobile()?'m1':'m0')+(_vfCountEquine()?'e1':'e0');
   if(_areaClinCache.key===sig) return _areaClinCache;
   const deleted=getDeleted(), overrides=getOverrides(), seen=new Set(); let n=0, dvm=0;
-  const add=(la,lo,nm)=>{ const k=Math.round(la*1000)+'_'+Math.round(lo*1000); if(deleted[k]||(overrides[k]&&overrides[k].exclude)||seen.has(k))return; if(!_vfCountEquine() && !(overrides[k]&&overrides[k].kind) && _isLargeAnimalAt(nm,la,lo)) return; seen.add(k); if(isInDrawnArea(la,lo)){ n++; dvm += (_vetStaffAt(la,lo)||{}).n || 2; } };
+  const add=(la,lo,nm)=>{ const k=Math.round(la*1000)+'_'+Math.round(lo*1000); if(deleted[k]||(overrides[k]&&overrides[k].exclude)||seen.has(k))return; if(!_vfCountEquine() && _isLargeAnimalAt(nm,la,lo)) return; seen.add(k); if(isInDrawnArea(la,lo)){ n++; dvm += (_vetStaffAt(la,lo)||{}).n || 2; } };
   if(peLoaded && typeof PE_COORDS!=='undefined') for(const c of PE_COORDS) add(c[0],c[1],c[4]);
   for(const v of _activeVetClinics()) add(v.lat,v.lon,v.name);
   _areaClinCache={key:sig,n,dvm}; return _areaClinCache;
@@ -5477,6 +5493,7 @@ const EVAL_TOP_N=3;
 // is no good site in a location" — validated against 76226 where 45/41/39 sites looked like picks).
 const EVAL_STRONG=0.50, EVAL_FLOOR=0.26;
 let evalTopMode=null, evalShowWeak=false;   // 'good' | 'fair' | 'none' ; reveal-weak-sites toggle
+let evalSpeciesIgnored=false;               // 'Ignore' on the unverified-species prompt (per analysis)
 const _grav=(d,R)=>d<R?1-d/R:0;
 // Review count NO LONGER weights competition (2026-07-08, user decision): a brand-new PE clinic
 // with 1 Google review is still a real, well-capitalized competitor, so down-weighting it by
@@ -5534,7 +5551,7 @@ function _evalZipAffluence(zip){
 function _evalCompetitors(feat, radiusMi){
   const {s,n,w,e}=_evalBuffer(feat, radiusMi);
   const deleted=getDeleted(), overrides=getOverrides(), byKey=new Map();
-  const add=(la,lo,pe,reviews,rating,name,owner)=>{ if(la<s||la>n||lo<w||lo>e) return; const k=`${Math.round(la*1000)}_${Math.round(lo*1000)}`; const _ov=overrides[k]; if(deleted[k]||(_ov&&_ov.exclude)) return; if(!_vfCountEquine() && !(_ov&&_ov.kind) && _isLargeAnimalAt(name,la,lo)) return; const _rev=(_ov&&_ov.reviewsOv!=null)?_ov.reviewsOv:(typeof reviews==='number'?reviews:null); if(!byKey.has(k)) byKey.set(k,{lat:la,lon:lo,pe:!!pe,reviews:_rev,rating:(typeof rating==='number'?rating:null),mult:(_ov&&_ov.mult)||1,name:name||null,owner:owner||null,staffN:(_vetStaffAt(la,lo)||{}).n||null}); }; // reviews/rating/name DISPLAY-only; mult is the per-clinic competition override (Settings → edit pin)
+  const add=(la,lo,pe,reviews,rating,name,owner)=>{ if(la<s||la>n||lo<w||lo>e) return; const k=`${Math.round(la*1000)}_${Math.round(lo*1000)}`; const _ov=overrides[k]; if(deleted[k]||(_ov&&_ov.exclude)) return; if(!_vfCountEquine() && _isLargeAnimalAt(name,la,lo)) return; const _rev=(_ov&&_ov.reviewsOv!=null)?_ov.reviewsOv:(typeof reviews==='number'?reviews:null); if(!byKey.has(k)) byKey.set(k,{lat:la,lon:lo,pe:!!pe,reviews:_rev,rating:(typeof rating==='number'?rating:null),mult:(_ov&&_ov.mult)||1,name:name||null,owner:owner||null,staffN:(_vetStaffAt(la,lo)||{}).n||null}); }; // reviews/rating/name DISPLAY-only; mult is the per-clinic competition override (Settings → edit pin)
   if(peLoaded && typeof PE_COORDS!=='undefined') for(const c of PE_COORDS){ if(c[0]<s||c[0]>n||c[1]<w||c[1]>e) continue; const enr=_vetEnrichAt(c[0],c[1]); add(c[0],c[1],true,enr&&enr.reviews,enr&&enr.rating, c[4]||(enr&&enr.name), c[2]); } // c[4]=clinic name, c[2]=owner/PE firm. NB: var must NOT be named 'e' — shadows the destructured east bound 'e' above → TDZ ReferenceError
   // SINGLE independent source: VET_CLINICS (Google Places, complete & not viewport-limited),
   // PE-typed via checkPE. Do NOT also fold in evalData.vets (Overpass) — that double-counted
@@ -6137,6 +6154,8 @@ function _evalWeakWhy(best){
   return r.join('; ');
 }
 function evalRevealWeak(){ evalShowWeak=true; _evalRenderLayers(); _evalRenderSidebar(); }
+function evalSpeciesIgnore(){ evalSpeciesIgnored=true; _evalRenderSidebar(); }
+function _evalGotoComp(i){ const c=evalCompsCache[i]; if(!c) return; _gotoClinic(c.lat, c.lon, c.name||''); vfToast('Open the pin\'s ⚙ to set its practice type — the analysis updates on save.'); }
 function _evalClearLayers(){ for(const k in evalLayers){ if(evalLayers[k]){ map.removeLayer(evalLayers[k]); evalLayers[k]=null; } } }
 function _evalColor(t){
   t=t<0?0:t>1?1:t;
@@ -6391,6 +6410,24 @@ function _evalRenderSidebar(){
     verdictBanner=`<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:9px 12px;margin:8px 0"><div style="font-size:12px;font-weight:800;color:#dc2626">No recommendable site in this area</div><div style="font-size:11.5px;color:#7f1d1d;margin-top:3px;line-height:1.5">Every buildable spot scores under ${Math.round(EVAL_FLOOR*100)}/100 (best: ${_bestSc}) — ${_evalWeakWhy(_bestG)}. Honest call: do not force a new build here. Acquiring an incumbent or picking a different market is the better play.</div>${evalShowWeak?'':`<button class="vm-export-btn" style="margin-top:7px" onclick="evalRevealWeak()">Show the ${evalTop.length} best spots anyway →</button>`}</div>`;
   }
   const hideCards = evalTopMode==='none' && !evalShowWeak;
+  // Unverified-species prompt: competitors in range whose species we could NOT read from a
+  // website and the analyst hasn't classified — currently judged by name heuristics only.
+  let speciesPrompt='';
+  if(!evalSpeciesIgnored && typeof VET_SPECIES!=='undefined'){
+    const un=[]; evalCompsCache.forEach((c,i)=>{ if(!c.name) return;
+      if(_speciesAt(c.lat,c.lon)!=null) return;
+      if(_ovKindAt(Math.round(c.lat*1000)+'_'+Math.round(c.lon*1000))) return;
+      un.push({i, name:c.name}); });
+    if(un.length){
+      const chips=un.slice(0,6).map(u=>`<span onclick="_evalGotoComp(${u.i})" style="display:inline-block;margin:2px 4px 2px 0;padding:2.5px 9px;background:#fff;border:1px solid #fde68a;border-radius:9px;font-size:10.5px;font-weight:600;color:#92400e;cursor:pointer">${_ceEsc(u.name.length>34?u.name.slice(0,33)+'…':u.name)}</span>`).join('');
+      speciesPrompt=`<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:9px 12px;margin:8px 0">
+        <div style="font-size:11.5px;font-weight:800;color:#b45309">${un.length} competitor${un.length!==1?'s':''} not species-verified</div>
+        <div style="font-size:11px;color:#78350f;margin:3px 0 5px;line-height:1.5">Their websites couldn't be read, so they're judged by name only (may over- or under-count large-animal practices). Click one to open its pin and set its practice type — your classification wins everywhere.</div>
+        ${chips}${un.length>6?`<span style="font-size:10.5px;color:#92400e"> +${un.length-6} more</span>`:''}
+        <div style="margin-top:6px"><button class="vm-export-btn" style="font-size:10.5px;padding:3px 10px" onclick="evalSpeciesIgnore()">Ignore for this analysis</button></div>
+      </div>`;
+    }
+  }
   sb.innerHTML=`
     <div class="area-header">
       <span class="area-title">Placement analysis · ${evalZip||'drawn area'}</span>
@@ -6399,6 +6436,7 @@ function _evalRenderSidebar(){
     <div class="eval-scroll">
     ${evalSat?`<div class="eval-grade" style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="font-weight:800;font-size:18px;color:${evalSat.grade.c};border:2px solid ${evalSat.grade.c};border-radius:8px;padding:2px 10px">${evalSat.grade.l}</span><span style="font-weight:700;color:${evalSat.grade.c}">${evalSat.grade.t}</span></div><div class="eval-verdict">${evalSat.capCeil<0.30?'<span class="eval-strong">No strong placement in this ZIP — market is saturated.</span> ':''}Best winnable score ${Math.round(evalSat.capCeil*100)}/100 · median share ${evalSat.medShare.toFixed(2)} · ${evalSat.peInRange} PE + ${evalSat.indInRange} independent in range · ${evalSat.pctInCatch}% of buildable land inside a competitor catchment.${warn}</div>`:`<div class="eval-verdict"><span class="eval-strong">${strongN} recommended site${strongN!==1?'s':''}${strongN<evalTop.length?` · ${evalTop.length-strongN} below the bar`:''}.</span> ${evalCells.length} commercially-siteable cells scored; subdivision interiors &amp; rural land excluded.${warn}</div>`}
     ${verdictBanner}
+    ${speciesPrompt}
     ${zoneLine}
     <div class="eval-slider">
       <div class="eval-slider-row"><span>Competitor range</span><span id="eval-range-val">${evalRadiusMi.toFixed(1)} mi</span></div>
@@ -6509,7 +6547,7 @@ async function evalDriveTime(i, btn){
 // heatmap on the map. Does NOT re-render the sidebar — the caller decides what view to restore.
 function _evalResetState(){
   evalActive=false; evalAreaMode=false; evalAreaZips=null; evalSat=null; evalZoneStat=null; evalZoneCities=[]; evalParcelCounties=[];
-  evalTopMode=null; evalShowWeak=false;
+  evalTopMode=null; evalShowWeak=false; evalSpeciesIgnored=false;
   _evalClearLayers(); _evalHideLegend(); _evalClearDrive();
   evalData={vets:[], retail:[], resid:[], roads:[], aadt:[], zoning:[], osmLU:[], parcels:[]}; evalDataOk={retail:false,roads:false,resid:false,aadt:false,zoning:false,parcels:false};
   evalCells=[]; evalTop=[]; evalCompsCache=[];
