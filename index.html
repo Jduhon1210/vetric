@@ -848,8 +848,9 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
   <div class="layers-panel" id="layers-panel">
     <div class="layers-panel-header">Clinic Type</div>
     <div class="company-filters" style="border-bottom:1px solid var(--border)">
-      <div class="company-filters-title">Show clinic types <span style="font-weight:500;text-transform:none;letter-spacing:0;color:var(--subtle)">— inferred from name</span></div>
+      <div class="company-filters-title">Show clinic types <span style="font-weight:500;text-transform:none;letter-spacing:0;color:var(--subtle)">— from websites + names</span></div>
       <div class="company-check"><input type="checkbox" id="type-small" checked onchange="toggleClinicType('small',this.checked)"/><label for="type-small">Small animal</label></div>
+      <div class="company-check"><input type="checkbox" id="type-mixed" checked onchange="toggleClinicType('mixed',this.checked)"/><label for="type-mixed">Mixed (small + large)</label></div>
       <div class="company-check"><input type="checkbox" id="type-large" checked onchange="toggleClinicType('large',this.checked)"/><label for="type-large">Large animal / equine</label></div>
       <div class="company-check"><input type="checkbox" id="type-specialty" checked onchange="toggleClinicType('specialty',this.checked)"/><label for="type-specialty">Specialty / ER</label></div>
       <div class="layer-status" id="type-status" style="padding-top:4px">All types shown</div>
@@ -1413,9 +1414,23 @@ function clinicCategory(name){
   if(/\bspecialt|\breferral\b|\bemergenc|critical care|\b24[\- ]?hour|\ber\b for|oncolog|cardiolog|neurolog|ophthalmolog|dermatolog|bluepearl|\bmedvet\b|veterinary emergenc|\bveg\b|surgical (center|specialists|group)/.test(n)) return 'specialty';
   return 'small';
 }
-function _kindOf(c){ return c._kind || (c._kind = clinicCategory(c.name)); }
-const CLINIC_KIND_LABEL = {small:'Small animal', large:'Large animal', specialty:'Specialty / ER'};
-let TYPE_ON = {small:true, large:true, specialty:true};
+// Kind = analyst override (applied to c._kind on fetch commit) → name 'specialty' (an axis the
+// species scan can't see) → WEBSITE-verified species (large / mixed / small — same precedence
+// rules as scoring: a thin-page 'small' verdict can't overturn an equine NAME) → name heuristic.
+function _kindOf(c){
+  if(c._kind) return c._kind;
+  const nameK = clinicCategory(c.name);
+  let k = nameK;
+  if(nameK !== 'specialty'){
+    const sp = _speciesAt(c.lat, c.lon);
+    if(sp === 'large') k = 'large';
+    else if(sp === 'mixed') k = 'mixed';
+    else if(sp === 'small') k = (nameK === 'large') ? 'large' : 'small';
+  }
+  return (c._kind = k);
+}
+const CLINIC_KIND_LABEL = {small:'Small animal', large:'Large animal', mixed:'Mixed practice', specialty:'Specialty / ER'};
+let TYPE_ON = {small:true, large:true, mixed:true, specialty:true};
 function _typeOKkind(k){ return TYPE_ON[k||'small']!==false; }
 function _typeOK(c){ return _typeOKkind(_kindOf(c)); }
 // Re-apply combined visibility = (base filter via _baseVisible) AND (clinic-type filter).
@@ -1492,10 +1507,10 @@ function buildPopup(c) {
     : '';
   const telHTML = c.tel ? `<div class="popup-contact"><a href="tel:${(''+c.tel).replace(/[^0-9+]/g,'')}">${c.tel}</a></div>` : '';
   const addrHTML = c.addr ? `<div class="popup-addr">${c.addr.replace(/,?\s*USA\s*$/i,'')}</div>` : '';
-  const _sp=_speciesAt(c.lat,c.lon);
-  const _spLabel={small:'Small animal',large:'Large animal / equine',mixed:'Mixed practice'}[_sp];
-  const kindHTML = `<div style="display:inline-block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#475569;background:#eef2f7;border-radius:10px;padding:2px 8px;margin-top:5px">${CLINIC_KIND_LABEL[_kindOf(c)]}</div>`
-    + (_spLabel?`<div style="display:inline-block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--navy);background:#eef2fb;border:1px solid #dbe3f4;border-radius:10px;padding:2px 8px;margin:5px 0 0 5px" title="Read from the clinic's own website by the species scan">${_spLabel} · site-verified</div>`:'');
+  const _kind=_kindOf(c);
+  const _ovK=_ovKindAt(key), _sp=_speciesAt(c.lat,c.lon);
+  const _src=_ovK?' · analyst':(_sp?' · site-verified':'');
+  const kindHTML = `<div style="display:inline-block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:${_src?'var(--navy)':'#475569'};background:${_src?'#eef2fb':'#eef2f7'};${_src?'border:1px solid #dbe3f4;':''}border-radius:10px;padding:2px 8px;margin-top:5px" title="${_ovK?'Set by you in the clinic editor':_sp?'Read from the clinic\'s own website':'Inferred from the clinic name'}">${CLINIC_KIND_LABEL[_kind]||_kind}${_src}</div>`;
 
   let peHTML;
   if (!c.peChecked) {
@@ -1650,7 +1665,7 @@ function openClinicEditor(key){
         </div></div>
         <div class="cedit-sec"><div class="cedit-sec-h">Ownership &amp; competition</div><div class="cedit-grid">
           <div class="cedit-f full"><label>PE firm / owner — leave blank for independent</label><input id="ce-pe" list="ce-firms" value="${esc(owner)}" placeholder="e.g. Mars, Shore Capital Partners…"></div>
-          ${_ceSel('ce-kind','Clinic type',kind,['small:Small animal','large:Large animal / equine','specialty:Specialty / ER','mobile:Mobile / house-call'])}
+          ${_ceSel('ce-kind','Clinic type',kind,['small:Small animal','mixed:Mixed (small + large)','large:Large animal / equine','specialty:Specialty / ER','mobile:Mobile / house-call'])}
           ${(()=>{const sp=_speciesAt(c.lat,c.lon); if(!sp) return '<div class="cedit-f full" style="font-size:11px;color:#94a3b8;margin-top:-6px">Species scan: no readable website. Set the type above if you know this practice.</div>'; const l={small:'small animal',large:'large animal / equine',mixed:'mixed (small + large animal)'}[sp]; return `<div class="cedit-f full" style="font-size:11px;color:#475569;margin-top:-6px">Species scan (from the clinic's website): <b>${l}</b>. Your Clinic type selection overrides it.</div>`;})()}
           <div class="cedit-f"><label>Competition weight × (0–5)</label><input id="ce-mult" type="number" min="0" max="5" step="0.1" value="${mult}"></div>
           <div class="cedit-f full"><label class="cedit-check"><input type="checkbox" id="ce-exclude"${o.exclude?' checked':''}> Exclude from all scoring &amp; competition (keeps the pin, mutes its market impact)</label></div>
