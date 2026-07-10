@@ -4462,7 +4462,7 @@ function _mpcSweetNear(la,lo){
 }
 function _loadMpc(){
   if(_mpcP) return _mpcP;
-  _mpcP=fetch('dfw-mpc.json?v=4',{cache:'force-cache'}).then(r=>r.ok?r.json():null).then(d=>(_mpcData=(d&&d.list&&d.list.length)?d:null)).catch(()=>null);
+  _mpcP=fetch('dfw-mpc.json?v=5',{cache:'force-cache'}).then(r=>r.ok?r.json():null).then(d=>(_mpcData=(d&&d.list&&d.list.length)?d:null)).catch(()=>null);
   return _mpcP;
 }
 async function toggleMpcLayer(on){
@@ -4507,6 +4507,13 @@ async function toggleMpcLayer(on){
         <div style="font-size:11px;color:#64748b;margin-top:1px">${esc(m.city)}${m.dev?' · '+esc(m.dev):''}</div></div>
         <span style="flex-shrink:0;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:${announced?'#b45309':'#0f766e'};background:${announced?'#fffbeb':'#f0fdfa'};border:1px solid ${announced?'#fde68a':'#99f6e4'};border-radius:9px;padding:2.5px 8px;margin-top:2px">${announced?'Announced':'Selling'}</span>
       </div>
+      ${(()=>{ const yr=new Date().getFullYear();
+        if(m.opened){
+          if(m.opened>yr) return `<div style="font-size:11px;font-weight:700;color:#b45309;margin-top:4px">First homes expected ${m.opened}</div>`;
+          const yrs=yr-m.opened;
+          return `<div style="font-size:11px;color:#64748b;margin-top:4px">First homes <b style="color:#0f172a">${m.opened}</b> · selling ${yrs<1?'under a year':yrs+' year'+(yrs===1?'':'s')}</div>`;
+        }
+        return announced?`<div style="font-size:11px;font-weight:700;color:#b45309;margin-top:4px">First homes TBD</div>`:''; })()}
       <div style="display:flex;background:#f8fafc;border:1px solid #eef2f7;border-radius:10px;margin:11px 0 9px">
         ${stat(kfmtM(m.homes),'homes')}
         <div style="width:1px;background:#eef2f7;margin:8px 0"></div>
