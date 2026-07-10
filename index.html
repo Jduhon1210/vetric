@@ -633,12 +633,12 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
 /* ── Species-unverified modal ── */
 .spov{position:fixed;inset:0;background:rgba(15,23,42,.52);backdrop-filter:blur(4px);z-index:2100;display:none;align-items:center;justify-content:center;padding:24px;}
 .spov.show{display:flex;}
-.spmod{background:linear-gradient(180deg,#fff 0%,#fffdf5 100%);border:1px solid #fde68a;border-radius:18px;box-shadow:0 24px 80px rgba(15,23,42,.38);width:520px;max-width:100%;max-height:80vh;display:flex;flex-direction:column;overflow:hidden;animation:vfPop .28s cubic-bezier(.2,.85,.3,1.15);}
-.spmod-head{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;font-size:14.5px;font-weight:800;color:#b45309;border-bottom:1px solid #fef3c7;}
+.spmod{background:#fff;border-radius:18px;box-shadow:0 24px 80px rgba(15,23,42,.38),0 2px 8px rgba(15,23,42,.12);width:520px;max-width:100%;max-height:80vh;display:flex;flex-direction:column;overflow:hidden;animation:vfPop .28s cubic-bezier(.2,.85,.3,1.15);}
+.spmod-head{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;font-size:14.5px;font-weight:800;color:var(--navy);border-bottom:1px solid var(--border);}
 .spmod-body{padding:14px 18px;overflow-y:auto;}
-.spmod-foot{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 18px;border-top:1px solid #fef3c7;}
-.spmod .chip{display:inline-block;margin:3px 6px 3px 0;padding:5px 12px;background:#fffbeb;border:1px solid #fde68a;border-radius:9px;font-size:12px;font-weight:600;color:#92400e;cursor:pointer;transition:transform .1s,background .15s;}
-.spmod .chip:hover{background:#fef3c7;transform:translateY(-1px);}
+.spmod-foot{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 18px;border-top:1px solid var(--border);}
+.spmod .chip{display:inline-block;margin:3px 6px 3px 0;padding:5px 12px;background:#eef2fb;border:1px solid #dbe3f4;border-radius:9px;font-size:12px;font-weight:600;color:var(--navy);cursor:pointer;transition:transform .1s,background .15s;}
+.spmod .chip:hover{background:#e0e7f7;transform:translateY(-1px);}
 /* ── Vetric AI drawer ─────────────────────────────────────────────────────── */
 #nav-ai-btn{color:#93c5fd;font-weight:700;}
 #nav-ai-btn.on{color:#fff;background:rgba(147,197,253,.18);border-radius:9px;border-bottom-color:transparent;}
@@ -1075,14 +1075,14 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
   <div id="zoom-msg">Zoom in to see clinics<br><span style="font-size:12px;opacity:.75">Search a city above</span></div>
   <div class="spov" id="species-overlay" onclick="if(event.target===this)_speciesModalClose()">
   <div class="spmod">
-    <div class="spmod-head"><span id="spmod-title">Competitors not species-verified</span><button class="settings-close" onclick="_speciesModalClose()" aria-label="Close">✕</button></div>
+    <div class="spmod-head"><span id="spmod-title">Competitors missing species data</span><button class="settings-close" onclick="_speciesModalClose()" aria-label="Close">✕</button></div>
     <div class="spmod-body">
-      <div style="font-size:12.5px;color:#78350f;line-height:1.55;margin-bottom:10px">These clinics are in this analysis's competition, but their websites couldn't be read — so they're judged by <b>name only</b>, which can over- or under-count large-animal practices. Click one to open its pin and set its practice type with the ⚙ editor — your classification wins everywhere and the analysis updates on save.</div>
+      <div style="font-size:12.5px;color:var(--text2);line-height:1.6;margin-bottom:10px">Vetric reads each competitor's website to tag it small animal, large animal, or mixed. These sites couldn't be read, so the model fell back to name matching for them. If you know any of these practices, click one and set the type in its pin editor (⚙). That override beats every automated signal and the analysis recalculates on save.</div>
       <div id="spmod-chips"></div>
     </div>
     <div class="spmod-foot">
       <button class="vm-export-btn" onclick="evalSpeciesIgnore()">Ignore for this analysis</button>
-      <button class="eval-btn" style="width:auto;margin:0;padding:8px 16px" onclick="_speciesModalClose()">I'll review them</button>
+      <button class="eval-btn" style="width:auto;margin:0;padding:8px 16px" onclick="_speciesModalClose()">Review later</button>
     </div>
   </div>
 </div>
@@ -6190,7 +6190,7 @@ function _speciesUnverified(){
 }
 function _speciesModalOpen(){
   const un=_speciesUnverified(); if(!un.length) return;
-  document.getElementById('spmod-title').textContent=un.length+' competitor'+(un.length!==1?'s':'')+' not species-verified';
+  document.getElementById('spmod-title').textContent=un.length+' competitor'+(un.length!==1?'s':'')+' missing species data';
   document.getElementById('spmod-chips').innerHTML=un.map(u=>`<span class="chip" onclick="_evalGotoComp(${u.i})">${_ceEsc(u.name.length>44?u.name.slice(0,43)+'…':u.name)}</span>`).join('');
   document.getElementById('species-overlay').classList.add('show');
 }
@@ -6457,7 +6457,7 @@ function _evalRenderSidebar(){
   let speciesPrompt='';
   if(!evalSpeciesIgnored){
     const un=_speciesUnverified();
-    if(un.length) speciesPrompt=`<div style="font-size:11px;font-weight:700;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:9px;padding:6px 10px;margin:8px 0;cursor:pointer" onclick="_speciesModalOpen()">⚠ ${un.length} competitor${un.length!==1?'s':''} not species-verified — review</div>`;
+    if(un.length) speciesPrompt=`<div style="font-size:11px;font-weight:700;color:var(--navy);background:#eef2fb;border:1px solid #dbe3f4;border-radius:9px;padding:6px 10px;margin:8px 0;cursor:pointer" onclick="_speciesModalOpen()">${un.length} competitor${un.length!==1?'s':''} missing species data · review</div>`;
   }
   sb.innerHTML=`
     <div class="area-header">
