@@ -912,6 +912,19 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
     <div class="layer-item">
       <div class="layer-row">
         <div>
+          <div class="layer-name">Developing communities (master-planned)</div>
+          <div class="layer-desc">30 major DFW master-planned communities under development, sized by announced homes — with resident and pet-household estimates at buildout. Combinable with any fill layer. Dashed = announced, not yet selling.</div>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="toggle-mpc" onchange="toggleMpcLayer(this.checked)"/>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <div class="layer-status" id="mpc-status">Off</div>
+    </div>
+    <div class="layer-item">
+      <div class="layer-row">
+        <div>
           <div class="layer-name">Available Properties</div>
           <div class="layer-desc">Curated lease / sale / lot listings</div>
         </div>
@@ -4406,6 +4419,48 @@ async function toggleTractLayer(on){
   if(tractLayer.bringToBack) tractLayer.bringToBack();
   if(legend) legend.classList.add('show');
   if(status) status.textContent='On · '+geo.features.length.toLocaleString()+' tracts';
+}
+// ── Developing communities (master-planned) — OVERLAY, combinable with any fill ─────────────
+// dfw-mpc.json: curated list of DFW's major MPCs (developer announcements + RCLCO rankings).
+// Circles sized by announced homes; popup carries buildout estimates: residents ≈ homes × 3.0
+// (family SF average) and dog households ≈ homes × 0.55 (these communities profile as
+// young-family growth tracts, the top of the ownership model's range). Display-only.
+let _mpcData=null, _mpcP=null, mpcLayer=null;
+function _loadMpc(){
+  if(_mpcP) return _mpcP;
+  _mpcP=fetch('dfw-mpc.json?v=1',{cache:'force-cache'}).then(r=>r.ok?r.json():null).then(d=>(_mpcData=(d&&d.list&&d.list.length)?d:null)).catch(()=>null);
+  return _mpcP;
+}
+async function toggleMpcLayer(on){
+  const status=document.getElementById('mpc-status');
+  if(!on){ if(mpcLayer){ map.removeLayer(mpcLayer); mpcLayer=null; } if(status) status.textContent='Off'; return; }
+  if(status) status.textContent='Loading…';
+  const d=await _loadMpc();
+  if(!d){ if(status) status.textContent='Data unavailable'; const cb=document.getElementById('toggle-mpc'); if(cb) cb.checked=false; return; }
+  if(mpcLayer){ map.removeLayer(mpcLayer); mpcLayer=null; }
+  const esc=v=>String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  mpcLayer=L.layerGroup();
+  for(const m of d.list){
+    const announced = m.status==='announced';
+    const circ=L.circle([m.lat,m.lon],{
+      radius: Math.sqrt(m.homes)*30,
+      color:'#0d9488', weight: announced?1.6:2, dashArray: announced?'6 5':null, opacity:0.85,
+      fillColor:'#14b8a6', fillOpacity: announced?0.10:0.18
+    });
+    circ.bindTooltip(`<b>${esc(m.n)}</b> · ${m.homes.toLocaleString()} homes planned`,{sticky:true,opacity:0.95});
+    const residents=Math.round(m.homes*3.0), dogHH=Math.round(m.homes*0.55), catHH=Math.round(m.homes*0.25);
+    circ.bindPopup(`<div style="font-size:12.5px;min-width:210px">
+      <b>${esc(m.n)}</b> <span style="color:#64748b">· ${esc(m.city)}</span><br>
+      <span style="display:inline-block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:${announced?'#b45309':'#0f766e'};background:${announced?'#fffbeb':'#f0fdfa'};border-radius:10px;padding:2px 8px;margin:4px 0">${announced?'Announced':'Selling now'}</span><br>
+      <b>${m.homes.toLocaleString()}</b> homes planned${m.dev?` · ${esc(m.dev)}`:''}<br>
+      <span style="color:#475569">At buildout: ~<b>${residents.toLocaleString()}</b> residents · ~<b>${dogHH.toLocaleString()}</b> dog + ~${catHH.toLocaleString()} cat households</span>
+      ${m.note?`<div style="font-size:11px;color:#64748b;margin-top:3px">${esc(m.note)}</div>`:''}
+      <div style="font-size:10px;color:#94a3b8;margin-top:5px">Developer-announced totals (${esc(m.src||'public sources')}); buildout typically 10–20 yrs. Estimates: 3.0 people & 0.55 dog-HH per home (young-family profile).</div>
+    </div>`);
+    circ.addTo(mpcLayer);
+  }
+  mpcLayer.addTo(map);
+  if(status) status.textContent='On · '+d.list.length+' communities · '+d.list.reduce((a,m)=>a+m.homes,0).toLocaleString()+' homes planned';
 }
 function _oppKillChoropleths(){
   const off=(id,fn)=>{ const el=document.getElementById(id); if(el&&el.checked){ fn(false); el.checked=false; } };
