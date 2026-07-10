@@ -4449,6 +4449,15 @@ function _mpcPhase(m){
   }
   return {k:'watch', why:'selling; buildout stage unverified'};
 }
+// Buyer-income estimate from the community's builder base-price range ($k). Volume skews to
+// the entry price points, so the typical sale ≈ low + 35% of the spread; income ≈ price / 3.7
+// (the standard new-build affordability ratio). Validated against ZIP medians where the ZIP is
+// dominated by the community: Heartland → $86k vs ZIP $88k, Elevon → $100k vs ZIP $102k.
+function _mpcIncome(m){
+  if(!m.price||m.price.length<2) return null;
+  const typical=(m.price[0]+(m.price[1]-m.price[0])*0.35)*1000;
+  return Math.round(typical/3.7);
+}
 // Nearest sweet-spot community within 4 mi of a point (for Evaluate site cards).
 function _mpcSweetNear(la,lo){
   if(!_mpcData) return null;
@@ -4462,7 +4471,7 @@ function _mpcSweetNear(la,lo){
 }
 function _loadMpc(){
   if(_mpcP) return _mpcP;
-  _mpcP=fetch('dfw-mpc.json?v=5',{cache:'force-cache'}).then(r=>r.ok?r.json():null).then(d=>(_mpcData=(d&&d.list&&d.list.length)?d:null)).catch(()=>null);
+  _mpcP=fetch('dfw-mpc.json?v=6',{cache:'force-cache'}).then(r=>r.ok?r.json():null).then(d=>(_mpcData=(d&&d.list&&d.list.length)?d:null)).catch(()=>null);
   return _mpcP;
 }
 async function toggleMpcLayer(on){
@@ -4522,6 +4531,7 @@ async function toggleMpcLayer(on){
         <div style="width:1px;background:#eef2f7;margin:8px 0"></div>
         ${stat('~'+kfmtM(dogHH),'dog homes')}
       </div>
+      ${m.price?`<div style="font-size:11px;color:#475569;margin:-2px 0 7px">New homes <b style="color:#0f172a">$${m.price[0]}k–$${m.price[1]>=1000?(m.price[1]/1000).toFixed(1).replace(/\.0$/,'')+'M':m.price[1]+'k'}</b> · est. buyer income ~$${Math.round((_mpcIncome(m)||0)/1000)}k</div>`:''}
       ${m.note?`<div style="font-size:11px;color:#475569;line-height:1.45;margin-bottom:7px">${esc(m.note)}</div>`:''}
       ${ph.k==='sweet'
         ? `<div style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:9px;padding:7px 10px;margin-bottom:8px"><div style="font-size:10.5px;font-weight:800;color:#0f766e">⚡ PAD-ENGAGEMENT WINDOW</div><div style="font-size:10.5px;color:#134e4a;margin-top:2px;line-height:1.45">${esc(ph.why)}. Chains typically sign MPC sites 12–24 months before opening.</div></div>`
@@ -4567,7 +4577,10 @@ async function _buildMpcBase(){
   const rows=[];
   for(const m of list){
     const zip=zipAt(m.lat,m.lon);
-    const inc=zip!=null&&incSrc[zip]!=null?incSrc[zip]:null;
+    const zipInc=zip!=null&&incSrc[zip]!=null?incSrc[zip]:null;
+    const priceInc=_mpcIncome(m);
+    const inc=priceInc!=null?priceInc:zipInc;           // community's own buyers beat the surrounding ZIP
+    const incVia=priceInc!=null?'price':(zipInc!=null?'zip':null);
     const grow=zip!=null&&growthSrc[zip]!=null?growthSrc[zip]:null;
     const dogFut=Math.round(m.homes*0.55);
     // DVMs within 3 mi — same per-clinic rules as the List's ZIP dvm sum (roster else 2,
@@ -4583,7 +4596,7 @@ async function _buildMpcBase(){
     };
     if(peLoaded && typeof PE_COORDS!=='undefined') for(const c of PE_COORDS) add(c[4],c[0],c[1]);
     for(const v of _activeVetClinics()){ if(!checkPE(v.name,v.lat,v.lon,null,ov)) add(v.name,v.lat,v.lon); }
-    rows.push({ m, zip, inc, grow, dogFut, dvm, nClin, ph:_mpcPhase(m) });
+    rows.push({ m, zip, inc, incVia, grow, dogFut, dvm, nClin, ph:_mpcPhase(m) });
   }
   _mpcBase=rows;
 }
@@ -4626,7 +4639,9 @@ function exportMpcCSV(){
     {label:'Pad-engagement phase',get:x=>x.r.ph.k},
     {label:'Future dog households (est.)',get:x=>x.r.dogFut},
     {label:'ZIP',get:x=>x.r.zip||''},
-    {label:'ZIP median income',get:x=>x.r.inc!=null?Math.round(x.r.inc):''},
+    {label:'Home price range',get:x=>x.r.m.price?('$'+x.r.m.price[0]+'k-$'+x.r.m.price[1]+'k'):''},
+    {label:'Income estimate',get:x=>x.r.inc!=null?Math.round(x.r.inc):''},
+    {label:'Income source',get:x=>x.r.incVia==='price'?'builder pricing':(x.r.incVia==='zip'?'ZIP (ACS)':'')},
     {label:'ZIP growth 21-24',get:x=>x.r.grow!=null?(x.r.grow*100).toFixed(1)+'%':''},
     {label:'Clinics within 3 mi',get:x=>x.r.nClin},
     {label:'DVMs within 3 mi',get:x=>x.r.dvm},
@@ -5283,6 +5298,7 @@ function _renderMpcList(wrap, seg){
         <div class="opp-zip" style="display:flex;align-items:center;gap:7px">${esc(r.m.n)} ${phBadge(r.ph)}</div>
         <div class="opp-city">${esc(r.m.city)} · ${r.m.homes.toLocaleString()} homes planned · ${openTxt(r)}</div>
         <div class="opp-city" style="margin-top:1px">~${r.dogFut.toLocaleString()} dog households at buildout · ${r.nClin} clinic${r.nClin===1?'':'s'} / ${r.dvm} DVMs within 3 mi${r.zip?' · ZIP '+r.zip:''}</div>
+        ${r.m.price?`<div class="opp-city" style="margin-top:1px">Homes $${r.m.price[0]}k–$${r.m.price[1]>=1000?(r.m.price[1]/1000).toFixed(1).replace(/\.0$/,'')+'M':r.m.price[1]+'k'} · est. buyer income <b style="color:#0f172a">$${Math.round(r.inc/1000)}k</b></div>`:(r.inc!=null?`<div class="opp-city" style="margin-top:1px">No published pricing yet · income from ZIP ($${Math.round(r.inc/1000)}k)</div>`:'')}
         <div class="opp-factors">
           <div class="opp-fbar"><i style="width:${r.fIncome.toFixed(0)}%;background:#15803d"></i></div>
           <div class="opp-fbar"><i style="width:${r.fDemand.toFixed(0)}%;background:#4338ca"></i></div>
@@ -5294,7 +5310,7 @@ function _renderMpcList(wrap, seg){
       <div class="opp-score" style="background:${col}">${Math.round(r.score)}</div>
     </div>`;
   }).join('');
-  const methodNote=`<details class="vm-method-note" style="margin-top:14px"><summary>How communities are scored</summary><div style="margin-top:6px">Same four weights as the ZIP list, applied at the community grain: <b>demand</b> is the announced buildout (homes × 0.55 dog households, log-scaled), <b>competition</b> is future dog households per veterinarian already within 3 miles (log-scaled), <b>income and growth</b> come from the surrounding ZIP (Census ACS 2024). The engagement badge is timing, not score — chains typically sign community pad sites 12–24 months before opening. Announced totals are developer figures; verify before diligence.</div></details>`;
+  const methodNote=`<details class="vm-method-note" style="margin-top:14px"><summary>How communities are scored</summary><div style="margin-top:6px">Same four weights as the ZIP list, applied at the community grain: <b>demand</b> is the announced buildout (homes × 0.55 dog households, log-scaled), <b>competition</b> is future dog households per veterinarian already within 3 miles (log-scaled), <b>income</b> is estimated from the community's builder price range where published (typical sale ÷ 3.7, the new-build affordability ratio; ZIP fallback otherwise), <b>growth</b> from the surrounding ZIP (Census ACS 2024). The engagement badge is timing, not score — chains typically sign community pad sites 12–24 months before opening. Announced totals are developer figures; verify before diligence.</div></details>`;
   wrap.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">${seg}<div style="flex:1;text-align:right;margin-right:10px;font-size:10.5px;color:#94a3b8;font-weight:600">Click a community to see it on the map</div>${_exportBtn('exportMpcCSV()','Export')}</div>${rows}${methodNote}`;
 }
 function renderOppList(){
