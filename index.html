@@ -4501,13 +4501,13 @@ async function toggleMpcLayer(on){
     const kfmtM=v=>v>=1000?((v/1000).toFixed(v>=10000?0:1).replace(/\.0$/,'')+'k'):String(v);
     const stat=(v,l)=>`<div style="flex:1;text-align:center;padding:8px 4px"><div style="font-size:17px;font-weight:800;color:#0f172a;letter-spacing:-.02em">${v}</div><div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#94a3b8;margin-top:1px">${l}</div></div>`;
     const detailsHref = m.web || ('https://www.google.com/search?q='+encodeURIComponent(m.n+' '+m.city+' TX master planned community'));
-    circ.bindPopup(`<div style="font-size:12.5px;width:248px;font-family:'Inter',system-ui,sans-serif">
+    circ.bindPopup(`<div style="font-size:12.5px;width:262px;padding:14px 16px 13px;font-family:'Inter',system-ui,sans-serif">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
         <div><div style="font-size:14.5px;font-weight:800;color:#0f172a;letter-spacing:-.01em;line-height:1.2">${esc(m.n)}</div>
         <div style="font-size:11px;color:#64748b;margin-top:1px">${esc(m.city)}${m.dev?' · '+esc(m.dev):''}</div></div>
         <span style="flex-shrink:0;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:${announced?'#b45309':'#0f766e'};background:${announced?'#fffbeb':'#f0fdfa'};border:1px solid ${announced?'#fde68a':'#99f6e4'};border-radius:9px;padding:2.5px 8px;margin-top:2px">${announced?'Announced':'Selling'}</span>
       </div>
-      <div style="display:flex;background:#f8fafc;border:1px solid #eef2f7;border-radius:10px;margin:9px 0 7px">
+      <div style="display:flex;background:#f8fafc;border:1px solid #eef2f7;border-radius:10px;margin:11px 0 9px">
         ${stat(kfmtM(m.homes),'homes')}
         <div style="width:1px;background:#eef2f7;margin:8px 0"></div>
         ${stat('~'+kfmtM(residents),'residents')}
