@@ -4888,6 +4888,10 @@ function _tractAt(lat,lon){
 // renter tract hits both). Validated anchors: Robson Ranch 70.9→55+, Lantana 38.7/$172k/45% new
 // →young-family growth, Uptown Dallas own 0.11→renter-heavy.
 function _communityType(t){
+  // Practically nobody lives here (airport / industrial district / big park / prison): a real
+  // rural tract still holds hundreds of households; under ~120 the tract is special-use land
+  // and every demographic read off it is noise. Checked FIRST for that reason.
+  if(t.hh!=null && t.hh<120) return {label:'Non-residential district', c:'#64748b', nonres:true};
   if(t.age!=null && t.age>=58) return {label:'55+ / active-adult community', c:'#b45309', senior:true};
   if(t.own!=null && t.own<0.40) return {label:'Renter-heavy / urban', c:'#6d28d9'};
   if(t.cons!=null && t.cons>=0.35 && t.age!=null && t.age<42) return {label:'Young-family growth community', c:'#15803d'};
@@ -7148,7 +7152,7 @@ function _evalRenderSidebar(){
           <a href="https://www.google.com/maps/search/?api=1&query=${g.la},${g.lo}" target="_blank" rel="noopener" style="color:var(--navy);font-weight:700;text-decoration:none">Maps ↗</a>
           <span style="color:#94a3b8;font-family:'JetBrains Mono',monospace;font-size:9.5px">${sid}</span>
         </div>
-        ${_communityHTML(g.la,g.lo,{small:true})}
+        ${vd.k==='land' ? '' : _communityHTML(g.la,g.lo,{small:true})}
         ${(()=>{ const sw=_mpcSweetNear(g.la,g.lo); if(!sw) return '';
           return `<div style="margin-top:6px;font-size:10.5px;color:#334155;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:6px 9px"><span style="font-weight:800;color:#0f766e">⚡ ${_ceEsc(sw.m.n)}</span> is ${sw.mi.toFixed(1)} mi away, in its pad-engagement window.</div>`; })()}
         ${_leaseBlock(g)}
