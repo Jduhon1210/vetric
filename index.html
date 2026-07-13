@@ -1019,19 +1019,6 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
     <div class="layer-item">
       <div class="layer-row">
         <div>
-          <div class="layer-name">Clinic Density</div>
-          <div class="layer-desc">Heatmap of where vet clinics cluster (PE + independent) — hot = saturated market. Overlays on top of the other layers, so you can spot high-demand areas with few clinics. Independent coverage is fullest in North Texas.</div>
-        </div>
-        <label class="toggle" style="margin-left:12px">
-          <input type="checkbox" id="toggle-clinics" onchange="toggleClinicDensityLayer(this.checked)"/>
-          <span class="toggle-slider"></span>
-        </label>
-      </div>
-      <div class="layer-status" id="clinics-status">Off</div>
-    </div>
-    <div class="layer-item">
-      <div class="layer-row">
-        <div>
           <div class="layer-name">Competition Strength on Pins</div>
           <div class="layer-desc">Size each clinic pin by its Google review volume — bigger = busier, stronger incumbent. Spot dominant practices vs. weak ones while scanning. Ownership colors stay (navy = independent, red = PE).</div>
         </div>
@@ -1086,11 +1073,6 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
       <div class="legend-scale-item"><div class="legend-scale-color" style="background:#f87171"></div> Shrinking</div>
       <div class="legend-scale-item"><div class="legend-scale-color" style="background:#e2e8f0"></div> No data</div>
     </div>
-  </div>
-  <div class="dog-legend" id="clinics-legend">
-    <div class="legend-title">Clinic Density</div>
-    <div style="height:10px;border-radius:5px;margin:4px 0 6px;background:linear-gradient(90deg,#ffe4e6,#fecdd3,#fb923c,#dc2626,#7f1d1d);"></div>
-    <div style="display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted);"><span>Sparse</span><span>Saturated</span></div>
   </div>
   <div class="dev-hint" id="dev-hint">Click anywhere on the map to add a clinic</div>
   <div class="traffic-legend" id="traffic-legend">
@@ -1201,7 +1183,6 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.heat/0.2.0/leaflet-heat.js"></script>
 <!-- PE data loads async — map works immediately without it -->
 <script>
 // ── Login gate (front-end only — no auth server yet) ────────────────────────
@@ -2947,52 +2928,6 @@ async function toggleGrowthLayer(on){
   }
 }
 
-/* ─── Clinic Density heatmap ──────────────────────────────────────────────────
-   Density is POINT data (where clinics cluster), NOT a per-ZIP attribute, so it's a
-   kernel-density heatmap (leaflet.heat) — hot = clinics concentrated — instead of a
-   choropleth that would impose arbitrary ZIP boundaries. Points: PE (PE_COORDS, complete
-   statewide) + independents (oppRegionIndependents ∪ on-map clinics[], deduped).
-   COMBINABLE OVERLAY: a translucent heat that sits ON TOP of the income/pets/growth
-   choropleths (read "high demand + few clinics" in one view), so it is NOT part of the
-   single-fill mutual-exclusion rule. Independent coverage is fullest in North Texas;
-   elsewhere it's PE + whatever's been panned. Region independents fold in via a NON-blocking
-   refine. The demographic choropleths bringToBack(), so the heat stays on top of them.
-──────────────────────────────────────────────────────────────────────────────*/
-let clinicHeatLayer = null;
-function _clinicHeatPoints(){
-  const pts=[];
-  if(typeof PE_COORDS!=='undefined') for(const c of PE_COORDS){ if(typeof _vfInLicense==='function' && !_vfInLicense(c[0],c[1])) continue; pts.push([c[0],c[1],1]); }
-  const seen=new Set();
-  const add=(la,lo)=>{ if(la==null||lo==null) return; const k=Math.round(la*1000)+'_'+Math.round(lo*1000); if(seen.has(k)) return; seen.add(k); pts.push([la,lo,1]); };
-  for(const c of oppRegionIndependents) add(c.lat,c.lon);
-  for(const c of clinics){ if(!c.pe) add(c.lat,c.lon); }
-  return pts;
-}
-async function toggleClinicDensityLayer(on){
-  const status=document.getElementById('clinics-status');
-  const legend=document.getElementById('clinics-legend');
-  if(!on){
-    if(clinicHeatLayer){ map.removeLayer(clinicHeatLayer); clinicHeatLayer=null; }
-    legend.classList.remove('show'); status.textContent='Off';
-    return;
-  }
-  if(typeof L.heatLayer!=='function'){ status.textContent='Heatmap library unavailable'; document.getElementById('toggle-clinics').checked=false; return; }
-  try{
-    const pts=_clinicHeatPoints();
-    if(clinicHeatLayer) map.removeLayer(clinicHeatLayer);
-    // translucent warm ramp: sparse → amber, dense → deep red (saturated). max≈6 overlapping = full red.
-    clinicHeatLayer = L.heatLayer(pts, { radius:26, blur:20, max:6, minOpacity:0.30,
-      gradient:{0.2:'#fecdd3', 0.45:'#fb923c', 0.7:'#dc2626', 1.0:'#7f1d1d'} }).addTo(map);
-    legend.classList.add('show');
-    status.textContent=`${pts.length.toLocaleString()} clinics mapped`;
-    // Fold in the full region independents (Overpass) WITHOUT blocking the paint.
-    ensureRegionIndependents().then(()=>{ if(clinicHeatLayer){ const p=_clinicHeatPoints(); clinicHeatLayer.setLatLngs(p); status.textContent=`${p.length.toLocaleString()} clinics mapped`; } }).catch(()=>{});
-  }catch(err){
-    status.textContent='Error: '+err.message;
-    document.getElementById('toggle-clinics').checked=false;
-    console.error('Clinic heat layer:', err);
-  }
-}
 
 /*  Dev mode  */
 let devMode = false;
@@ -5698,8 +5633,6 @@ function toggleIncludeMobile(on){
   try{ localStorage.setItem('vf_include_mobile', on?'1':'0'); }catch(_){}
   oppRegionIndependents=[]; oppBaseRows=[]; oppScored=[];                       // force opportunity to rebuild from the new set
   if(typeof map!=='undefined' && map.getZoom()>=MIN_ZOOM) fetchClinics(); else refreshPins();  // map pins
-  if(clinicHeatLayer && typeof map!=='undefined' && map.hasLayer(clinicHeatLayer))               // density heatmap
-    ensureRegionIndependents().then(()=>{ if(clinicHeatLayer) clinicHeatLayer.setLatLngs(_clinicHeatPoints()); }).catch(()=>{});
   if(typeof evalActive!=='undefined' && evalActive && typeof _evalComputeAndRender==='function') _evalComputeAndRender();  // evaluate
 }
 function closeSettings(){ document.getElementById('settings-overlay').classList.remove('show'); }
@@ -7908,10 +7841,9 @@ async function aiExecTool(name, a){
     }
     case 'toggle_map_layer': {
       const on=!!a.on;
-      const defs={ income:['toggle-income', toggleIncomeLayer], pets:['toggle-pets', toggleDogLayer], growth:['toggle-growth', toggleGrowthLayer], density:[null, toggleClinicDensityLayer] };
-      const d=defs[a.layer]; if(!d) return {error:'unknown layer'};
-      if(d[0]){ const cb=document.getElementById(d[0]); if(cb) cb.checked=on; }
-      else { const cb=document.querySelector('input[onchange*="ClinicDensityLayer"]'); if(cb) cb.checked=on; }
+      const defs={ income:['toggle-income', toggleIncomeLayer], pets:['toggle-pets', toggleDogLayer], growth:['toggle-growth', toggleGrowthLayer] };
+      const d=defs[a.layer]; if(!d) return {error:'unknown layer (the clinic-density heatmap was retired)'};
+      { const cb=document.getElementById(d[0]); if(cb) cb.checked=on; }
       await d[1](on);
       if(typeof switchSection==='function') switchSection('map');
       return { layer:a.layer, on };
