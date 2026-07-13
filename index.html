@@ -1899,7 +1899,10 @@ function focusClinic(i){
   activeIdx=i;
   const el=document.getElementById('c'+i);
   if(el){el.className='card '+(clinics[i].pe?'act-pe':'act-ind');el.scrollIntoView({behavior:'smooth',block:'nearest'});}
-  map.setView([clinics[i].lat,clinics[i].lon],Math.max(map.getZoom(),15));
+  // Instant jump (no fly animation) — an animated setView keeps running AFTER the popup opens
+  // and re-centers the PIN, shoving the tall popup off the top of the screen. Landing instantly
+  // lets the popup-into-view pan (see _vfPopupIntoView) do the one smooth shift that matters.
+  map.setView([clinics[i].lat,clinics[i].lon],Math.max(map.getZoom(),15),{animate:false});
   markers[i].openPopup();
 }
 
@@ -2999,19 +3002,36 @@ map.on('click', e => {
 // When a popup opens, pan the map so the WHOLE popup is visible (Leaflet's built-in autoPan is unreliable here,
 // especially for the tall Street-View popups). Deferred a tick so the reserved-height image box is laid out
 // before we measure. _suppressClear avoids the pan being read as a click-away.
+// Pan so the WHOLE popup is visible. Runs multiple passes because tall clinic popups GROW
+// after opening (the Street View photo and web fonts land late) — a single early measurement
+// left the photo clipped at the top edge. Each pass is a minimal nudge, so a popup that's
+// already fully visible doesn't move.
+function _vfPopupIntoView(pop, tries){
+  if(map._popup!==pop) return;                                // popup closed/replaced meanwhile
+  if(map._panAnim && map._panAnim._inProgress){               // measuring mid-pan reads transient coords — wait for the map to settle
+    if((tries||0)<8) setTimeout(()=>_vfPopupIntoView(pop,(tries||0)+1),170);
+    return;
+  }
+  const el=pop._container; if(!el) return;
+  const sz=map.getSize(), a=map.latLngToContainerPoint(pop.getLatLng());
+  const w=el.offsetWidth||260, h=el.offsetHeight||0, PAD=16, TIP=12;
+  const top=a.y-h-TIP, left=a.x-w/2, right=a.x+w/2;           // popup body sits above the anchor, centered
+  let dx=0, dy=0;
+  if(top<PAD) dy=top-PAD; else if(a.y>sz.y-PAD) dy=a.y-(sz.y-PAD);
+  if(left<PAD) dx=left-PAD; else if(right>sz.x-PAD) dx=right-(sz.x-PAD);
+  if(dx||dy){ _suppressClear=true; setTimeout(()=>_suppressClear=false,160); _skipNextRefetch=true; map.panBy([dx,dy],{animate:true}); }
+}
 map.on('popupopen', e => {
   const pop=e.popup; if(!pop||!pop.getLatLng) return;
-  setTimeout(()=>{
-    if(map._popup!==pop) return;                              // popup closed/replaced meanwhile
-    const el=pop._container; if(!el) return;
-    const sz=map.getSize(), a=map.latLngToContainerPoint(pop.getLatLng());
-    const w=el.offsetWidth||260, h=el.offsetHeight||0, PAD=16, TIP=12;
-    const top=a.y-h-TIP, left=a.x-w/2, right=a.x+w/2;         // popup body sits above the anchor, centered
-    let dx=0, dy=0;
-    if(top<PAD) dy=top-PAD; else if(a.y>sz.y-PAD) dy=a.y-(sz.y-PAD);
-    if(left<PAD) dx=left-PAD; else if(right>sz.x-PAD) dx=right-(sz.x-PAD);
-    if(dx||dy){ _suppressClear=true; setTimeout(()=>_suppressClear=false,160); _skipNextRefetch=true; map.panBy([dx,dy],{animate:true}); }
-  },40);
+  setTimeout(()=>_vfPopupIntoView(pop),40);                   // first pass: text laid out
+  setTimeout(()=>_vfPopupIntoView(pop),380);                  // second pass: late layout (fonts, reserved boxes)
+  setTimeout(()=>_vfPopupIntoView(pop),950);                  // settle pass: everything (photo, fonts) is in by now
+  setTimeout(()=>{                                            // and once more when each image actually loads
+    const el=pop._container; if(!el || map._popup!==pop) return;
+    el.querySelectorAll('img').forEach(img=>{
+      if(!img.complete) img.addEventListener('load', ()=>_vfPopupIntoView(pop), {once:true});
+    });
+  },60);
 });
 
 function showAddClinicModal(lat, lon){
