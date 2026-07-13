@@ -1424,8 +1424,9 @@ function _vfApplyLicense(d){
   const region=(d.regions&&d.regions[0])||'dfw';
   const av=document.querySelector('.avatar');
   if(av){ const pill=document.createElement('span'); pill.className='vf-demo-pill';
-    const since=d.started?(' · since '+new Date(d.started+'T12:00:00').toLocaleDateString(undefined,{month:'short',day:'numeric'})):'';
-    pill.textContent='Demo · '+region.toUpperCase()+' metroplex'+since;
+    // No start date here — the pilot doesn't need a trial clock in their face; the admin
+    // roster (Settings → Access & licensing) carries each account's started date for YOU.
+    pill.textContent='Demo · '+region.toUpperCase()+' metroplex';
     pill.title=(d.firm?d.firm+' — ':'')+'pilot account: data and analysis cover the '+region.toUpperCase()+' metroplex. Contact Vetric to license more markets.';
     av.parentNode.insertBefore(pill, av); }
   const bb=VF_METRO_BOUNDS[region];
