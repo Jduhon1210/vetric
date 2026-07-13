@@ -5581,14 +5581,28 @@ async function _admLoad(){
       return '<tr><td><b>'+_admEsc(a.firm||'—')+'</b><br><span style="color:#64748b">'+_admEsc(a.email)+'</span></td>'+
         '<td>'+tierChip+'<br><span style="color:#94a3b8;font-size:10.5px">started '+started+'</span></td>'+
         '<td>'+_admEsc(region)+'</td>'+
-        '<td style="font-family:\'JetBrains Mono\',monospace;font-size:10.5px">'+_admEsc(a.code||'—')+'</td>'+
+        '<td style="font-family:\'JetBrains Mono\',monospace;font-size:10.5px">'+(a.code?'<span style="cursor:pointer;border-bottom:1px dashed #cbd5e1" title="Click to copy" onclick="_admCopy(this.textContent)">'+_admEsc(a.code)+'</span>':'—')+'</td>'+
         '<td><span style="color:#94a3b8;font-size:10.5px">seen '+seen+'</span></td>'+
         '<td style="text-align:right;white-space:nowrap"><button class="vm-export-btn" onclick="_admEdit(\''+_admEsc(a.email)+'\')">Edit</button>'+(self?'':' <button class="vm-export-btn" style="color:#dc2626;border-color:#fecaca" onclick="_admRevoke(\''+_admEsc(a.email)+'\')">Revoke</button>')+'</td></tr>';
     }).join('');
     el.innerHTML='<table class="adm-table"><thead><tr><th>Firm / email</th><th>Phase</th><th>Market</th><th>Access code</th><th>Last login</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>';
   }catch(e){ el.innerHTML='<div style="font-size:12px;color:#dc2626;padding:10px 0">Could not load accounts — check your connection.</div>'; }
 }
-function _admGen(){ const el=document.getElementById('adm-code'); if(el) el.value='Pilot'+String(Math.floor(100+Math.random()*900)); }
+// Random access code: 12 chars from an unambiguous alphabet (no 0/O/1/I/L — survives being
+// read aloud or retyped), grouped for easy copy-paste. ~59 bits of entropy via crypto.
+function _admGen(){
+  const A='ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  const b=new Uint8Array(12); crypto.getRandomValues(b);
+  let c=''; for(let i=0;i<12;i++){ c+=A[b[i]%A.length]; if(i===3||i===7) c+='-'; }
+  const el=document.getElementById('adm-code'); if(el) el.value=c;
+}
+function _admCopy(text){
+  const t=String(text||'').trim(); if(!t) return;
+  const done=()=>vfToast('Access code copied — paste it into your email to the firm.');
+  try{ navigator.clipboard.writeText(t).then(done).catch(()=>{ _admCopyFallback(t); done(); }); }
+  catch(e){ _admCopyFallback(t); done(); }
+}
+function _admCopyFallback(t){ const ta=document.createElement('textarea'); ta.value=t; ta.style.position='fixed'; ta.style.opacity='0'; document.body.appendChild(ta); ta.select(); try{ document.execCommand('copy'); }catch(e){} ta.remove(); }
 function _admEdit(email){
   const a=(_admCache||[]).find(x=>x.email===email); if(!a) return;
   const set=(id,v)=>{ const el=document.getElementById(id); if(el) el.value=v; };
@@ -5606,7 +5620,7 @@ async function _admSubmit(){
     const r=await fetch('/api/admin/accounts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const d=await r.json();
     if(!r.ok){ if(msg) msg.textContent=d.error||'Could not save.'; return; }
-    if(msg) msg.textContent='Saved — '+body.email+' can sign in with "'+body.code+'".';
+    if(msg) msg.innerHTML='Saved — '+_admEsc(body.email)+' signs in with <b id="adm-saved-code" style="font-family:\'JetBrains Mono\',monospace">'+_admEsc(body.code)+'</b> <button class="vm-export-btn" onclick="_admCopy(document.getElementById(\'adm-saved-code\').textContent)">Copy code</button>';
     ['adm-firm','adm-email','adm-code'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
     _admLoad();
   }catch(e){ if(msg) msg.textContent='Could not save — check your connection.'; }
