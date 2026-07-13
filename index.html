@@ -7079,13 +7079,14 @@ function _evalRenderSidebar(){
       const _chip=(fg,bg,bd,txt)=>`<span style="font-size:9px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:${fg};background:${bg};border:1px solid ${bd};border-radius:8px;padding:1.5px 7px">${txt}</span>`;
       const vd=_siteVerdict(g);
       const inWater=vd.k==='water';
-      const chipS = vd.k==='water' ? _chip('#fff','#dc2626','#dc2626',vd.t)
+      const chipS = (vd.k==='water'||vd.k==='airport') ? _chip('#fff','#dc2626','#dc2626',vd.t)
                   : vd.k==='zone'||vd.k==='nocontext' ? _chip('#be123c','#fff1f2','#fecdd3',vd.t)
                   : vd.k==='strong' ? _chip('#15803d','#f0fdf4','#bbf7d0',vd.t)
                   : vd.k==='fair' ? _chip('#be123c','#fff1f2','#fecdd3',vd.t)
                   : _chip('#fff','#dc2626','#dc2626',vd.t);
       const warns=[];
       if(inWater) warns.push('This point is inside a mapped water body — the score describes the shoreline market around it, not this spot.');
+      if(vd.k==='airport') warns.push('This pin sits inside <b>'+_ceEsc(vd.apt)+'</b> — nothing can be built or leased on airport property. The score and bars read the market AROUND the airport; drag the ★ to a parcel outside the boundary for a real verdict.');
       if(g.zgateRaw==='exclude') warns.push(`City land-use data reads <b>${_ceEsc(g.zone||'residential / civic')}</b>${g.zcity?' ('+_ceEsc(g.zcity)+')':''} at this spot — confirm the parcel's actual zoning before pursuing.`);
       else if(!g.gateOk) warns.push('Not inside a mapped commercial corridor — the site-finder would not have picked this parcel on its own; verify there is (or will be) commercial land here.');
       if(!evalCells.some(c=>!c.forced)) warns.push('No commercially-siteable land was found anywhere in this area — treat the bars as low-confidence.');
@@ -7106,10 +7107,14 @@ function _evalRenderSidebar(){
           ${_sstat((g.share*100).toFixed(0)+'%','capture share')}
         </div>
         ${warns.map(w=>`<div style="font-size:10.5px;color:#9f1239;background:#fff1f2;border:1px solid #fecdd3;border-radius:8px;padding:6px 9px;margin:0 0 8px;line-height:1.5">${w}</div>`).join('')}
-        ${bar('Neighborhood demand', g.demandN, true)}
-        ${bar('Low competition', g.lowComp, true)}
-        ${bar('Retail access', g.retailN, hasRetail)}
-        ${bar('Road visibility', g.accessN, hasRoads||hasAADT)}
+        ${(()=>{ const sm=(key,label,v,on)=>{ const open=_siteMetricOpen.has(key);
+            return `<div style="cursor:pointer" onclick="event.stopPropagation();_siteMetricToggle('${key}')" title="Click for the data behind this score">
+              <div style="display:flex;align-items:center;gap:4px">${bar(label,v,on).replace('class="eval-bar"','class="eval-bar" style="flex:1;margin-bottom:0"').replace('</div>','')}<span id="smc-${key}" style="font-size:8px;color:#94a3b8;transition:transform .15s;${open?'transform:rotate(180deg)':''}">▼</span></div></div>
+              <div id="smx-${key}" style="display:${open?'block':'none'};font-size:10.5px;background:#f8fafc;border:1px solid #eef2f7;border-radius:8px;padding:7px 10px;margin:2px 0 6px;line-height:1.55" onclick="event.stopPropagation()">${_siteMetricHTML(key,g)}</div>`; };
+          return sm('demand','Neighborhood demand',g.demandN,true)
+               + sm('comp','Low competition',g.lowComp,true)
+               + sm('retail','Retail access',g.retailN,hasRetail)
+               + sm('road','Road visibility',g.accessN,hasRoads||hasAADT); })()}
         ${cn?`<div style="font-size:10.5px;color:#9f1239;margin-top:6px">${cn}</div>`:''}
         ${compare?`<div style="font-size:11px;color:#64748b;margin-top:7px">${compare}</div>`:''}
         <div style="display:flex;align-items:center;gap:8px;margin-top:8px;padding-top:8px;border-top:1px solid #f1f5f9" onclick="event.stopPropagation()">
@@ -7242,16 +7247,86 @@ async function evalDriveTime(i, btn){
 // dots, drive-time polygons, zoning overlay, cached context). Used by clearEvaluate AND by the
 // click-off paths (clearArea / clearZipSelection) so dismissing the analysis never orphans the
 // heatmap on the map. Does NOT re-render the sidebar — the caller decides what view to restore.
+// TX airport grounds (tx-airports.json, 385 OSM aerodrome polygons ≥0.35 km², built by
+// build-airports.mjs) — the "you dropped this on a runway" check. Static file, graceful absent.
+let _airGeo=null, _airP=null;
+function _loadAirports(){
+  if(_airP) return _airP;
+  _airP=fetch('tx-airports.json',{cache:'force-cache'}).then(r=>r.ok?r.json():null).then(d=>{
+    if(d && d.list) _airGeo=d.list.map(({n,ring})=>{ let s2=99,n2=-99,w2=999,e2=-999; for(const p of ring){ if(p[1]<s2)s2=p[1]; if(p[1]>n2)n2=p[1]; if(p[0]<w2)w2=p[0]; if(p[0]>e2)e2=p[0]; } return {n,ring,s:s2,nn:n2,w:w2,e:e2}; });
+    return _airGeo;
+  }).catch(()=>null);
+  return _airP;
+}
+function _siteInAirport(la,lo){
+  if(!_airGeo) return null;
+  for(const a2 of _airGeo){
+    if(la<a2.s||la>a2.nn||lo<a2.w||lo>a2.e) continue;
+    let inside=false; const r=a2.ring;
+    for(let i=0,j=r.length-1;i<r.length;j=i++){
+      if((r[i][1]>la)!==(r[j][1]>la) && lo<(r[j][0]-r[i][0])*(la-r[i][1])/(r[j][1]-r[i][1])+r[i][0]) inside=!inside;
+    }
+    if(inside) return a2.n||'airport grounds';
+  }
+  return null;
+}
 // Verdict for a dropped-site cell — shared by the sidebar card, the saved-placement record,
 // and the saved-pin popup. Land reality outranks the score tier (see the card comment).
 function _siteVerdict(g){
   const inWater=(typeof _hexInWater==='function' && _hexWater && _hexWater.length) ? _hexInWater(g.la,g.lo) : false;
   if(inWater) return {k:'water', t:'In open water — not buildable'};
+  const apt=_siteInAirport(g.la,g.lo);
+  if(apt) return {k:'airport', t:'On airport grounds — not buildable', apt};
   if(g.zgateRaw==='exclude') return {k:'zone', t:'Zoned non-commercial — verify land'};
   if(!g.gateOk) return {k:'nocontext', t:'No commercial context — verify land'};
   if(g.score>=EVAL_STRONG) return {k:'strong', t:'Strong site'};
   if(g.score>=EVAL_FLOOR) return {k:'fair', t:'Workable — has trade-offs'};
   return {k:'weak', t:'Weak — not recommended'};
+}
+/* ── Metric drill-downs: click a factor bar on the site card → the data it's scored on,
+   with a benchmark line so the number has a yardstick. Open state survives re-renders. */
+let _siteMetricOpen=new Set();
+function _siteMetricToggle(k){
+  if(_siteMetricOpen.has(k)) _siteMetricOpen.delete(k); else _siteMetricOpen.add(k);
+  const el=document.getElementById('smx-'+k); if(el) el.style.display=_siteMetricOpen.has(k)?'block':'none';
+  const car=document.getElementById('smc-'+k); if(car) car.style.transform=_siteMetricOpen.has(k)?'rotate(180deg)':'';
+}
+function _siteMetricHTML(k,g){
+  const esc=_ceEsc, mi=m=>(m/1609.344).toFixed(1);
+  const row=(l,v)=>`<div style="display:flex;justify-content:space-between;gap:10px;padding:1.5px 0"><span style="color:#64748b">${l}</span><b style="color:#1f2933;text-align:right">${v}</b></div>`;
+  const bench=t=>`<div style="margin-top:5px;padding-top:5px;border-top:1px dashed #e2e8f0;color:#64748b">${t}</div>`;
+  if(k==='demand'){
+    let roofs=0; for(const r of evalData.resid){ if(Math.abs(r.lat-g.la)>0.038) continue; if(hav(g.la,g.lo,r.lat,r.lon)<4000) roofs++; }
+    const tw=(typeof _tractPetW==='function')?_tractPetW(g.la,g.lo):null;
+    const tr=(typeof _tractAt==='function')?_tractAt(g.la,g.lo):null;
+    return row('Rooftop clusters within 2.5 mi', roofs.toLocaleString())
+      + row('Tract pet-ownership weight', tw!=null? ('×'+tw.toFixed(2)+(tw>1.05?' (above-average pet area)':tw<0.95?' (below-average pet area)':' (average)')) : 'no tract data')
+      + (tr&&tr.properties&&tr.properties.inc!=null? row('Tract median income', '$'+Math.round(tr.properties.inc/1000)+'k') : '')
+      + row('Spend-power percentile (area)', Math.round((g.affl||0)*100)+'%')
+      + bench('Scored relative to the densest spot in this analysis (=100). Recommended sites usually read 60+; below ~45 the rooftops are thin or far.');
+  }
+  if(k==='comp'){
+    const list=[...evalCompsCache].map(c=>({...c, d:hav(g.la,g.lo,c.lat,c.lon)})).sort((x,y)=>x.d-y.d).slice(0,5);
+    const rows=list.map(c=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:1.5px 0"><span style="color:#334155;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.name||'Clinic')}${c.pe?' <span style="color:#dc2626;font-weight:700">PE</span>':''}</span><span style="color:#64748b;flex-shrink:0">${mi(c.d)} mi${c.staffN?' · '+c.staffN+' DVM':''}</span></div>`).join('');
+    return row('Winnable capture share', Math.round(g.share*100)+'%')
+      + row('Weighted competitor pressure', g.comp.toFixed(1)+' (PE ×1.6, size-weighted, distance-decayed)')
+      + (g.nearPE<700? `<div style="color:#be123c;padding:1.5px 0">PE clinic within 0.4 mi — share hard-capped at 20%.</div>`:'')
+      + (list.length?`<div style="margin-top:4px;font-weight:700;color:#64748b;font-size:9.5px;text-transform:uppercase;letter-spacing:.04em">Nearest competitors</div>${rows}`:row('Competitors in range','none'))
+      + bench('50%+ reads as an open market; a typical dense-suburb site captures ~20–25%. Empty land = 100%, so pair this with the demand bar.');
+  }
+  if(k==='retail'){
+    let n1=0, nearest=Infinity; for(const r of evalData.retail){ if(Math.abs(r.lat-g.la)>0.016) continue; const d=hav(g.la,g.lo,r.lat,r.lon); if(d<1609.344) n1++; if(d<nearest) nearest=d; }
+    return row('Retail / commercial points within 1 mi', n1.toLocaleString())
+      + row('Nearest commercial point', isFinite(nearest)? (nearest<160?'right here':mi(nearest)+' mi') : 'none found')
+      + row('Inside a mapped corridor', g.gateOk?'yes':'no')
+      + bench('60+ usually means an established corridor — existing lease space likely. Under ~35 expect a land buy or build-to-suit.');
+  }
+  if(k==='road'){
+    return (g.aadt>0? row('Frontage traffic (TxDOT count)', Math.round(g.aadt).toLocaleString()+' cars/day'+(g.aadtRoad?' · '+esc(g.aadtRoad):'')) : row('Frontage traffic','no TxDOT count within ~450m — scored on road class'))
+      + row('Nearest arterial', isFinite(g.nearRoad)? (g.nearRoad<160?'fronting it':mi(g.nearRoad)+' mi') : '—')
+      + bench('~25,000 cars/day scores full marks (drive-by visibility = new-client flow); under ~8,000 reads as a quiet street. National chains typically want 20k+.');
+  }
+  return '';
 }
 /* ── Site-context KPIs: while a dropped-site analysis is active, the top KPI bar reads the
    market within a RADIUS of the pin (PE penetration, growth, saturation) instead of the
@@ -7432,7 +7507,7 @@ function siteRemove(){ _siteClear(); if(evalActive) _evalComputeAndRender(); try
 function _siteDropCommit(lat,lon){
   _siteDropEnd();
   evalSitePt={lat,lon};
-  try{ _loadHexWater(); }catch(e){}                 // warm the lake outlines for the in-water check (best-effort)
+  try{ _loadHexWater(); _loadAirports(); }catch(e){}    // warm the lake + airport outlines for the land-reality checks (best-effort)
   // Warm the KPI inputs (all force-cache; instant when already loaded), then paint the bar.
   try{ Promise.allSettled([ensureIncomeData(), ensureGrowthData(), ensureDogData(), loadZipGeometry()]).then(()=>{ if(evalSitePt) _updateSiteKpis(); }); }catch(e){}
   _siteMarkerPlace(lat,lon);
