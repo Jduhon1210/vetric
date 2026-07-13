@@ -53,6 +53,16 @@ export async function onRequest(context) {
   let sess = {};
   try { sess = JSON.parse(raw) || {}; } catch (e) {}
 
+  // Sessions minted BEFORE the licensing update carry no tier — re-read the account record
+  // instead of defaulting to full access (a pre-update pilot session must not leak the
+  // statewide files until its next login). One extra KV read, only for legacy sessions.
+  if (sess.email && sess.tier === undefined) {
+    try {
+      const acct = JSON.parse(await env.VETRIC_KV.get('acct:' + sess.email) || 'null');
+      if (acct) { sess.tier = acct.tier || 'full'; sess.regions = (Array.isArray(acct.regions) && acct.regions.length) ? acct.regions : ['tx']; }
+    } catch (e) {}
+  }
+
   // Live revocation: session is only as good as its allow-list entry.
   if (sess.email) {
     const allow = await env.VETRIC_KV.get('allow:' + sess.email);

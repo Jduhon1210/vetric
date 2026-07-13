@@ -1282,6 +1282,9 @@ function _isLargeAnimalAt(name,la,lo){
   return _isLargeAnimal(name);
 }
 function _activeVetClinics(){
+  if(typeof _vfMetroLimited==='function' && _vfMetroLimited()){
+    return VET_CLINICS.filter(v=>_vfInLicense(v.lat,v.lon) && (_vfIncludeMobile()||!v.mobile));
+  }
   if(typeof VET_CLINICS==='undefined' || !VET_CLINICS.length) return [];
   return _vfIncludeMobile() ? VET_CLINICS : VET_CLINICS.filter(v=>!v.mobile);
 }
@@ -1448,7 +1451,13 @@ fetch('/api/auth/me').then(r=>r.json()).then(d=>{
 // Licensing UI: demo pilots get a badge + a map locked to their metro + exports off (their data
 // files are already server-sliced by the middleware — this is just the honest UI on top). Admins
 // get the Access & licensing panel in Settings. Full accounts see no difference.
-const VF_METRO_BOUNDS={ dfw:[[31.90,-98.45],[33.95,-95.70]] };   // DFW box + breathing room
+const VF_METRO_BOUNDS={ dfw:[[32.10,-98.15],[33.62,-96.00]] };   // view box: metroplex + context, EXCLUDES Sherman/Gainesville/Corsicana
+const VF_LICENSE_BBOX={ dfw:{s:32.25,n:33.5,w:-97.95,e:-96.2} }; // data box: matches build-region-slices.mjs exactly
+// Metro-limited license? → region key, else null. Client-side belt-and-braces on top of the
+// server slices: even if a stale pre-licensing session slips full files through, nothing
+// outside the licensed box RENDERS (the server slice remains the actual security boundary).
+function _vfMetroLimited(){ const m=window.VF_ME; return (m && m.tier==='demo' && !(m.regions||[]).includes('tx')) ? ((m.regions&&m.regions[0])||'dfw') : null; }
+function _vfInLicense(la,lo){ const r=_vfMetroLimited(); if(!r) return true; const b=VF_LICENSE_BBOX[r]; return !b || (la>=b.s&&la<=b.n&&lo>=b.w&&lo<=b.e); }
 function _vfApplyLicense(d){
   if(d.tier==='admin'){ const c=document.getElementById('cat-access'); if(c) c.style.display=''; }
   if(d.tier!=='demo' || (d.regions||[]).includes('tx')) return;
@@ -1461,7 +1470,8 @@ function _vfApplyLicense(d){
     pill.title=(d.firm?d.firm+' — ':'')+'pilot account: data and analysis cover the '+region.toUpperCase()+' metroplex. Contact Vetric to license more markets.';
     av.parentNode.insertBefore(pill, av); }
   const bb=VF_METRO_BOUNDS[region];
-  if(bb){ map.options.maxBoundsViscosity=1.0; map.setMaxBounds(L.latLngBounds(bb)); if(map.getZoom()<8) map.setView([(bb[0][0]+bb[1][0])/2,(bb[0][1]+bb[1][1])/2], 9); }
+  if(bb){ map.options.maxBoundsViscosity=1.0; map.setMaxBounds(L.latLngBounds(bb)); map.setMinZoom(8); if(map.getZoom()<8) map.setView([(bb[0][0]+bb[1][0])/2,(bb[0][1]+bb[1][1])/2], 9); }
+  if(clinics.length){ clearMarkers(); clinics=[]; fetchClinics(); }   // license arrived after a first fetch — rebuild inside the box
 }
 
 const clusterGroup = L.layerGroup();
@@ -2951,7 +2961,7 @@ async function toggleGrowthLayer(on){
 let clinicHeatLayer = null;
 function _clinicHeatPoints(){
   const pts=[];
-  if(typeof PE_COORDS!=='undefined') for(const c of PE_COORDS) pts.push([c[0],c[1],1]);
+  if(typeof PE_COORDS!=='undefined') for(const c of PE_COORDS){ if(typeof _vfInLicense==='function' && !_vfInLicense(c[0],c[1])) continue; pts.push([c[0],c[1],1]); }
   const seen=new Set();
   const add=(la,lo)=>{ if(la==null||lo==null) return; const k=Math.round(la*1000)+'_'+Math.round(lo*1000); if(seen.has(k)) return; seen.add(k); pts.push([la,lo,1]); };
   for(const c of oppRegionIndependents) add(c.lat,c.lon);
@@ -3386,6 +3396,7 @@ async function fetchClinics(){
     for(const coord of PE_COORDS){
       const [plat,plon,owner,brand,clinicName,clinicWebsite]=coord;
       if(plat<s||plat>n||plon<w||plon>e) continue;
+      if(typeof _vfInLicense==='function' && !_vfInLicense(plat,plon)) continue;   // metro-limited: never render outside the licensed box
       const ck=`${Math.round(plat*1000)}_${Math.round(plon*1000)}`;
       if(deleted[ck]) continue;
       const ovr=overrides[ck];
