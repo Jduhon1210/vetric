@@ -6465,7 +6465,17 @@ async function _evalFetchContext(feat, setStage){
     const _bb=_evalBBox(feat), _exLa=Math.max((_bb.maxLa-_bb.minLa)*0.12,0.009), _exLo=Math.max((_bb.maxLo-_bb.minLo)*0.12,0.009);
     const zb={minLa:_bb.minLa-_exLa, maxLa:_bb.maxLa+_exLa, minLo:_bb.minLo-_exLo, maxLo:_bb.maxLo+_exLo}, pad=0.008;
     const lus=`(${zb.minLa-pad},${zb.minLo-pad},${zb.maxLa+pad},${zb.maxLo+pad})`;
-    const qLU=`[out:json][timeout:30];(way["landuse"~"^(residential|commercial|retail|industrial)$"]${lus};);out geom 3000;`;
+    // Beyond the 4 zoning classes, fetch the UNBUILDABLE land categories (parks, golf, cemeteries,
+    // military, rail, landfills, campuses, stadiums) so a dropped site can be told exactly what
+    // it's sitting on — and so the cell gate drops them in unzoned areas.
+    const qLU=`[out:json][timeout:30];(
+way["landuse"~"^(residential|commercial|retail|industrial|cemetery|military|railway|landfill|quarry|recreation_ground)$"]${lus};
+way["leisure"~"^(park|golf_course|nature_reserve|stadium)$"]${lus};
+way["amenity"~"^(school|university|college|hospital|prison)$"]${lus};
+relation["landuse"~"^(cemetery|military|railway|landfill|quarry|recreation_ground)$"]${lus};
+relation["leisure"~"^(park|golf_course|nature_reserve|stadium)$"]${lus};
+relation["amenity"~"^(school|university|college|hospital|prison)$"]${lus};
+);out geom 4000;`;
     // OSM is only the GAP fallback — never let a slow/down Overpass mirror block the whole
     // evaluate. Cap it at 14s and proceed with municipal zoning (the primary) regardless.
     const _ac=new AbortController();
@@ -6482,13 +6492,25 @@ async function _evalFetchContext(feat, setStage){
     evalParcelCounties = (pc&&pc.counties)||[];
     evalDataOk.parcels = evalData.parcels.length>0;
     const lu=[];
+    // Unbuildable-land vocabulary → human label for the dropped-site verdict. All gate 'exclude'.
+    const HARD_LU={cemetery:'Cemetery',military:'Military land',railway:'Railway yard',landfill:'Landfill',quarry:'Quarry',recreation_ground:'Parkland',park:'Park',golf_course:'Golf course',nature_reserve:'Nature preserve',stadium:'Stadium grounds',school:'School campus',university:'University campus',college:'College campus',hospital:'Hospital campus',prison:'Prison grounds'};
     if(dLU) for(const el of dLU.elements){
-      const g=el.geometry; if(!g||g.length<3) continue;
-      const k=el.tags&&el.tags.landuse; if(!k) continue;
-      const f={type:'Feature',properties:{},geometry:{type:'Polygon',coordinates:[g.map(p=>[p.lon,p.lat])]}};
-      const gate=k==='residential'?'exclude':'allow';
-      const label=k==='residential'?'Residential (OSM)':k==='industrial'?'Industrial (OSM)':'Commercial (OSM)';
-      lu.push({f, bb:_evalBBox(f), gate, label, city:'OSM'});
+      const tags=el.tags||{};
+      const k=tags.landuse||tags.leisure||tags.amenity; if(!k) continue;
+      // way → its own ring; relation → each CLOSED outer member ring (big parks are relations)
+      const ringsets=[];
+      if(el.geometry && el.geometry.length>=3) ringsets.push(el.geometry);
+      else if(el.members) for(const mm of el.members){ if(mm.role==='outer'&&mm.geometry&&mm.geometry.length>=4){ const r=mm.geometry; if(r[0].lat===r[r.length-1].lat&&r[0].lon===r[r.length-1].lon) ringsets.push(r); } }
+      for(const g of ringsets){
+        const f={type:'Feature',properties:{},geometry:{type:'Polygon',coordinates:[g.map(p=>[p.lon,p.lat])]}};
+        if(HARD_LU[k]){
+          lu.push({f, bb:_evalBBox(f), gate:'exclude', label:HARD_LU[k]+' (OSM)', city:'OSM', hard:HARD_LU[k], name:tags.name||null});
+        } else {
+          const gate=k==='residential'?'exclude':'allow';
+          const label=k==='residential'?'Residential (OSM)':k==='industrial'?'Industrial (OSM)':'Commercial (OSM)';
+          lu.push({f, bb:_evalBBox(f), gate, label, city:'OSM'});
+        }
+      }
     }
     evalData.osmLU=lu;
   }catch(e){}
@@ -7078,15 +7100,13 @@ function _evalRenderSidebar(){
       // the land question until the pin sits on commercially-plausible ground.
       const _chip=(fg,bg,bd,txt)=>`<span style="font-size:9px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:${fg};background:${bg};border:1px solid ${bd};border-radius:8px;padding:1.5px 7px">${txt}</span>`;
       const vd=_siteVerdict(g);
-      const inWater=vd.k==='water';
-      const chipS = (vd.k==='water'||vd.k==='airport') ? _chip('#fff','#dc2626','#dc2626',vd.t)
+      const chipS = vd.k==='land' ? _chip('#fff','#dc2626','#dc2626',vd.t)
                   : vd.k==='zone'||vd.k==='nocontext' ? _chip('#be123c','#fff1f2','#fecdd3',vd.t)
                   : vd.k==='strong' ? _chip('#15803d','#f0fdf4','#bbf7d0',vd.t)
                   : vd.k==='fair' ? _chip('#be123c','#fff1f2','#fecdd3',vd.t)
                   : _chip('#fff','#dc2626','#dc2626',vd.t);
       const warns=[];
-      if(inWater) warns.push('This point is inside a mapped water body — the score describes the shoreline market around it, not this spot.');
-      if(vd.k==='airport') warns.push('This pin sits inside <b>'+_ceEsc(vd.apt)+'</b> — nothing can be built or leased on airport property. The score and bars read the market AROUND the airport; drag the ★ to a parcel outside the boundary for a real verdict.');
+      if(vd.k==='land') warns.push('This pin sits on <b>'+_ceEsc(vd.landLabel)+'</b> — land that is not available for commercial development. The score and bars read the market AROUND it; drag the ★ to a buildable parcel for a real verdict.');
       if(g.zgateRaw==='exclude') warns.push(`City land-use data reads <b>${_ceEsc(g.zone||'residential / civic')}</b>${g.zcity?' ('+_ceEsc(g.zcity)+')':''} at this spot — confirm the parcel's actual zoning before pursuing.`);
       else if(!g.gateOk) warns.push('Not inside a mapped commercial corridor — the site-finder would not have picked this parcel on its own; verify there is (or will be) commercial land here.');
       if(!evalCells.some(c=>!c.forced)) warns.push('No commercially-siteable land was found anywhere in this area — treat the bars as low-confidence.');
@@ -7270,13 +7290,28 @@ function _siteInAirport(la,lo){
   }
   return null;
 }
+// What non-buildable land is this exact point on? One lane for every hard category:
+// water (static lake outlines) → airport grounds (static tx-airports) → the OSM unbuildable
+// vocabulary fetched with the analysis (parks, golf, cemeteries, military, rail, landfills,
+// campuses, stadiums — named where OSM has a name). Returns null on plausible land.
+function _siteLandAt(la,lo){
+  if(typeof _hexInWater==='function' && _hexWater && _hexWater.length && _hexInWater(la,lo))
+    return {short:'open water', full:'open water', t:'In open water — not buildable'};
+  const apt=_siteInAirport(la,lo);
+  if(apt) return {short:'airport grounds', full:apt, t:'On airport grounds — not buildable'};
+  for(const p of evalData.osmLU){
+    if(!p.hard) continue;
+    if(la<p.bb.minLa||la>p.bb.maxLa||lo<p.bb.minLo||lo>p.bb.maxLo) continue;
+    if(pointInGeoJSON(la,lo,p.f))
+      return {short:p.hard.toLowerCase(), full:(p.name? p.name+' ('+p.hard.toLowerCase()+')' : p.hard.toLowerCase()), t:'On '+p.hard.toLowerCase()+' — not buildable'};
+  }
+  return null;
+}
 // Verdict for a dropped-site cell — shared by the sidebar card, the saved-placement record,
 // and the saved-pin popup. Land reality outranks the score tier (see the card comment).
 function _siteVerdict(g){
-  const inWater=(typeof _hexInWater==='function' && _hexWater && _hexWater.length) ? _hexInWater(g.la,g.lo) : false;
-  if(inWater) return {k:'water', t:'In open water — not buildable'};
-  const apt=_siteInAirport(g.la,g.lo);
-  if(apt) return {k:'airport', t:'On airport grounds — not buildable', apt};
+  const land=_siteLandAt(g.la,g.lo);
+  if(land) return {k:'land', t:land.t, landLabel:land.full};
   if(g.zgateRaw==='exclude') return {k:'zone', t:'Zoned non-commercial — verify land'};
   if(!g.gateOk) return {k:'nocontext', t:'No commercial context — verify land'};
   if(g.score>=EVAL_STRONG) return {k:'strong', t:'Strong site'};
