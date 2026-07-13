@@ -7053,10 +7053,21 @@ function _evalRenderSidebar(){
     ${(()=>{ if(!evalSiteCell) return '';
       const g=evalSiteCell, sc=Math.round(g.score*100);
       const tier=g.score>=EVAL_STRONG?'strong':g.score>=EVAL_FLOOR?'fair':'weak';
-      const chipS = tier==='strong' ? `<span style="font-size:9px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:#15803d;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:1.5px 7px">Strong site</span>`
-                  : tier==='fair' ? `<span style="font-size:9px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:1.5px 7px">Workable — has trade-offs</span>`
-                  : `<span style="font-size:9px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:#dc2626;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:1.5px 7px">Weak — not recommended</span>`;
+      // LAND REALITY OUTRANKS THE SCORE TIER: a pin on a runway, a lake, or land with zero
+      // commercial context must not wear an endorsement chip just because nothing competes
+      // there (an airport pin scored "Workable · share 94%" — the emptiness IS the problem).
+      // The score and bars stay (they read the market AROUND the point); the chip leads with
+      // the land question until the pin sits on commercially-plausible ground.
+      const _chip=(fg,bg,bd,txt)=>`<span style="font-size:9px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:${fg};background:${bg};border:1px solid ${bd};border-radius:8px;padding:1.5px 7px">${txt}</span>`;
+      const inWater=(typeof _hexInWater==='function' && _hexWater && _hexWater.length) ? _hexInWater(g.la,g.lo) : false;
+      const chipS = inWater ? _chip('#dc2626','#fef2f2','#fecaca','In open water — not buildable')
+                  : (g.zgateRaw==='exclude') ? _chip('#b45309','#fffbeb','#fde68a','Zoned non-commercial — verify land')
+                  : (!g.gateOk) ? _chip('#b45309','#fffbeb','#fde68a','No commercial context — verify land')
+                  : tier==='strong' ? _chip('#15803d','#f0fdf4','#bbf7d0','Strong site')
+                  : tier==='fair' ? _chip('#b45309','#fffbeb','#fde68a','Workable — has trade-offs')
+                  : _chip('#dc2626','#fef2f2','#fecaca','Weak — not recommended');
       const warns=[];
+      if(inWater) warns.push('This point is inside a mapped water body — the score describes the shoreline market around it, not this spot.');
       if(g.zgateRaw==='exclude') warns.push(`City land-use data reads <b>${_ceEsc(g.zone||'residential / civic')}</b>${g.zcity?' ('+_ceEsc(g.zcity)+')':''} at this spot — confirm the parcel's actual zoning before pursuing.`);
       else if(!g.gateOk) warns.push('Not inside a mapped commercial corridor — the site-finder would not have picked this parcel on its own; verify there is (or will be) commercial land here.');
       if(!evalCells.some(c=>!c.forced)) warns.push('No commercially-siteable land was found anywhere in this area — treat the bars as low-confidence.');
@@ -7234,6 +7245,7 @@ function siteRemove(){ _siteClear(); if(evalActive) _evalComputeAndRender(); }
 function _siteDropCommit(lat,lon){
   _siteDropEnd();
   evalSitePt={lat,lon};
+  try{ _loadHexWater(); }catch(e){}                 // warm the lake outlines for the in-water check (best-effort)
   _siteMarkerPlace(lat,lon);
   // Same 2-mile context box the hex→Evaluate handoff uses: big enough to hold the competitor
   // field + rooftops the capture model needs, small enough to stay one neighborhood's story.
