@@ -5633,7 +5633,7 @@ function _admEdit(email){
 async function _admSubmit(){
   const v=id=>{ const el=document.getElementById(id); return el?el.value.trim():''; };
   const msg=document.getElementById('adm-msg');
-  const body={ email:v('adm-email').toLowerCase(), code:v('adm-code'), firm:v('adm-firm'), tier:v('adm-tier'), regions:[v('adm-region')] };
+  const body={ email:v('adm-email').toLowerCase(), code:v('adm-code'), firm:v('adm-firm'), tier:v('adm-tier'), regions:[v('adm-region')], started:new Date().toLocaleDateString('en-CA') };
   if(!body.email || !body.code){ if(msg) msg.textContent='Email and access code are required.'; return; }
   if(msg) msg.textContent='Saving…';
   try{

@@ -80,7 +80,9 @@ async function _upsert(request, env, adminEmail) {
   if (!['admin', 'demo', 'full'].includes(tier)) return json({ error: 'Unknown tier.' }, 400);
   if (email === adminEmail && tier !== 'admin') return json({ error: "You can't remove your own admin access." }, 400);
 
-  let started = new Date().toISOString().slice(0, 10);
+  // Prefer the admin's LOCAL date from the form — the server's UTC day rolls over at ~7pm
+  // Central, which stamped evening signups "tomorrow". Existing accounts keep their date.
+  let started = /^\d{4}-\d{2}-\d{2}$/.test(String(body && body.started || '')) ? body.started : new Date().toISOString().slice(0, 10);
   try {
     const prev = JSON.parse(await env.VETRIC_KV.get('acct:' + email) || 'null');
     if (prev && prev.started) started = prev.started;
