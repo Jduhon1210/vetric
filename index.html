@@ -74,7 +74,14 @@ header{height:58px;}
 body.dev-mode header{background:var(--amber-light);}
 
 /* ── KPI bar ── */
-.kpibar{display:grid;grid-template-columns:repeat(5,1fr);gap:1px;background:var(--border);border-bottom:1px solid var(--border);flex-shrink:0;}
+.kpibar{display:grid;grid-template-columns:repeat(5,1fr);gap:1px;background:var(--border);border-bottom:1px solid var(--border);flex-shrink:0;position:relative;}
+.kpi-filter-btn{position:absolute;top:7px;right:8px;z-index:60;width:24px;height:24px;border:1px solid var(--border);border-radius:7px;background:var(--surface);color:#94a3b8;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;}
+.kpi-filter-btn:hover{color:var(--navy);border-color:#c7d2ea;}
+.kpi-filter-pop{display:none;position:absolute;top:34px;right:8px;z-index:1500;background:#fff;border:1px solid var(--border);border-radius:12px;box-shadow:0 10px 34px rgba(15,23,42,.16);padding:10px 12px;min-width:200px;}
+.kpi-filter-pop.show{display:block;}
+.kpi-filter-pop .kf-title{font-size:9.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#94a3b8;margin-bottom:6px;}
+.kpi-filter-pop label{display:flex;align-items:center;gap:8px;font-size:12.5px;color:#1f2933;padding:4px 0;cursor:pointer;}
+.kpi-filter-pop input{accent-color:var(--navy);}
 .kpi{background:var(--surface);padding:11px 18px;position:relative;min-width:0;}
 .kpi .k-label{font-size:10.5px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;}
 .kpi .k-val{font-size:21px;font-weight:800;margin-top:5px;line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums;}
@@ -87,7 +94,7 @@ body.dev-mode .kpibar{background:#fecdd3;}
 body.dev-mode .kpi{background:var(--amber-light);}
 @media (max-width:1000px){
   .kpibar{grid-template-columns:repeat(3,1fr);}
-  .kpi:nth-child(4),.kpi:nth-child(5){display:none;}
+  .kpi[data-kpi="sat"], .kpi[data-kpi="opp"]{display:none;}   /* by NAME, not position — the filter button/popover are earlier children now */
   .nav-links{display:none;}
 }
 
@@ -844,27 +851,38 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
   </button>
 </div>
 <div class="kpibar" id="kpibar">
-  <div class="kpi"><div class="k-accent" style="background:var(--navy)"></div>
+  <button class="kpi-filter-btn" onclick="toggleKpiFilter(event)" title="Choose which KPIs show">
+    <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.4"><polygon points="22 3 2 3 10 12.5 10 19 14 21 14 12.5 22 3"/></svg>
+  </button>
+  <div class="kpi-filter-pop" id="kpi-filter-pop" onclick="event.stopPropagation()">
+    <div class="kf-title">Show KPIs</div>
+    <label><input type="checkbox" data-k="clinics" onchange="setKpiVis('clinics',this.checked)"/>Clinics in view</label>
+    <label><input type="checkbox" data-k="pe" onchange="setKpiVis('pe',this.checked)"/>PE penetration</label>
+    <label><input type="checkbox" data-k="growth" onchange="setKpiVis('growth',this.checked)"/>Growth &rsquo;21&rarr;&rsquo;24</label>
+    <label><input type="checkbox" data-k="sat" onchange="setKpiVis('sat',this.checked)"/>Saturation</label>
+    <label><input type="checkbox" data-k="opp" onchange="setKpiVis('opp',this.checked)"/>Top opportunity ZIP</label>
+  </div>
+  <div class="kpi" data-kpi="clinics"><div class="k-accent" style="background:var(--navy)"></div>
     <div class="k-label">Clinics in view</div>
     <div class="k-val" id="kpi-clinics">—</div>
     <div class="k-foot" id="kpi-clinics-foot">Pan or search to load</div>
   </div>
-  <div class="kpi"><div class="k-accent" style="background:var(--red)"></div>
+  <div class="kpi" data-kpi="pe"><div class="k-accent" style="background:var(--red)"></div>
     <div class="k-label">PE penetration</div>
     <div class="k-val" id="kpi-pe">—</div>
     <div class="k-foot" id="kpi-pe-foot">of clinics in view</div>
   </div>
-  <div class="kpi"><div class="k-accent" style="background:var(--green)"></div>
+  <div class="kpi" data-kpi="growth"><div class="k-accent" style="background:var(--green)"></div>
     <div class="k-label">Growth ’21→’24</div>
     <div class="k-val pending" id="kpi-growth">—</div>
     <div class="k-foot" id="kpi-growth-foot">Draw or select an area</div>
   </div>
-  <div class="kpi"><div class="k-accent" style="background:#4338ca"></div>
+  <div class="kpi" data-kpi="sat"><div class="k-accent" style="background:#4338ca"></div>
     <div class="k-label">Saturation</div>
     <div class="k-val pending" id="kpi-sat">—</div>
     <div class="k-foot" id="kpi-sat-foot">Market saturation</div>
   </div>
-  <div class="kpi" style="cursor:pointer" onclick="switchSection('opportunity')"><div class="k-accent" style="background:var(--purple)"></div>
+  <div class="kpi" data-kpi="opp" style="cursor:pointer" onclick="switchSection('opportunity')"><div class="k-accent" style="background:var(--purple)"></div>
     <div class="k-label">Top opportunity ZIP</div>
     <div class="k-val pending" id="kpi-opp">View →</div>
     <div class="k-foot" id="kpi-opp-foot">Open the ranked list</div>
@@ -5606,6 +5624,32 @@ function marketPickerNote(){ vfToast('Market presets are coming soon — search 
 /* ─── Settings modal ─────────────────────────────────────────────────────────*/
 function openSettings(){ const m=document.getElementById('opt-mobile'); if(m) m.checked=_vfIncludeMobile(); const q=document.getElementById('opt-equine'); if(q) q.checked=_vfCountEquine(); const h=document.getElementById('opt-hidepins'); if(h) h.checked=_vfHidePins(); document.getElementById('settings-overlay').classList.add('show'); }
 function toggleHidePins(on){ try{ localStorage.setItem('vf_hidepins', on?'1':'0'); }catch(_){}; _applyPinZoomVisibility(); }
+/* ── KPI-bar filter: choose which KPI cards show (persisted). Hidden cards leave the grid and
+   the remaining ones widen to fill the row. All numbers keep updating underneath — the ids
+   stay in the DOM — so re-enabling a KPI shows current values instantly. */
+function _kpiVis(){ try{ return JSON.parse(localStorage.getItem('vf_kpis')||'{}'); }catch(e){ return {}; } }
+function applyKpiVis(){
+  const v=_kpiVis(); let n=0;
+  document.querySelectorAll('#kpibar .kpi[data-kpi]').forEach(el=>{ const on=v[el.dataset.kpi]!==false; el.style.display=on?'':'none'; if(on) n++; });
+  const bar=document.getElementById('kpibar');
+  // With nothing filtered, hand the grid back to the stylesheet so the narrow-screen media
+  // rule (3 columns under 1000px) still applies; inline columns only when the user filtered.
+  if(bar) bar.style.gridTemplateColumns = (n===5) ? '' : 'repeat('+Math.max(n,1)+',1fr)';
+}
+function setKpiVis(k,on){
+  const v=_kpiVis(); if(on) delete v[k]; else v[k]=false;
+  try{ localStorage.setItem('vf_kpis', JSON.stringify(v)); }catch(e){}
+  applyKpiVis();
+}
+function toggleKpiFilter(e){
+  e.stopPropagation();
+  const p=document.getElementById('kpi-filter-pop'); if(!p) return;
+  const show=!p.classList.contains('show');
+  p.classList.toggle('show', show);
+  if(show){ const v=_kpiVis(); p.querySelectorAll('input[data-k]').forEach(i=>{ i.checked=v[i.dataset.k]!==false; }); }
+}
+document.addEventListener('click', e=>{ const p=document.getElementById('kpi-filter-pop'); if(p && p.classList.contains('show') && !e.target.closest('.kpi-filter-pop') && !e.target.closest('.kpi-filter-btn')) p.classList.remove('show'); });
+applyKpiVis();
 // Toggle whether mobile/traveling vets count as competition. Refreshes every consumer
 // of the competitor set so the change is immediate everywhere.
 function toggleCountEquine(on){
