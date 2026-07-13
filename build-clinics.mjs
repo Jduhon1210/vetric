@@ -155,9 +155,17 @@ function classify(p) {
   if (/\bsupply\b|\bsupplies\b|distribut/.test(n)) return 'store';      // B2B suppliers
   if (/\bshotvet\b|shot vet @|(petvet|vetco|petco|luv-?my-?pet)\b.*vaccinat|vaccination clinic\b/.test(n)) return 'kiosk'; // in-store vaccine kiosks (have vet primaryType, but not real clinics)
   if (/animal control/.test(n)) return 'shelter';
+  // Name-borne clinic signal — deliberately broad ("when unsure, keep"): includes bare
+  // clinic/vet/veterinaria/pet hospital/animal health/veterinary services so a refilter run
+  // (which has no primaryType) can't drop real clinics like "PetSmart Veterinary Services",
+  // "Zoot Pet Hospital and Luxury Boarding", or "Aggieland Animal Health Center & Pet Resort".
+  const nameSignal = /veterinar|\bhospital\b|animal (clinic|hospital|medical|health)|\bclinic\b|\bvet\b|\bdvm\b|\bsurgical\b|\bspay\b|\bneuter\b/.test(n);
+  // BREEDERS / CATTERIES — Google frequently types these veterinary_care, so the type alone
+  // can't protect them (that's how "Persian & Ragdoll Kittens Texas" shipped as a competitor);
+  // only a clinic-signal NAME does ("Kitten to Cat Hospital" stays, the catteries go).
+  if (/cattery|catteries|kitten|\bbreeders?\b|\bpuppy\b|\bpuppies\b|\bragdolls?\b|\bbengals?\b|maine coons?|\bsphynx\b|\bpersians?\b|\bshorthairs?\b|\bhimalayans?\b|\bpoodles\b|\bfrenchies\b|\bdoodles?\b|stud service/.test(n) && !nameSignal) return 'breeder';
   // strong clinic signal protects the SOFT categories below
-  const clinicSignal = pt === 'veterinary_care'
-    || /\banimal hospital\b|veterinary (hospital|clinic|center|medical|surgery|surgical|wellness)|animal (clinic|hospital|medical)|\bvet clinic\b|\bsurgical\b|\bdvm\b/.test(n);
+  const clinicSignal = pt === 'veterinary_care' || nameSignal;
   // SOFT non-clinics — dropped only when there's no clinic signal
   if (/\brescue\b|adoption|\bspca\b|aspca|sanctuary|humane society/.test(n) && !clinicSignal) return 'shelter';
   if ((pt === 'pet_store' || /pet ?store|petsmart|^petco\b|tractor supply|pet food|feed store/.test(n)) && !clinicSignal) return 'store';
