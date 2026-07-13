@@ -238,7 +238,9 @@ body.vf-surface #zoom-msg{display:none!important;}
 .opp-overlay .opp-load-sub{font-size:12.5px;color:var(--muted);}
 
 /* Sidebar */
-.sidebar{width:300px;background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;}
+.sidebar{width:300px;background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;transition:width .18s ease;}
+.sidebar.eval-wide{width:400px;}
+.eval-pct{width:24px;text-align:right;font-size:9.5px;font-family:'JetBrains Mono',monospace;color:#94a3b8;flex-shrink:0;}
 .sb-head{padding:12px 16px;border-bottom:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:space-between;}
 .zip-info-panel{padding:12px 16px;border-bottom:1px solid var(--border);flex-shrink:0;background:var(--navy-light);display:none;}
 .zip-info-panel.show{display:block;}
@@ -2173,6 +2175,7 @@ function renderAreaSidebar(){
 
 function renderNormalSidebar(){
   const sidebar=document.querySelector('.sidebar');
+  if(sidebar && sidebar.classList.contains('eval-wide')){ sidebar.classList.remove('eval-wide'); setTimeout(()=>map.invalidateSize(),200); }
   sidebar.innerHTML=`
     <div class="sb-head">
       <span class="sb-title">Clinics in view</span>
@@ -6532,6 +6535,7 @@ function _cellAffl(la,lo){
 // on later calls so the spinner/bar don't restart. `title` = what we're doing, `msg` = the current step.
 function _evalStage(sb, title, msg){
   if(!sb || !evalActive) return;
+  if(!sb.classList.contains('eval-wide')){ sb.classList.add('eval-wide'); setTimeout(()=>map.invalidateSize(),200); }
   const cap = msg ? msg.charAt(0).toUpperCase()+msg.slice(1) : '';
   const sub = sb.querySelector('.eval-load-sub');
   if(sub){ sub.textContent=cap; return; }
@@ -6961,18 +6965,20 @@ function _leaseBlock(g){
   const la=g.la, lo=g.lo;
   let note='';
   if(evalDataOk.retail){
-    if(g.retailN>=0.6) note=`<div style="font-size:10px;color:#15803d;margin-bottom:3px;font-weight:600">Established retail nearby — existing lease space is more likely.</div>`;
-    else if(g.retailN<0.35) note=`<div style="font-size:10px;color:#b45309;margin-bottom:3px;font-weight:600">Sparse retail here — likely a build-to-suit or land play; try Land first.</div>`;
+    if(g.retailN>=0.6) note=`<div style="font-size:10px;color:#64748b;margin-bottom:3px">Established retail nearby — existing lease space is more likely.</div>`;
+    else if(g.retailN<0.35) note=`<div style="font-size:10px;color:#64748b;margin-bottom:3px">Sparse retail here — likely a build-to-suit or land play; try Land first.</div>`;
   }
-  const lnk=(site,mode,label)=>`<a onclick="openLeaseSearch(${la},${lo},'${site}','${mode}')" style="cursor:pointer;color:#0d9488;font-weight:700;text-decoration:none">${label} ↗</a>`;
+  const lnk=(site,mode,label)=>`<a onclick="openLeaseSearch(${la},${lo},'${site}','${mode}')" style="cursor:pointer;color:var(--navy);font-weight:700;text-decoration:none">${label} ↗</a>`;
   return `<div style="margin-top:6px;font-size:10.5px;color:#64748b" onclick="event.stopPropagation()">${note}`
     +`<div>Lease space: ${lnk('crexi','lease','Crexi')} · ${lnk('loopnet','lease','LoopNet')}</div>`
     +`<div style="margin-top:2px">Land to build: ${lnk('crexi','land','Crexi')} · ${lnk('loopnet','land','LoopNet')}</div></div>`;
 }
 function _evalRenderSidebar(){
   const sb=document.querySelector('.sidebar'); if(!sb) return;
+  if(!sb.classList.contains('eval-wide')){ sb.classList.add('eval-wide'); setTimeout(()=>map.invalidateSize(),200); }
   const hasRetail=evalDataOk.retail, hasRoads=evalDataOk.roads, hasResid=evalDataOk.resid, hasAADT=evalDataOk.aadt;
-  const bar=(label,v,on)=>`<div class="eval-bar"><span>${label}</span><span class="eval-track"><span style="width:${on?Math.round(Math.max(0,Math.min(1,v))*100):0}%;background:${!on?'#cbd5e1':v>0.6?'#639922':v>0.35?'#BA7517':'#dc2626'}"></span></span></div>`;
+  const bar=(label,v,on)=>{ const pct=on?Math.round(Math.max(0,Math.min(1,v))*100):null;
+    return `<div class="eval-bar"><span>${label}</span><span class="eval-track"><span style="width:${pct==null?0:pct}%;background:${pct==null?'#cbd5e1':'#3b5bb5'}"></span></span><span class="eval-pct">${pct==null?'—':pct}</span></div>`; };
   const cards=evalTop.map((g,i)=>{
     const headline=Math.round(g.score*100);
     const nearStr = isFinite(g.nearC) ? (g.nearC/1609.344).toFixed(1)+' mi to nearest clinic' : 'no clinics nearby';
@@ -6999,7 +7005,7 @@ function _evalRenderSidebar(){
       </div>
       ${_communityHTML(g.la,g.lo,{small:true})}
       ${(()=>{ const sw=_mpcSweetNear(g.la,g.lo); if(!sw) return '';
-        return `<div style="margin-top:5px;font-size:10.5px;background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;padding:5px 9px"><span style="font-weight:800;color:#0f766e">⚡ ${_ceEsc(sw.m.n)}</span> <span style="color:#134e4a">is ${sw.mi.toFixed(1)} mi away and in its pad-engagement window (${_ceEsc(sw.ph.why)}). Chains typically sign MPC sites 12–24 months before opening.</span></div>`; })()}
+        return `<div style="margin-top:5px;font-size:10.5px;color:#334155;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:5px 9px"><span style="font-weight:800;color:#0f766e">⚡ ${_ceEsc(sw.m.n)}</span> is ${sw.mi.toFixed(1)} mi away, in its pad-engagement window (${_ceEsc(sw.ph.why)}). Chains typically sign 12–24 months before opening.</div>`; })()}
       ${_leaseBlock(g)}
       <div style="margin-top:7px" onclick="event.stopPropagation()">
         <button class="vm-export-btn" style="color:#6d28d9;background:#f3effd;border-color:#ddd0f7" onclick="evalDriveTime(${i},this)">◔ 10-min drive area</button>
@@ -7076,28 +7082,36 @@ function _evalRenderSidebar(){
       const compare=best!=null?(sc>=best?`Your pin matches the best spot found in this area (${best}).`:`Best spot found nearby scores ${best} — your pin trails it by ${best-sc}.`):'';
       const sid=g.la.toFixed(4)+','+g.lo.toFixed(4);
       const cn=_evalCannib(g);
-      return `<div class="eval-card" style="border:2px solid #7c3aed;background:#fdfcff;margin:8px 0">
-        <div class="eval-card-head"><span class="eval-rank" style="background:#7c3aed">★</span><span class="eval-card-title">Your site</span>${chipS}<span class="eval-score" style="color:#6d28d9">${sc}</span></div>
-        <div class="eval-why">${nearStr}${g.nComp?` · ${g.nComp} competitor${g.nComp!==1?'s':''} within ${evalRadiusMi} mi (${g.nPE} PE)`:''} · capture share ${(g.share*100).toFixed(0)}%</div>
-        ${warns.map(w=>`<div style="font-size:10.5px;color:#b45309;font-weight:600;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:5px 9px;margin:5px 0">${w}</div>`).join('')}
+      const _sstat=(v,l)=>`<div style="flex:1;text-align:center;padding:7px 4px;min-width:0"><div style="font-size:13.5px;font-weight:800;color:#0f172a;letter-spacing:-.01em">${v}</div><div style="font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#94a3b8;margin-top:1px">${l}</div></div>`;
+      return `<div class="eval-card" style="cursor:default;border:1px solid #d7def0;background:#fff;margin:8px 0;box-shadow:0 2px 10px rgba(30,58,138,.07)">
+        <div class="eval-card-head" style="margin-bottom:5px"><span class="eval-rank" style="background:#6d28d9;font-size:11px">★</span><span class="eval-card-title" style="font-size:13px">Your site</span><span class="eval-score" style="color:var(--navy);font-size:19px;letter-spacing:-.02em">${sc}<span style="font-size:9.5px;font-weight:600;color:#94a3b8"> /100</span></span></div>
+        <div style="margin:0 0 8px">${chipS}</div>
+        <div style="display:flex;background:#f8fafc;border:1px solid #eef2f7;border-radius:9px;margin-bottom:8px">
+          ${_sstat(isFinite(g.nearC)?(g.nearC/1609.344).toFixed(1)+' mi':'—','nearest clinic')}
+          <div style="width:1px;background:#eef2f7;margin:7px 0"></div>
+          ${_sstat(String(g.nComp)+(g.nPE?' · '+g.nPE+' PE':''),'competitors · '+evalRadiusMi+' mi')}
+          <div style="width:1px;background:#eef2f7;margin:7px 0"></div>
+          ${_sstat((g.share*100).toFixed(0)+'%','capture share')}
+        </div>
+        ${warns.map(w=>`<div style="font-size:10.5px;color:#92580a;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:6px 9px;margin:0 0 8px;line-height:1.5">${w}</div>`).join('')}
         ${bar('Neighborhood demand', g.demandN, true)}
         ${bar('Low competition', g.lowComp, true)}
         ${bar('Retail access', g.retailN, hasRetail)}
         ${bar('Road visibility', g.accessN, hasRoads||hasAADT)}
-        ${cn?`<div style="font-size:10.5px;color:#b45309;font-weight:600;margin-top:5px">${cn}</div>`:''}
-        ${compare?`<div style="font-size:11px;color:#475569;margin-top:6px">${compare}</div>`:''}
-        <div style="display:flex;gap:10px;align-items:center;margin-top:6px;font-size:10.5px" onclick="event.stopPropagation()">
+        ${cn?`<div style="font-size:10.5px;color:#92580a;margin-top:6px">${cn}</div>`:''}
+        ${compare?`<div style="font-size:11px;color:#64748b;margin-top:7px">${compare}</div>`:''}
+        <div style="display:flex;gap:10px;align-items:center;margin-top:8px;padding-top:8px;border-top:1px solid #f1f5f9;font-size:10.5px" onclick="event.stopPropagation()">
           <a href="https://www.google.com/maps/search/?api=1&query=${g.la},${g.lo}" target="_blank" rel="noopener" style="color:var(--navy);font-weight:700;text-decoration:none">Maps ↗</a>
-          <span style="color:#94a3b8;font-family:'JetBrains Mono',monospace">${sid}</span>
+          <span style="color:#94a3b8;font-family:'JetBrains Mono',monospace;font-size:9.5px">${sid}</span>
           <span class="vm-star ${_inWatch('site',sid)?'on':''}" style="margin-left:auto" title="Save site to watchlist" onclick="toggleWatchSite(${g.la},${g.lo},${sc},this)">★</span>
         </div>
         ${_communityHTML(g.la,g.lo,{small:true})}
         ${(()=>{ const sw=_mpcSweetNear(g.la,g.lo); if(!sw) return '';
-          return `<div style="margin-top:5px;font-size:10.5px;background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;padding:5px 9px"><span style="font-weight:800;color:#0f766e">⚡ ${_ceEsc(sw.m.n)}</span> <span style="color:#134e4a">is ${sw.mi.toFixed(1)} mi away and in its pad-engagement window (${_ceEsc(sw.ph.why)}).</span></div>`; })()}
+          return `<div style="margin-top:6px;font-size:10.5px;color:#334155;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:6px 9px"><span style="font-weight:800;color:#0f766e">⚡ ${_ceEsc(sw.m.n)}</span> is ${sw.mi.toFixed(1)} mi away, in its pad-engagement window.</div>`; })()}
         ${_leaseBlock(g)}
-        <div style="margin-top:7px" onclick="event.stopPropagation()">
-          <button class="vm-export-btn" onclick="siteRemove()">Remove site pin</button>
-          <span style="font-size:10px;color:#94a3b8;margin-left:6px">drag the ★ pin to re-evaluate a different spot</span>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:8px" onclick="event.stopPropagation()">
+          <button class="vm-export-btn" onclick="siteRemove()">Remove pin</button>
+          <span style="font-size:10px;color:#94a3b8">drag the ★ to re-evaluate</span>
         </div>
       </div>`; })()}
     ${verdictBanner}
