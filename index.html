@@ -182,6 +182,7 @@ body.dev-mode .search-bar{background:var(--amber-light);border-bottom-color:#fde
 .opp-panel.surface-mode .opp-list-wrap > *{pointer-events:auto;}
 .vf-site-pin{width:30px;height:30px;border-radius:50%;background:#7c3aed;border:2.5px solid #fff;box-shadow:0 3px 10px rgba(109,40,217,.5);color:#fff;font-size:15px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:grab;}
 .vf-site-pin:active{cursor:grabbing;}
+.vf-site-saved{width:26px;height:26px;font-size:12px;background:#d97706;box-shadow:0 2px 8px rgba(217,119,6,.5);cursor:pointer;}
 .tool-btn.vf-armed{background:#f3effd;border-color:#c4b5fd;color:#6d28d9;}
 .opp-view-seg{display:inline-flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;flex-shrink:0;}
 .opp-view-seg button{border:0;background:#fff;padding:5px 13px;font-size:12px;font-weight:700;color:#64748b;cursor:pointer;}
@@ -3800,7 +3801,7 @@ const SECTION_MSG={
 function getWatch(){ try{ return JSON.parse(localStorage.getItem('vf_watchlist')||'[]'); }catch(e){ return []; } }
 function saveWatch(a){ try{ localStorage.setItem('vf_watchlist', JSON.stringify(a)); }catch(e){} }
 function _inWatch(type,id){ return getWatch().some(w=>w.type===type && w.id===id); }
-function _watchRemove(type,id){ saveWatch(getWatch().filter(w=>!(w.type===type&&w.id===id))); if(watchMode) renderWatchlist(); }
+function _watchRemove(type,id){ saveWatch(getWatch().filter(w=>!(w.type===type&&w.id===id))); if(watchMode) renderWatchlist(); if(type==='site'){ try{ _refreshSavedSitePins(); }catch(e){} } }
 function toggleWatchMarket(zip, el){
   const a=getWatch(); const idx=a.findIndex(w=>w.type==='market'&&w.id===zip);
   if(idx>=0){ a.splice(idx,1); if(el)el.classList.remove('on'); }
@@ -3871,11 +3872,18 @@ function renderWatchlist(){
   }
   let st='';
   if(sites.length){
-    const cards=sites.map(s=>`<div class="card" onclick="map.setView([${s.lat},${s.lon}],15)">
-      <div class="card-body"><div class="card-name">${s.name}</div>
-        <div style="font-size:11px;color:#475569;margin-top:3px">Score ${s.score}/100 · ${s.region||''}</div></div>
+    const cards=sites.map(s=>{
+      const k=s.kpi||{};
+      const kbits=[ k.pePct!=null?('PE '+k.pePct+'%'):null, k.growth!=null?('growth '+(k.growth>=0?'+':'')+(k.growth*100).toFixed(1)+'%'):null, k.satTag||null ].filter(Boolean).join(' · ');
+      const sub = s.placement
+        ? `${s.verdict||''}${s.savedAt?' · saved '+s.savedAt:''}${kbits?'<br>'+kbits+(k.r?' <span style="color:#94a3b8">('+k.r+' mi)</span>':''):''}`
+        : `Score ${s.score}/100 · ${s.region||''}`;
+      return `<div class="card" onclick="watchSiteGo('${s.id}',${s.lat},${s.lon})">
+      <div style="flex-shrink:0;align-self:flex-start;margin-top:3px;width:18px;height:18px;border-radius:50%;background:${s.placement?'#d97706':'var(--navy)'};color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px">★</div>
+      <div class="card-body"><div class="card-name">${s.placement?('Placement · '+s.score+'/100'):s.name}</div>
+        <div style="font-size:11px;color:#475569;margin-top:3px;line-height:1.5">${sub}</div></div>
       <span class="vm-rm" style="align-self:center" onclick="event.stopPropagation();_watchRemove('site','${s.id}')" title="Remove">✕</span>
-    </div>`).join('');
+    </div>`; }).join('');
     st=`<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#64748b;margin:16px 0 6px">Sites (${sites.length})</div>${cards}`;
   }
   sb.innerHTML=`<div class="area-header"><span class="area-title">Watchlist</span><span style="display:flex;gap:8px;align-items:center">${_exportBtn('exportWatchCSV()','Export')}<span style="font-size:12px;color:#64748b;font-weight:600">${w.length}</span></span></div>
@@ -5799,6 +5807,7 @@ function areaWeightedZipStat(layer, drawPoly, dataLookup, mode='avg'){
 
 /* ─── Clinic KPI ─────────────────────────────────────────────────────────────*/
 function updateClinicKpis(){
+  if(typeof evalSitePt!=='undefined' && evalSitePt && evalActive){ _updateSiteKpis(); return; }   // site mode owns the KPI bar
   const cEl=document.getElementById('kpi-clinics');
   if(!cEl) return;
 
@@ -5985,6 +5994,7 @@ async function _ensureDrawDemo(){
 // Draw-area income + dog households. Now loads the Census data on its own (no need to toggle the
 // layer on) and computes off the cached geometry.
 function updateDrawLayerKpis(drawPoly){
+  if(typeof evalSitePt!=='undefined' && evalSitePt && evalActive){ _updateSiteKpis(); return; }   // site mode owns the KPI bar (the site's context box IS a drawn area)
   const gEl=document.getElementById('kpi-growth'), gFoot=document.getElementById('kpi-growth-foot');
   const sEl=document.getElementById('kpi-sat'), sFoot=document.getElementById('kpi-sat-foot');
   const groReady=_zipGeoCache && Object.keys(growthData).length>0;
@@ -6013,6 +6023,7 @@ function updateDrawLayerKpis(drawPoly){
 
 /* ─── Layer KPIs — viewport mode ─────────────────────────────────────────────*/
 function updateLayerKpis(){
+  if(typeof evalSitePt!=='undefined' && evalSitePt && evalActive){ _updateSiteKpis(); return; }   // site mode owns the KPI bar
   if(drawnArea){
     const drawPoly=drawnAreaToPolygon();
     if(drawPoly) { updateDrawLayerKpis(drawPoly); return; }
@@ -6751,6 +6762,7 @@ function _evalComputeAndRender(){
   evalShowWeak=false;
   _evalRenderLayers();
   _evalRenderSidebar();
+  if(evalSitePt) _updateSiteKpis();                 // site mode: KPI bar reads the radius around the pin
   // Screen popup (once per analysis): urge classifying the unverified competitors, or ignore.
   if(!evalSpeciesPrompted && !evalSpeciesIgnored && _speciesUnverified().length){ evalSpeciesPrompted=true; _speciesModalOpen(); }
 }
@@ -7065,13 +7077,13 @@ function _evalRenderSidebar(){
       // The score and bars stay (they read the market AROUND the point); the chip leads with
       // the land question until the pin sits on commercially-plausible ground.
       const _chip=(fg,bg,bd,txt)=>`<span style="font-size:9px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:${fg};background:${bg};border:1px solid ${bd};border-radius:8px;padding:1.5px 7px">${txt}</span>`;
-      const inWater=(typeof _hexInWater==='function' && _hexWater && _hexWater.length) ? _hexInWater(g.la,g.lo) : false;
-      const chipS = inWater ? _chip('#dc2626','#fef2f2','#fecaca','In open water — not buildable')
-                  : (g.zgateRaw==='exclude') ? _chip('#b45309','#fffbeb','#fde68a','Zoned non-commercial — verify land')
-                  : (!g.gateOk) ? _chip('#b45309','#fffbeb','#fde68a','No commercial context — verify land')
-                  : tier==='strong' ? _chip('#15803d','#f0fdf4','#bbf7d0','Strong site')
-                  : tier==='fair' ? _chip('#b45309','#fffbeb','#fde68a','Workable — has trade-offs')
-                  : _chip('#dc2626','#fef2f2','#fecaca','Weak — not recommended');
+      const vd=_siteVerdict(g);
+      const inWater=vd.k==='water';
+      const chipS = vd.k==='water' ? _chip('#dc2626','#fef2f2','#fecaca',vd.t)
+                  : vd.k==='zone'||vd.k==='nocontext' ? _chip('#b45309','#fffbeb','#fde68a',vd.t)
+                  : vd.k==='strong' ? _chip('#15803d','#f0fdf4','#bbf7d0',vd.t)
+                  : vd.k==='fair' ? _chip('#b45309','#fffbeb','#fde68a',vd.t)
+                  : _chip('#dc2626','#fef2f2','#fecaca',vd.t);
       const warns=[];
       if(inWater) warns.push('This point is inside a mapped water body — the score describes the shoreline market around it, not this spot.');
       if(g.zgateRaw==='exclude') warns.push(`City land-use data reads <b>${_ceEsc(g.zone||'residential / civic')}</b>${g.zcity?' ('+_ceEsc(g.zcity)+')':''} at this spot — confirm the parcel's actual zoning before pursuing.`);
@@ -7100,16 +7112,22 @@ function _evalRenderSidebar(){
         ${bar('Road visibility', g.accessN, hasRoads||hasAADT)}
         ${cn?`<div style="font-size:10.5px;color:#92580a;margin-top:6px">${cn}</div>`:''}
         ${compare?`<div style="font-size:11px;color:#64748b;margin-top:7px">${compare}</div>`:''}
-        <div style="display:flex;gap:10px;align-items:center;margin-top:8px;padding-top:8px;border-top:1px solid #f1f5f9;font-size:10.5px" onclick="event.stopPropagation()">
+        <div style="display:flex;align-items:center;gap:8px;margin-top:8px;padding-top:8px;border-top:1px solid #f1f5f9" onclick="event.stopPropagation()">
+          <span style="font-size:10.5px;color:#64748b;flex-shrink:0">Market context</span>
+          <input type="range" min="1" max="6" step="0.5" value="${_siteCtxMi}" oninput="_onSiteCtx(this.value)" style="flex:1;min-width:0"/>
+          <span id="site-ctx-val" style="font-size:10.5px;font-weight:700;color:#334155;width:44px;text-align:right;flex-shrink:0">${_siteCtxMi.toFixed(1)} mi</span>
+        </div>
+        <div style="font-size:9.5px;color:#94a3b8;margin-top:2px">Drives the KPI bar above — clinics, PE penetration, growth and saturation around this pin.</div>
+        <div style="display:flex;gap:10px;align-items:center;margin-top:7px;font-size:10.5px" onclick="event.stopPropagation()">
           <a href="https://www.google.com/maps/search/?api=1&query=${g.la},${g.lo}" target="_blank" rel="noopener" style="color:var(--navy);font-weight:700;text-decoration:none">Maps ↗</a>
           <span style="color:#94a3b8;font-family:'JetBrains Mono',monospace;font-size:9.5px">${sid}</span>
-          <span class="vm-star ${_inWatch('site',sid)?'on':''}" style="margin-left:auto" title="Save site to watchlist" onclick="toggleWatchSite(${g.la},${g.lo},${sc},this)">★</span>
         </div>
         ${_communityHTML(g.la,g.lo,{small:true})}
         ${(()=>{ const sw=_mpcSweetNear(g.la,g.lo); if(!sw) return '';
           return `<div style="margin-top:6px;font-size:10.5px;color:#334155;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:6px 9px"><span style="font-weight:800;color:#0f766e">⚡ ${_ceEsc(sw.m.n)}</span> is ${sw.mi.toFixed(1)} mi away, in its pad-engagement window.</div>`; })()}
         ${_leaseBlock(g)}
-        <div style="display:flex;align-items:center;gap:8px;margin-top:8px" onclick="event.stopPropagation()">
+        <div style="display:flex;align-items:center;gap:7px;margin-top:9px;flex-wrap:wrap" onclick="event.stopPropagation()">
+          <button class="vm-export-btn" style="background:var(--navy);color:#fff;border-color:var(--navy)" onclick="saveSitePlacement(this)">${_inWatch('site',sid)?'Update saved placement':'Save placement'}</button>
           <button class="vm-export-btn" onclick="siteRemove()">Remove pin</button>
           <span style="font-size:10px;color:#94a3b8">drag the ★ to re-evaluate</span>
         </div>
@@ -7224,6 +7242,161 @@ async function evalDriveTime(i, btn){
 // dots, drive-time polygons, zoning overlay, cached context). Used by clearEvaluate AND by the
 // click-off paths (clearArea / clearZipSelection) so dismissing the analysis never orphans the
 // heatmap on the map. Does NOT re-render the sidebar — the caller decides what view to restore.
+// Verdict for a dropped-site cell — shared by the sidebar card, the saved-placement record,
+// and the saved-pin popup. Land reality outranks the score tier (see the card comment).
+function _siteVerdict(g){
+  const inWater=(typeof _hexInWater==='function' && _hexWater && _hexWater.length) ? _hexInWater(g.la,g.lo) : false;
+  if(inWater) return {k:'water', t:'In open water — not buildable'};
+  if(g.zgateRaw==='exclude') return {k:'zone', t:'Zoned non-commercial — verify land'};
+  if(!g.gateOk) return {k:'nocontext', t:'No commercial context — verify land'};
+  if(g.score>=EVAL_STRONG) return {k:'strong', t:'Strong site'};
+  if(g.score>=EVAL_FLOOR) return {k:'fair', t:'Workable — has trade-offs'};
+  return {k:'weak', t:'Weak — not recommended'};
+}
+/* ── Site-context KPIs: while a dropped-site analysis is active, the top KPI bar reads the
+   market within a RADIUS of the pin (PE penetration, growth, saturation) instead of the
+   drawn-box scope. The radius has its own slider in the site card (display-only context —
+   it does NOT touch the capture model's competitor range). */
+let _siteCtxMi=3, _siteCtxTimer=null;
+function _siteKpis(rMi){
+  if(!evalSitePt) return null;
+  const la0=evalSitePt.lat, lo0=evalSitePt.lon, R=rMi*1609.344;
+  // Clinics from the statewide static sets (independent of the eval buffer, so the slider
+  // can range past the analysis box) — same skip rules as every competition consumer.
+  const ov=getOverrides(); const seen=new Set();
+  let n=0, pe=0, dvm=0;
+  const add=(name,plat,plon,isPE)=>{
+    if(Math.abs(plat-la0)>R/111000+0.02) return;
+    if(hav(la0,lo0,plat,plon)>R) return;
+    const k=Math.round(plat*1000)+'_'+Math.round(plon*1000);
+    if(seen.has(k)) return; seen.add(k);
+    if((ov[k]||{}).exclude) return;
+    if(!_vfCountEquine() && _isLargeAnimalAt(name,plat,plon)) return;
+    n++; if(isPE) pe++;
+    dvm+=(_vetStaffAt(plat,plon)||{}).n||2;
+  };
+  if(peLoaded && typeof PE_COORDS!=='undefined') for(const c of PE_COORDS) add(c[4],c[0],c[1],true);
+  for(const v of _activeVetClinics()){ if(!checkPE(v.name,v.lat,v.lon,null,ov)) add(v.name,v.lat,v.lon,false); }
+  // ZIP-grain demographics: ZIPs whose bbox center falls inside the radius
+  let grows=[], dogHH=0, zips=0, haveGrow=false, haveDog=false;
+  const geo=_zipGeoCache;
+  if(geo && geo.features){
+    const bandR=R/111000+0.02;
+    for(const f of geo.features){
+      if(!f.properties || !f.properties.zip) continue;
+      // Membership = the ZIP's bbox INTERSECTS the radius circle (nearest bbox point within R).
+      // Centroid-in-circle was too strict: at 3 mi, a big suburban ZIP can contain the pin while
+      // its center sits 3.5 mi away — the pin's own ZIP has to count at every radius.
+      let bb=f._bb;
+      if(!bb){
+        const g=f.geometry; if(!g) continue;
+        const rings=g.type==='Polygon'?g.coordinates:(g.type==='MultiPolygon'?g.coordinates.flat():[]);
+        let mnLa=90,mxLa=-90,mnLo=180,mxLo=-180;
+        for(const ring of rings) for(const pt of ring){ if(pt[1]<mnLa)mnLa=pt[1]; if(pt[1]>mxLa)mxLa=pt[1]; if(pt[0]<mnLo)mnLo=pt[0]; if(pt[0]>mxLo)mxLo=pt[0]; }
+        bb=f._bb={mnLa,mxLa,mnLo,mxLo};
+      }
+      if(la0<bb.mnLa-bandR || la0>bb.mxLa+bandR) continue;
+      const cLat=Math.max(bb.mnLa,Math.min(bb.mxLa,la0)), cLon=Math.max(bb.mnLo,Math.min(bb.mxLo,lo0));
+      if(hav(la0,lo0,cLat,cLon)>R) continue;
+      const zip=f.properties.zip; zips++;
+      if(typeof growthData!=='undefined' && growthData[zip]!=null){ grows.push(growthData[zip]); haveGrow=true; }
+      if(typeof dogData!=='undefined' && dogData[zip] && dogData[zip].est!=null){ dogHH+=dogData[zip].est; haveDog=true; }
+    }
+  }
+  const growth=grows.length? grows.reduce((a2,b2)=>a2+b2,0)/grows.length : null;
+  const sat=(haveDog && dogHH>0)? dvm/(dogHH/10000) : null;
+  return { n, pe, pePct:n?Math.round(pe/n*100):null, dvm,
+           growth:haveGrow?growth:null, dogHH:haveDog?Math.round(dogHH):null,
+           sat, satTag:sat!=null?_satTag(sat):null, zips };
+}
+function _updateSiteKpis(){
+  if(!evalSitePt) return;
+  const k=_siteKpis(_siteCtxMi); if(!k) return;
+  const set=(id,v,foot,pending)=>{ const el=document.getElementById(id), f=document.getElementById(id+'-foot');
+    if(el){ el.textContent=v; el.classList.toggle('pending', !!pending); } if(f) f.textContent=foot; };
+  const rTxt=_siteCtxMi+' mi of your site';
+  set('kpi-clinics', String(k.n), 'within '+rTxt);
+  const peEl=document.getElementById('kpi-clinics-foot'); // clinics foot already set; enrich pe below
+  set('kpi-pe', k.pePct!=null? k.pePct+'%':'—', k.n? (k.pe+' PE of '+k.n+' clinics · '+rTxt):'no clinics in range', k.pePct==null);
+  set('kpi-growth', k.growth!=null? ((k.growth>=0?'+':'')+(k.growth*100).toFixed(1)+'%') : '—', k.growth!=null? ('ZIP avg within '+rTxt):'growth data loading…', k.growth==null);
+  set('kpi-sat', k.satTag? k.satTag.charAt(0).toUpperCase()+k.satTag.slice(1) : '—', k.sat!=null? (k.dvm+' DVMs / '+(k.dogHH>=1000?(k.dogHH/1000).toFixed(1)+'k':k.dogHH)+' dog HH · '+rTxt):'demand data loading…', k.sat==null);
+}
+function _onSiteCtx(v){
+  _siteCtxMi=+v;
+  const el=document.getElementById('site-ctx-val'); if(el) el.textContent=(+v).toFixed(1)+' mi';
+  clearTimeout(_siteCtxTimer); _siteCtxTimer=setTimeout(_updateSiteKpis, 120);
+}
+/* ── Saved placements: rich watchlist records + gold pins on the map ── */
+let _siteWatchLayer=null;
+function _refreshSavedSitePins(){
+  if(_siteWatchLayer){ map.removeLayer(_siteWatchLayer); _siteWatchLayer=null; }
+  const sites=getWatch().filter(w=>w.type==='site' && w.placement);
+  if(!sites.length) return;
+  _siteWatchLayer=L.layerGroup();
+  for(const s2 of sites){
+    const ic=L.divIcon({className:'', html:'<div class="vf-site-pin vf-site-saved">★</div>', iconSize:[26,26], iconAnchor:[13,13]});
+    const m=L.marker([s2.lat,s2.lon],{icon:ic, zIndexOffset:900});
+    m._vfSiteId=s2.id;
+    m.bindPopup(()=>_savedSitePopup(s2), {maxWidth:290});
+    m.addTo(_siteWatchLayer);
+  }
+  _siteWatchLayer.addTo(map);
+}
+function _savedSitePopup(s2){
+  const esc=v=>String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const k=s2.kpi||{};
+  const kline=[
+    k.pePct!=null? ('PE '+k.pePct+'%') : null,
+    k.growth!=null? ('growth '+(k.growth>=0?'+':'')+(k.growth*100).toFixed(1)+'%') : null,
+    k.satTag||null
+  ].filter(Boolean).join(' · ');
+  return `<div style="font-size:12px;width:250px;padding:12px 14px;font-family:'Inter',system-ui,sans-serif">
+    <div style="display:flex;align-items:center;gap:7px"><span style="width:20px;height:20px;border-radius:50%;background:#d97706;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0">★</span>
+      <b style="font-size:13px;color:#0f172a">Saved placement</b>
+      <span style="margin-left:auto;font-size:16px;font-weight:800;color:var(--navy)">${s2.score}</span></div>
+    <div style="font-size:10.5px;color:#64748b;margin:3px 0 6px">${esc(s2.verdict||'')} · saved ${esc(s2.savedAt||'')}</div>
+    <div style="font-size:11px;color:#334155;line-height:1.6">${s2.share!=null?('Capture share '+s2.share+'% · '):''}${s2.nComp!=null?(s2.nComp+' competitor'+(s2.nComp===1?'':'s')+(s2.nPE?' ('+s2.nPE+' PE)':'')):''}</div>
+    ${kline?`<div style="font-size:11px;color:#334155;margin-top:2px">${esc(kline)}${k.r?` <span style="color:#94a3b8">· ${k.r} mi context</span>`:''}</div>`:''}
+    <div style="font-size:10px;color:#94a3b8;font-family:'JetBrains Mono',monospace;margin-top:5px">${esc(s2.id)}</div>
+    <div style="display:flex;gap:7px;margin-top:9px">
+      <button class="vm-export-btn" style="background:var(--navy);color:#fff;border-color:var(--navy)" onclick="map.closePopup();_siteDropCommit(${s2.lat},${s2.lon})">Re-run analysis</button>
+      <button class="vm-export-btn" onclick="map.closePopup();_savedSiteRemove('${esc(s2.id)}')">Remove</button>
+    </div>
+  </div>`;
+}
+function _savedSiteRemove(id){ _watchRemove('site', id); _refreshSavedSitePins(); vfToast('Placement removed.'); }
+// Watchlist → map: fly to a saved site and open its gold-pin popup (plain saved sites just fly).
+function watchSiteGo(id,lat,lon){
+  switchSection('map');
+  setTimeout(()=>{
+    map.invalidateSize(); map.setView([lat,lon],14,{animate:false});
+    if(_siteWatchLayer) _siteWatchLayer.eachLayer(l=>{ if(l._vfSiteId===id) l.openPopup(); });
+  },120);
+}
+// Saved placements persist across sessions — draw them on load. Retries until the layer
+// exists (belt-and-braces against any load-order race; logs instead of failing silent).
+(function _bootSavedPins(tries){
+  setTimeout(()=>{
+    try{ _refreshSavedSitePins(); }catch(e){ console.warn('saved-placement pins:', e); }
+    const want=getWatch().some(w=>w.type==='site'&&w.placement);
+    if(want && !_siteWatchLayer && tries<5) _bootSavedPins(tries+1);
+  }, tries===0?700:1400);
+})(0);
+function saveSitePlacement(btn){
+  if(!evalSiteCell || !evalSitePt) return;
+  const g=evalSiteCell, id=g.la.toFixed(4)+','+g.lo.toFixed(4);
+  const v=_siteVerdict(g), k=_siteKpis(_siteCtxMi);
+  const rec={ type:'site', placement:1, id, lat:g.la, lon:g.lo, score:Math.round(g.score*100),
+    verdict:v.t, vk:v.k, share:Math.round(g.share*100), nComp:g.nComp, nPE:g.nPE,
+    name:'Placement · '+id, region:evalZip||'dropped site', savedAt:new Date().toISOString().slice(0,10),
+    kpi:k?{ r:_siteCtxMi, clinics:k.n, pe:k.pe, pePct:k.pePct, growth:k.growth, sat:k.sat!=null?+k.sat.toFixed(1):null, satTag:k.satTag, dogHH:k.dogHH }:null };
+  const a=getWatch(); const idx=a.findIndex(w=>w.type==='site'&&w.id===id);
+  if(idx>=0) a[idx]=rec; else a.push(rec);
+  saveWatch(a); _refreshSavedSitePins();
+  if(btn){ btn.textContent='Saved ✓'; setTimeout(()=>{ if(btn.isConnected) btn.textContent='Update saved placement'; }, 1400); }
+  vfToast('Placement saved — it now shows as a gold ★ pin and in your Watchlist.');
+  if(watchMode) renderWatchlist();
+}
 /* ── Drop-a-site: place a pin on a specific parcel and get a verdict for THAT spot ──────────
    The pin runs through the SAME engine as a normal evaluate (a 2-mi context box is drawn around
    it), but the pin's exact cell is scored as a FORCED candidate: it bypasses the commercial-land
@@ -7255,11 +7428,13 @@ function _siteClear(){
   evalSitePt=null; evalSiteCell=null;
   if(evalSiteMarker){ map.removeLayer(evalSiteMarker); evalSiteMarker=null; }
 }
-function siteRemove(){ _siteClear(); if(evalActive) _evalComputeAndRender(); }
+function siteRemove(){ _siteClear(); if(evalActive) _evalComputeAndRender(); try{ updateClinicKpis(); updateLayerKpis(); }catch(e){} }
 function _siteDropCommit(lat,lon){
   _siteDropEnd();
   evalSitePt={lat,lon};
   try{ _loadHexWater(); }catch(e){}                 // warm the lake outlines for the in-water check (best-effort)
+  // Warm the KPI inputs (all force-cache; instant when already loaded), then paint the bar.
+  try{ Promise.allSettled([ensureIncomeData(), ensureGrowthData(), ensureDogData(), loadZipGeometry()]).then(()=>{ if(evalSitePt) _updateSiteKpis(); }); }catch(e){}
   _siteMarkerPlace(lat,lon);
   // Same 2-mile context box the hex→Evaluate handoff uses: big enough to hold the competitor
   // field + rooftops the capture model needs, small enough to stay one neighborhood's story.
@@ -7283,6 +7458,7 @@ function clearEvaluate(){
   if(selectedZips.size) applyZipSelection();
   else if(wasArea && drawnArea){ markers.forEach(m=>setMarkerVisible(m,true)); captureAreaClinics(); } // back to the drawn-area view
   else { markers.forEach(m=>setMarkerVisible(m,true)); renderNormalSidebar(); }
+  try{ updateClinicKpis(); updateLayerKpis(); }catch(e){}   // hand the KPI bar back from site mode
 }
 </script>
 <script>
