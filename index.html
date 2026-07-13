@@ -1373,7 +1373,7 @@ function checkPE(name, lat, lon, key, overrides) {
 // redraw. All vectors share this one renderer (no per-layer custom renderer — see
 // gotchas). 1.0 = the SVG is ~3× the viewport per axis; bigger smooths fast pans
 // but renders more off-screen choropleth polygons, so this balances the two.
-const map = L.map('map',{minZoom:4, boxZoom:false, attributionControl:false, renderer: L.svg({padding:1})}).setView([31.0,-99.0],7);
+const map = L.map('map',{minZoom:4, boxZoom:false, attributionControl:false, markerZoomAnimation:false, renderer: L.svg({padding:1})}).setView([31.0,-99.0],7);
 const baseTiles=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map);
 
 // ── App-ready signal → drives the post-login loading screen ──────────────────
@@ -1512,6 +1512,7 @@ function toggleClinicType(kind,on){
 function clinicKey(c){ return `${Math.round(c.lat*1000)}_${Math.round(c.lon*1000)}`; }
 
 let markers=[],clinics=[],activeIdx=null,fetchTimer=null;
+let _markerByKey=new Map();   // clinicKey → live L.marker — lets each commit DIFF the pin layer instead of rebuilding it
 
 /*  Draw area state  */
 let drawingMode=false, drawStart=null, drawRect=null, drawnArea=null;
@@ -1525,7 +1526,7 @@ const hav=(a,b,c,d)=>{const R=6371000,dL=(c-a)*Math.PI/180,dN=(d-b)*Math.PI/180,
 const mi=m=>(m/1609.344).toFixed(1);
 const setStatus=(t,e=false)=>{const s=document.getElementById('status');s.textContent=t;s.className='status-bar'+(e?' err':'');};
 const showPill=(t)=>{const el=document.getElementById('map-pill');el.textContent=t;el.style.display=t?'block':'none';};
-function clearMarkers(){clusterGroup.clearLayers();markers=[];}
+function clearMarkers(){clusterGroup.clearLayers();markers=[];_markerByKey=new Map();}
 
 // Show/hide a clinic marker. Also toggles pointer-events: a HIDDEN (opacity 0)
 // marker must NOT swallow clicks — otherwise clicking where an invisible pin sits
@@ -1857,6 +1858,15 @@ function renderList(){
   visible = visible.filter(_typeOK);               // clinic-type filter (large/small/specialty)
   const badge=document.getElementById('badge');
   if(badge) badge.textContent = visible.length;  // null in ZIP-selection sidebar — guard it
+  // Metro-wide views put 700+ cards in this list — the innerHTML rebuild on every pan was a
+  // real part of the stutter. The MAP shows every pin; the LIST shows the 120 nearest the
+  // center (original indices kept, so focusClinic/export still address the full set).
+  const _fullVisible=visible, FULL=visible.length; let _listCapped=false;
+  if(visible.length>120){
+    const _ctr=map.getCenter();
+    visible=[...visible].sort((x,y)=>hav(_ctr.lat,_ctr.lng,x.lat,x.lon)-hav(_ctr.lat,_ctr.lng,y.lat,y.lon)).slice(0,120);
+    _listCapped=true;
+  }
   const l=document.getElementById('list');
   if(!l) return;
   if(!visible.length){
@@ -1865,9 +1875,9 @@ function renderList(){
       : 'No clinics in current view.<br>Pan or zoom to find clinics.';
     l.innerHTML='<div class="empty">'+msg+'</div>';return;
   }
-  window._vmListScope=visible; // exact scope for CSV export
+  window._vmListScope=_fullVisible; // exact scope for CSV export — the FULL in-view set, not the capped list
   const _idx=new Map(); clinics.forEach((c,i)=>_idx.set(c,i)); // O(n) lookup, not indexOf-per-row
-  l.innerHTML=`<div style="display:flex;justify-content:flex-end;padding:2px 2px 8px">${_exportBtn('exportClinicsCSV()','Export '+visible.length+' clinics')}</div>`+visible.map(c=>{
+  l.innerHTML=`<div style="display:flex;justify-content:flex-end;padding:2px 2px 8px">${_exportBtn('exportClinicsCSV()','Export '+FULL+' clinics')}</div>`+visible.map(c=>{
     const i = _idx.get(c);
     const rate=(typeof c.rating==='number')?`<div style="font-size:11px;color:#475569;margin-top:3px"><span style="color:#b45309;font-weight:700">★ ${c.rating.toFixed(1)}</span> · ${(c.reviews||0).toLocaleString()} reviews</div>`:'';
     return `<div class="card" id="c${i}" onclick="focusClinic(${i})">
@@ -1878,7 +1888,7 @@ function renderList(){
         ${rate}
       </div>
     </div>`;
-  }).join('');
+  }).join('') + (_listCapped?`<div class="empty" style="padding:16px 12px">Showing the 120 clinics nearest the map center — ${FULL.toLocaleString()} are in view. Zoom in to narrow the list, or export all ${FULL.toLocaleString()}.</div>`:'');
 }
 // export scope = exactly what the in-view list shows
 function exportClinicsCSV(){
@@ -3441,24 +3451,40 @@ async function fetchClinics(){
   });
 
   // Commit: merge this view's results into the accumulated set (pins persist across
-  // pans rather than vanishing), then redraw. Rebuild is synchronous so no flicker.
-  clearMarkers();
+  // pans rather than vanishing), then DIFF the pin layer against what's already on the map.
+  // The old teardown-and-rebuild (clearMarkers + recreate every L.marker) destroyed and
+  // recreated 700+ DOM nodes on EVERY moveend — the metro-view stutter. Reusing markers by
+  // clinic key makes a pan across loaded ground a zero-DOM-churn commit; only genuinely new
+  // clinics mount and only evicted ones unmount. Popup/click state live on the marker
+  // (m._c / m._idx) so reuse can't serve a stale closure.
   activeIdx=null;
   clinics=mergeClinics(clinics, deduped, {lat,lng});
 
-  const batch=[];
+  const prevByKey=_markerByKey; _markerByKey=new Map();
   markers=clinics.map((c,i)=>{
-    const m=L.marker([c.lat,c.lon],{icon:makeIcon(pinColor(c), pinTier(c))})
-      .bindPopup(()=>buildPopup(c),{maxWidth:260,autoPanPadding:[24,24]})
-      .on('click',()=>{
-        if(activeIdx!==null){const p=document.getElementById('c'+activeIdx);if(p)p.className='card';}
-        activeIdx=i;const el=document.getElementById('c'+i);
-        if(el){el.className='card '+(c.pe?'act-pe':'act-ind');el.scrollIntoView({behavior:'smooth',block:'nearest'});}
-      });
-    m._kind=_kindOf(c);            // for the clinic-type filter
-    batch.push(m);return m;
+    const k=clinicKey(c);
+    const icKey=pinColor(c)+'|'+pinTier(c);
+    let m=prevByKey.get(k);
+    if(m){
+      prevByKey.delete(k);
+      if(m._icKey!==icKey){ m.setIcon(makeIcon(pinColor(c), pinTier(c))); m._icKey=icKey; }
+      m._baseVisible=true; m.setOpacity(1); if(m._icon) m._icon.style.pointerEvents='';   // fresh-marker semantics; the tail re-applies filters
+    } else {
+      m=L.marker([c.lat,c.lon],{icon:makeIcon(pinColor(c), pinTier(c))})
+        .bindPopup(lyr=>buildPopup(lyr._c),{maxWidth:260,autoPanPadding:[24,24]})
+        .on('click',function(){
+          if(activeIdx!==null){const p=document.getElementById('c'+activeIdx);if(p)p.className='card';}
+          activeIdx=this._idx;const el=document.getElementById('c'+this._idx);
+          if(el){el.className='card '+(this._c.pe?'act-pe':'act-ind');el.scrollIntoView({behavior:'smooth',block:'nearest'});}
+        });
+      m._icKey=icKey;
+      clusterGroup.addLayer(m);
+    }
+    m._c=c; m._idx=i; m._kind=_kindOf(c);            // for the clinic-type filter + fresh popup/click data
+    _markerByKey.set(k,m);
+    return m;
   });
-  batch.forEach(m=>clusterGroup.addLayer(m));
+  prevByKey.forEach(m=>clusterGroup.removeLayer(m));   // evicted (fell past MAX_CLINICS) or deduped away
   _applyPinZoomVisibility();   // re-evaluate hide-when-zoomed-out after the rebuild
   _tryOpenPendingClinic();     // if a search just flew us to a clinic, open its popup now that its pin exists
   renderList();
