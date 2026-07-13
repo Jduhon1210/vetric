@@ -12,7 +12,29 @@
 //   1. Workers & Pages → KV → create a namespace (e.g. "vetric-auth").
 //   2. This Pages project → Settings → Functions → KV namespace bindings →
 //      variable name "VETRIC_KV" → bind to that namespace (do this for Production AND Preview).
+//
+// LICENSING TIERS (2026-07-12):
+//   - Revocation is live, not login-time: every request re-checks that the session's email is
+//     still on the allow-list, so deleting "allow:<email>" (or revoking in the admin panel)
+//     cuts existing sessions off on their next request — not 30 days later.
+//   - Demo (metro-licensed) sessions get SLICED data: a request for a statewide proprietary
+//     file is internally rewritten to its per-metro slice (pe-data-dfw.js etc., committed by
+//     build-region-slices.mjs). The statewide dataset never reaches a metro-licensed browser.
+//     Fail-open by design: any error in the rewrite serves the normal asset — a pilot seeing
+//     more data beats a pilot seeing a broken app (trust is contractual at this scale).
 const PUBLIC_PATHS = new Set(['/login', '/favicon.ico']);
+
+// Statewide proprietary files → their per-metro slices. tx-zips.json (public Census geography)
+// and the dfw-* context files are deliberately NOT gated — the proprietary asset is the clinic
+// intelligence, not public boundaries.
+const REGION_SLICES = {
+  dfw: {
+    '/pe-data.js': '/pe-data-dfw.js',
+    '/vet-clinics.js': '/vet-clinics-dfw.js',
+    '/vet-staff.js': '/vet-staff-dfw.js',
+    '/vet-species.js': '/vet-species-dfw.js'
+  }
+};
 
 export async function onRequest(context) {
   const { request, env, next } = context;
@@ -24,19 +46,51 @@ export async function onRequest(context) {
   }
 
   const token = _readCookie(request, 'vf_session');
-  const session = token ? await env.VETRIC_KV.get('session:' + token) : null;
+  const raw = token ? await env.VETRIC_KV.get('session:' + token) : null;
 
-  if (!session) {
-    // Browser navigation → send them to the sign-in page. Anything else (a direct fetch of a
-    // data file, an API call) → a flat 401 so it fails closed instead of returning HTML.
-    const accept = request.headers.get('Accept') || '';
-    if (accept.includes('text/html')) {
-      return Response.redirect(url.origin + '/login', 302);
+  if (!raw) return _deny(request, url);
+
+  let sess = {};
+  try { sess = JSON.parse(raw) || {}; } catch (e) {}
+
+  // Live revocation: session is only as good as its allow-list entry.
+  if (sess.email) {
+    const allow = await env.VETRIC_KV.get('allow:' + sess.email);
+    if (!allow) {
+      try { await env.VETRIC_KV.delete('session:' + token); } catch (e) {}
+      return _deny(request, url);
     }
-    return new Response('Unauthorized', { status: 401 });
+  }
+
+  // Metro slicing for demo-tier sessions (regions without statewide access).
+  if (sess.tier === 'demo' && Array.isArray(sess.regions) && !sess.regions.includes('tx')) {
+    const region = sess.regions[0];
+    const map = REGION_SLICES[region];
+    const sliced = map && map[path];
+    if (sliced) {
+      try {
+        const res = await env.ASSETS.fetch(new URL(sliced, url.origin));
+        if (res && res.ok) {
+          const h = new Headers(res.headers);
+          h.set('Cache-Control', 'private, max-age=300');   // per-user body on a shared URL — keep it out of shared caches
+          h.delete('ETag');
+          return new Response(res.body, { status: 200, headers: h });
+        }
+      } catch (e) { /* fall through to the normal asset */ }
+    }
   }
 
   return next();
+}
+
+function _deny(request, url) {
+  // Browser navigation → send them to the sign-in page. Anything else (a direct fetch of a
+  // data file, an API call) → a flat 401 so it fails closed instead of returning HTML.
+  const accept = request.headers.get('Accept') || '';
+  if (accept.includes('text/html')) {
+    return Response.redirect(url.origin + '/login', 302);
+  }
+  return new Response('Unauthorized', { status: 401 });
 }
 
 function _readCookie(request, name) {

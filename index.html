@@ -601,6 +601,17 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
 .rp-check{font-size:9.5px;font-weight:800;fill:#fff;pointer-events:none;}
 .hdr-icon-btn{background:none;border:none;color:#c7d2fe;cursor:pointer;padding:6px;border-radius:9px;display:flex;align-items:center;justify-content:center;}
 .hdr-icon-btn:hover{background:rgba(255,255,255,.12);color:#fff;}
+.vf-demo-pill{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:9px;padding:3px 9px;margin-right:10px;white-space:nowrap;}
+.adm-table{width:100%;border-collapse:collapse;font-size:11.5px;margin-top:8px;}
+.adm-table th{text-align:left;font-size:9.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#94a3b8;padding:4px 8px;border-bottom:1px solid var(--border);}
+.adm-table td{padding:6px 8px;border-bottom:1px solid #f1f5f9;color:#1f2933;vertical-align:top;}
+.adm-tier{font-size:9px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;border-radius:7px;padding:1.5px 7px;white-space:nowrap;}
+.adm-tier.demo{color:#b45309;background:#fffbeb;border:1px solid #fde68a;}
+.adm-tier.full{color:#15803d;background:#f0fdf4;border:1px solid #bbf7d0;}
+.adm-tier.admin{color:#fff;background:var(--navy,#1e3a8a);border:1px solid var(--navy,#1e3a8a);}
+.adm-form{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;background:#f8fafc;border:1px solid var(--border);border-radius:10px;padding:12px;}
+.adm-form input,.adm-form select{font:inherit;font-size:12px;padding:7px 9px;border:1px solid var(--border);border-radius:8px;background:#fff;}
+.adm-form .adm-full{grid-column:1 / -1;}
 .settings-overlay{position:fixed;inset:0;background:rgba(15,23,42,.52);backdrop-filter:blur(4px);z-index:2000;display:none;align-items:center;justify-content:center;padding:24px;}
 .settings-overlay.show{display:flex;}
 .settings-modal{background:linear-gradient(180deg,#fff 0%,#fbfcfe 100%);border-radius:18px;box-shadow:0 24px 80px rgba(15,23,42,.38),0 2px 8px rgba(15,23,42,.12);width:780px;max-width:100%;max-height:84vh;display:flex;flex-direction:column;overflow:hidden;border:1px solid rgba(255,255,255,.6);}
@@ -759,6 +770,7 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
     <div class="settings-body">
       <div class="settings-cats">
         <button class="settings-cat active" data-cat="data" onclick="switchSettingsCat('data')">Data &amp; Logic</button>
+        <button class="settings-cat" data-cat="access" id="cat-access" onclick="switchSettingsCat('access');_admLoad()" style="display:none">Access &amp; licensing</button>
         <button class="settings-cat" data-cat="about" onclick="switchSettingsCat('about')">About</button>
       </div>
       <div class="settings-content">
@@ -768,6 +780,21 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
           <label class="set-opt"><input type="checkbox" id="opt-equine" onchange="toggleCountEquine(this.checked)"><span><b>Count equine / large-animal vets as competition</b><span class="set-opt-note">Off by default — a practice whose name signals equine or livestock work only (no small-animal signal) doesn't compete for dog-and-cat visits, so it's left out of competition and saturation math in ranch-country markets. Mixed practices always count.</span></span></label>
           <label class="set-opt"><input type="checkbox" id="opt-hidepins" onchange="toggleHidePins(this.checked)"><span><b>Auto-hide clinic pins when zoomed out</b><span class="set-opt-note">On by default — pins clear when you zoom out past city level (and reappear as you zoom back in), keeping the map fast and uncluttered. Turn off to keep pins visible at every zoom.</span></span></label>
 
+        </div>
+        <div class="settings-pane" data-pane="access">
+          <div class="set-h">Who's using Vetric</div>
+          <div class="set-intro" style="margin-bottom:2px">Every account, its licensing phase, and the market it can see. Pilot (demo) accounts get DFW-only data served from the server — the statewide files never reach their browser — and exports are disabled.</div>
+          <div id="adm-roster"><div style="font-size:12px;color:#94a3b8;padding:14px 0">Loading accounts…</div></div>
+          <div class="set-h" style="margin-top:16px">Add or update an account</div>
+          <div class="adm-form">
+            <input id="adm-firm" placeholder="Firm name (e.g. Mesa Vet Partners)"/>
+            <input id="adm-email" placeholder="email@firm.com"/>
+            <div style="display:flex;gap:6px"><input id="adm-code" placeholder="Access code" style="flex:1"/><button class="vm-export-btn" style="white-space:nowrap" onclick="_admGen()">Generate</button></div>
+            <select id="adm-tier"><option value="demo">Demo / pilot (limited)</option><option value="full">Licensed (full)</option><option value="admin">Admin</option></select>
+            <select id="adm-region" class="adm-full"><option value="dfw">DFW metroplex only</option><option value="tx">All Texas (statewide)</option></select>
+            <div class="adm-full" style="display:flex;gap:8px;align-items:center"><button class="eval-btn" style="margin:0" onclick="_admSubmit()">Save account</button><span id="adm-msg" style="font-size:11.5px;color:#64748b"></span></div>
+          </div>
+          <div class="set-opt-note" style="margin-top:10px;display:block">Updating an existing email keeps its original start date. Revoking cuts live sessions on their next request. You can't revoke or demote your own admin account.</div>
         </div>
         <div class="settings-pane" data-pane="about">
           <div class="set-h">Vetric</div>
@@ -1382,7 +1409,25 @@ fetch('/api/auth/me').then(r=>r.json()).then(d=>{
   if(!d || !d.authed) return; // shouldn't happen (middleware already gated this page) — fail quiet
   const av=document.querySelector('.avatar');
   if(av && d.email){ av.textContent=_vfInitials(d.email); av.title=d.email+' · click to sign out'; }
+  window.VF_ME=d; _vfApplyLicense(d);
 }).catch(()=>{});
+// Licensing UI: demo pilots get a badge + a map locked to their metro + exports off (their data
+// files are already server-sliced by the middleware — this is just the honest UI on top). Admins
+// get the Access & licensing panel in Settings. Full accounts see no difference.
+const VF_METRO_BOUNDS={ dfw:[[31.90,-98.45],[33.95,-95.70]] };   // DFW box + breathing room
+function _vfApplyLicense(d){
+  if(d.tier==='admin'){ const c=document.getElementById('cat-access'); if(c) c.style.display=''; }
+  if(d.tier!=='demo' || (d.regions||[]).includes('tx')) return;
+  const region=(d.regions&&d.regions[0])||'dfw';
+  const av=document.querySelector('.avatar');
+  if(av){ const pill=document.createElement('span'); pill.className='vf-demo-pill';
+    const since=d.started?(' · since '+new Date(d.started+'T12:00:00').toLocaleDateString(undefined,{month:'short',day:'numeric'})):'';
+    pill.textContent='Demo · '+region.toUpperCase()+' metroplex'+since;
+    pill.title=(d.firm?d.firm+' — ':'')+'pilot account: data and analysis cover the '+region.toUpperCase()+' metroplex. Contact Vetric to license more markets.';
+    av.parentNode.insertBefore(pill, av); }
+  const bb=VF_METRO_BOUNDS[region];
+  if(bb){ map.options.maxBoundsViscosity=1.0; map.setMaxBounds(L.latLngBounds(bb)); if(map.getZoom()<8) map.setView([(bb[0][0]+bb[1][0])/2,(bb[0][1]+bb[1][1])/2], 9); }
+}
 
 const clusterGroup = L.layerGroup();
 map.addLayer(clusterGroup);
@@ -3679,6 +3724,7 @@ function _csvCell(v){
   return s;
 }
 function downloadCSV(rows, headers, filename){
+  if(window.VF_ME && VF_ME.tier==='demo'){ vfToast('CSV exports are enabled on licensed accounts — contact Vetric to license this market.'); return; }
   if(!rows || !rows.length){ vfToast('Nothing to export in the current view'); return; }
   const lines=[ headers.map(h=>_csvCell(h.label)).join(',') ];
   for(const r of rows) lines.push(headers.map(h=>_csvCell(typeof h.get==='function'?h.get(r):r[h.key])).join(','));
@@ -3968,6 +4014,7 @@ function renderRegionPicker(){
 function openRegionPicker(){ renderRegionPicker(); document.getElementById('region-overlay').classList.add('show'); }
 function closeRegionPicker(){ document.getElementById('region-overlay').classList.remove('show'); }
 async function selectOppRegion(key){
+  if(window.VF_ME && VF_ME.tier==='demo' && !(VF_ME.regions||[]).includes('tx') && !(VF_ME.regions||[]).includes(key)){ vfToast('Your pilot covers the '+((VF_ME.regions&&VF_ME.regions[0])||'DFW').toUpperCase()+' metroplex — contact Vetric to add markets.'); return; }
   const r=OPP_REGIONS.find(x=>x.key===key); if(!r) return;
   oppRegion=r;
   oppRegionIndependents=[]; oppBaseRows=[]; oppScored=[]; _mpcBase=null; _mpcScored=[]; // force a full rebuild for the new region
@@ -5515,6 +5562,65 @@ function toggleIncludeMobile(on){
   if(typeof evalActive!=='undefined' && evalActive && typeof _evalComputeAndRender==='function') _evalComputeAndRender();  // evaluate
 }
 function closeSettings(){ document.getElementById('settings-overlay').classList.remove('show'); }
+/* ── Access & licensing (admin only — backed by /api/admin/accounts) ── */
+let _admCache=null;
+const _admEsc=v=>String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+async function _admLoad(){
+  const el=document.getElementById('adm-roster'); if(!el) return;
+  try{
+    const r=await fetch('/api/admin/accounts'); const d=await r.json();
+    if(!r.ok){ el.innerHTML='<div style="font-size:12px;color:#dc2626;padding:10px 0">'+_admEsc(d.error||'Could not load accounts')+'</div>'; return; }
+    _admCache=d.accounts||[];
+    if(!_admCache.length){ el.innerHTML='<div style="font-size:12px;color:#94a3b8;padding:10px 0">No accounts yet.</div>'; return; }
+    const rows=_admCache.map(a=>{
+      const tierChip='<span class="adm-tier '+_admEsc(a.tier)+'">'+(a.tier==='demo'?'Demo':a.tier==='admin'?'Admin':'Licensed')+'</span>';
+      const region=(a.regions||[]).includes('tx')?'All Texas':((a.regions&&a.regions[0])||'dfw').toUpperCase()+' only';
+      const started=a.started?new Date(a.started+'T12:00:00').toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'}):'—';
+      const seen=a.lastSeen?new Date(a.lastSeen).toLocaleDateString(undefined,{month:'short',day:'numeric'}):'never';
+      const self=window.VF_ME && VF_ME.email===a.email;
+      return '<tr><td><b>'+_admEsc(a.firm||'—')+'</b><br><span style="color:#64748b">'+_admEsc(a.email)+'</span></td>'+
+        '<td>'+tierChip+'<br><span style="color:#94a3b8;font-size:10.5px">started '+started+'</span></td>'+
+        '<td>'+_admEsc(region)+'</td>'+
+        '<td style="font-family:\'JetBrains Mono\',monospace;font-size:10.5px">'+_admEsc(a.code||'—')+'</td>'+
+        '<td><span style="color:#94a3b8;font-size:10.5px">seen '+seen+'</span></td>'+
+        '<td style="text-align:right;white-space:nowrap"><button class="vm-export-btn" onclick="_admEdit(\''+_admEsc(a.email)+'\')">Edit</button>'+(self?'':' <button class="vm-export-btn" style="color:#dc2626;border-color:#fecaca" onclick="_admRevoke(\''+_admEsc(a.email)+'\')">Revoke</button>')+'</td></tr>';
+    }).join('');
+    el.innerHTML='<table class="adm-table"><thead><tr><th>Firm / email</th><th>Phase</th><th>Market</th><th>Access code</th><th>Last login</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>';
+  }catch(e){ el.innerHTML='<div style="font-size:12px;color:#dc2626;padding:10px 0">Could not load accounts — check your connection.</div>'; }
+}
+function _admGen(){ const el=document.getElementById('adm-code'); if(el) el.value='Pilot'+String(Math.floor(100+Math.random()*900)); }
+function _admEdit(email){
+  const a=(_admCache||[]).find(x=>x.email===email); if(!a) return;
+  const set=(id,v)=>{ const el=document.getElementById(id); if(el) el.value=v; };
+  set('adm-firm',a.firm||''); set('adm-email',a.email); set('adm-code',a.code||''); set('adm-tier',a.tier==='full'?'full':a.tier);
+  set('adm-region',(a.regions||[]).includes('tx')?'tx':'dfw');
+  const m=document.getElementById('adm-msg'); if(m) m.textContent='Editing '+email+' — Save to apply.';
+}
+async function _admSubmit(){
+  const v=id=>{ const el=document.getElementById(id); return el?el.value.trim():''; };
+  const msg=document.getElementById('adm-msg');
+  const body={ email:v('adm-email').toLowerCase(), code:v('adm-code'), firm:v('adm-firm'), tier:v('adm-tier'), regions:[v('adm-region')] };
+  if(!body.email || !body.code){ if(msg) msg.textContent='Email and access code are required.'; return; }
+  if(msg) msg.textContent='Saving…';
+  try{
+    const r=await fetch('/api/admin/accounts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const d=await r.json();
+    if(!r.ok){ if(msg) msg.textContent=d.error||'Could not save.'; return; }
+    if(msg) msg.textContent='Saved — '+body.email+' can sign in with "'+body.code+'".';
+    ['adm-firm','adm-email','adm-code'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+    _admLoad();
+  }catch(e){ if(msg) msg.textContent='Could not save — check your connection.'; }
+}
+async function _admRevoke(email){
+  if(!confirm('Revoke access for '+email+'? Their session ends on their next request.')) return;
+  try{
+    const r=await fetch('/api/admin/accounts?email='+encodeURIComponent(email),{method:'DELETE'});
+    const d=await r.json();
+    if(!r.ok){ vfToast(d.error||'Could not revoke.'); return; }
+    vfToast('Access revoked for '+email+'.');
+    _admLoad();
+  }catch(e){ vfToast('Could not revoke — check your connection.'); }
+}
 function switchSettingsCat(cat){
   document.querySelectorAll('.settings-cat').forEach(b=>b.classList.toggle('active', b.dataset.cat===cat));
   document.querySelectorAll('.settings-pane').forEach(p=>p.classList.toggle('show', p.dataset.pane===cat));

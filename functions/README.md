@@ -64,7 +64,31 @@ neurons/day), no API key, no card. One binding:
 "not configured yet" message — nothing breaks. Only signed-in (allow-listed) users can reach
 `/api/ai`, so strangers can't burn the daily allocation.
 
-### 6. Redeploy
+### 6. Make yourself the admin (licensing panel — one KV record)
+The licensing system (Settings → **Access & licensing**: pilot accounts, demo tags, per-metro
+data) is driven by optional `acct:<email>` KV records next to the `allow:` entries. Accounts
+WITHOUT a record are full-access — nothing changes for existing users. To unlock the admin
+panel for yourself, add ONE record in the dashboard (KV → your namespace → Add entry):
+
+- **Key**: `acct:jondduhon@gmail.com`
+- **Value**: `{"tier":"admin","firm":"Vetric","regions":["tx"],"started":"2026-07-12"}`
+
+Then sign out and back in (the tier is stamped into the session at login). Your Settings modal
+gains the **Access & licensing** tab: every account with firm, phase tag (Demo/Licensed/Admin),
+start date, access code, market, and last login — plus an add/update form and revoke buttons.
+From there you manage everything in the UI; no more dashboard edits.
+
+How the tiers behave:
+- **Demo / pilot** (`tier:"demo"`, `regions:["dfw"]`): the middleware serves DFW-sliced data
+  files (`pe-data-dfw.js` etc. — the statewide files never reach their browser), the map is
+  locked to the DFW box, a "Demo · DFW metroplex" badge shows in the header, and CSV exports
+  are disabled. Regenerate slices after a data refresh: `node build-region-slices.mjs`.
+- **Licensed** (`tier:"full"` or no acct record): everything, statewide.
+- **Admin**: full access + the licensing panel. You can't revoke or demote yourself.
+- Revoking (panel or deleting the `allow:` entry) cuts live sessions on their NEXT request —
+  the middleware re-checks the allow-list every time, so it's immediate, not in 30 days.
+
+### 7. Redeploy
 Push this code to `main` (or trigger a deploy) so Cloudflare Pages picks up the new
 `functions/` files. Once deployed, `vetric.co` will redirect anyone without a session to
 `/login`.
@@ -84,4 +108,6 @@ Push this code to `main` (or trigger a deploy) so Cloudflare Pages picks up the 
   cookie. (The old `request-code.js`/`verify-code.js` email-OTP pair was removed 2026-07-08;
   recover from git history to restore that flow.)
 - `api/auth/logout.js` — kills the session server-side.
-- `api/auth/me.js` — lets the app show who's signed in (for the avatar).
+- `api/auth/me.js` — lets the app show who's signed in (for the avatar) + the account's
+  licensing tier/firm/regions (for the demo badge and admin panel).
+- `api/admin/accounts.js` — the licensing roster API (admin-only): list / upsert / revoke.

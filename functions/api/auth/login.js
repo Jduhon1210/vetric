@@ -5,6 +5,13 @@
 //   value = the access key the admin chose for that person (NOT "1" — a real code, e.g. "prosper-2026")
 // Match → same 30-day KV-backed session cookie as before. Delete the entry to revoke new logins.
 // Light brute-force guard: 10 failed tries per email per 5 minutes.
+//
+// LICENSING TIERS (2026-07-12): an optional "acct:<email>" KV record carries the account's
+// licensing metadata: {firm, tier, regions, started}. tier = "admin" (sees the access-management
+// panel in Settings) | "demo" (pilot account: data files are served as metro slices by
+// _middleware.js, exports disabled client-side) | "full". NO record = full access — every
+// pre-existing account keeps working untouched. The matched acct snapshot is embedded in the
+// session record so the middleware and /api/auth/me don't need extra KV reads per request.
 export async function onRequestPost({ request, env }) {
   try {
     let body;
@@ -31,9 +38,19 @@ export async function onRequestPost({ request, env }) {
       return json({ error: 'Incorrect access code.' }, 401);
     }
 
+    // Licensing metadata (absent = full-access legacy account; a parse error must never block login)
+    let acct = null;
+    try { const rawAcct = await env.VETRIC_KV.get('acct:' + email); if (rawAcct) acct = JSON.parse(rawAcct); } catch (e) { acct = null; }
+    const tier = (acct && acct.tier) || 'full';
+    const regions = (acct && Array.isArray(acct.regions) && acct.regions.length) ? acct.regions : ['tx'];
+    const firm = (acct && acct.firm) || null;
+    const started = (acct && acct.started) || null;
+
     const token = _randomToken();
     const THIRTY_DAYS = 60 * 60 * 24 * 30;
-    await env.VETRIC_KV.put('session:' + token, JSON.stringify({ email, created: Date.now() }), { expirationTtl: THIRTY_DAYS });
+    await env.VETRIC_KV.put('session:' + token, JSON.stringify({ email, created: Date.now(), tier, regions, firm, started }), { expirationTtl: THIRTY_DAYS });
+    // Last-seen stamp for the admin panel (best-effort — never blocks the login)
+    try { await env.VETRIC_KV.put('seen:' + email, new Date().toISOString()); } catch (e) {}
 
     const headers = new Headers({ 'Content-Type': 'application/json' });
     headers.append('Set-Cookie', 'vf_session=' + token + '; HttpOnly; Secure; SameSite=Lax; Max-Age=' + THIRTY_DAYS + '; Path=/');
