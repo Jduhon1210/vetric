@@ -22,7 +22,7 @@
 //     build-region-slices.mjs). The statewide dataset never reaches a metro-licensed browser.
 //     Fail-open by design: any error in the rewrite serves the normal asset — a pilot seeing
 //     more data beats a pilot seeing a broken app (trust is contractual at this scale).
-const PUBLIC_PATHS = new Set(['/login', '/favicon.ico']);
+const PUBLIC_PATHS = new Set(['/login', '/favicon.ico', '/favicon.svg']);
 
 // Statewide proprietary files → their per-metro slices. tx-zips.json (public Census geography)
 // and the dfw-* context files are deliberately NOT gated — the proprietary asset is the clinic
