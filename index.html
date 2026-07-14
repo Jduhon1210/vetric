@@ -31,13 +31,15 @@
   --green:#15803d;--green-light:#f0fdf4;--green-border:#bbf7d0;
   --amber:#d97706;--amber-light:#fff1f2;
   --purple:#6d28d9;--purple-light:#f5f3ff;
-  --surface:#ffffff;--bg:#f8fafc;--bg2:#f1f5f9;
-  --border:#e2e8f0;--border2:#cbd5e1;
+  /* Chrome tint (2026-07-14): canvas is slate-tinted, panels stay white — the contrast is
+     what gives the layered/sleek read; pure-white cards pop against the tinted bg. */
+  --surface:#ffffff;--bg:#eef2f8;--bg2:#e6ecf5;
+  --border:#dde4ef;--border2:#c3cfe0;
   --text:#0f172a;--text2:#334155;--muted:#64748b;--subtle:#94a3b8;
   --radius:10px;--radius-lg:14px;
-  --shadow-sm:0 1px 3px rgba(15,23,42,.05),0 1px 2px rgba(15,23,42,.04);
-  --shadow:0 6px 18px rgba(15,23,42,.08);
-  --shadow-lg:0 14px 40px rgba(15,23,42,.14);
+  --shadow-sm:0 1px 3px rgba(15,23,42,.06),0 1px 2px rgba(15,23,42,.05);
+  --shadow:0 7px 20px rgba(15,23,42,.10);
+  --shadow-lg:0 14px 42px rgba(15,23,42,.16);
 }
 body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg);height:100vh;display:flex;flex-direction:column;overflow:hidden;color:var(--text);font-size:14px;}
 
