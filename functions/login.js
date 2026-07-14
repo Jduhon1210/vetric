@@ -45,6 +45,16 @@ const HTML = `<!doctype html>
   .err{font-size:13px;color:#fda4af;min-height:18px;margin:-6px 0 12px;text-align:center;}
   .step{display:none;} .step.on{display:block;animation:rise .35s ease;}
   @keyframes rise{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:none;}}
+  .brand-logo .plse{stroke-dasharray:30;stroke-dashoffset:30;opacity:.95;animation:pulseDraw 4.2s ease-in-out .5s infinite;}
+  @keyframes pulseDraw{
+    0%{stroke-dashoffset:30;opacity:.95;}
+    38%{stroke-dashoffset:0;opacity:.95;}
+    80%{stroke-dashoffset:0;opacity:.95;}
+    90%{stroke-dashoffset:0;opacity:0;}
+    91%{stroke-dashoffset:30;opacity:0;}
+    100%{stroke-dashoffset:30;opacity:0;}
+  }
+  @media (prefers-reduced-motion: reduce){ .brand-logo .plse{animation:none;stroke-dashoffset:0;} }
   .back{display:block;text-align:center;font-size:13px;color:#b7c4ee;text-decoration:none;margin-top:22px;cursor:pointer;transition:color .15s;}
   .back:hover{color:#fff;}
   .foot{position:relative;z-index:1;margin-top:56px;font-size:12px;color:#7d8dbd;text-align:center;}
@@ -57,6 +67,7 @@ const HTML = `<!doctype html>
         <rect x="3" y="14" width="3.4" height="7" rx="1.2" fill="#fff" opacity="0.55"/>
         <rect x="8.3" y="10" width="3.4" height="11" rx="1.2" fill="#fff" opacity="0.75"/>
         <rect x="13.6" y="6" width="3.4" height="15" rx="1.2" fill="#fff"/>
+        <path class="plse" d="M2.5 9.5h3l1.6-4 2.2 7 1.8-3.5 1.4 2h7.5" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
       </svg></div>
       <div class="brand-word">Vet<span>ric</span></div>
     </div>
