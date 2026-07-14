@@ -4339,7 +4339,7 @@ function pegTimeline(y){
 function _pegTimelineHTML(){
   if(!_peGroupName || !_peGroupPts.length) return '';
   const dated=_peGroupPts.filter(p2=>p2.yr!=null).map(p2=>p2.yr);
-  if(!dated.length) return `<div style="margin:0 14px 8px;background:#f8fafc;border:1px solid #e7ecf5;border-radius:10px;padding:8px 11px;font-size:10.5px;color:#64748b;line-height:1.5"><b style="color:#334155">Timeline unavailable —</b> no acquisition dates recorded for ${_ceEsc(_peGroupName)} yet. Add "Year acquired" in a clinic's editor (⚙) and this becomes a drag-through-time view of the roll-up.</div>`;
+  if(!dated.length) return '';   // no dates recorded → no timeline UI at all (an empty-state card here was noise)
   const mn=Math.min(...dated)-1, mx=new Date().getFullYear();
   const cur=_pegYear!=null?_pegYear:mx;
   return `<div style="margin:0 14px 8px;background:#fff;border:1px solid #e7ecf5;border-radius:10px;padding:9px 12px">
