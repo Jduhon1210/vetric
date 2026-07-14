@@ -83,6 +83,10 @@ body.dev-mode header{background:var(--amber-light);}
 .kpi-filter-pop label{display:flex;align-items:center;gap:8px;font-size:12.5px;color:#1f2933;padding:4px 0;cursor:pointer;}
 .kpi-filter-pop input{accent-color:var(--navy);}
 .kf-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;display:inline-block;}
+.pe-group-chip{position:absolute;top:10px;left:12px;z-index:900;display:none;align-items:center;gap:8px;background:#fff;border:1px solid var(--border);border-radius:10px;box-shadow:0 4px 16px rgba(15,23,42,.14);padding:6px 11px;font-size:12px;font-weight:700;color:#0f172a;}
+.pe-group-chip.show{display:flex;}
+.pe-group-chip .x{cursor:pointer;color:#94a3b8;font-weight:800;padding:0 2px;}
+.pe-group-chip .x:hover{color:#dc2626;}
 .kpi{background:var(--surface);padding:11px 18px;position:relative;min-width:0;}
 .kpi .k-label{font-size:10.5px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;}
 .kpi .k-val{font-size:21px;font-weight:800;margin-top:5px;line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums;}
@@ -1074,7 +1078,8 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
       <div class="legend-scale-item"><div class="legend-scale-color" style="background:#e2e8f0"></div> No data</div>
     </div>
   </div>
-  <div class="dev-hint" id="dev-hint">Click anywhere on the map to add a clinic</div>
+  <div class="pe-group-chip" id="pe-group-chip"><span style="width:9px;height:9px;border-radius:50%;background:var(--red);flex-shrink:0"></span><span id="pe-group-chip-txt"></span><span class="x" onclick="peGroupClear()" title="Clear group footprint">✕</span></div>
+<div class="dev-hint" id="dev-hint">Click anywhere on the map to add a clinic</div>
   <div class="traffic-legend" id="traffic-legend">
     <div class="legend-title">Traffic — vehicles/day (AADT)</div>
     <div class="legend-scale">
@@ -1321,13 +1326,34 @@ function _vetStaffAt(lat,lon){
 // damage. Unknown roster → neutral 1.0 (no penalty). solo ≈ 0.8×, ~5 DVMs ≈ 1.4×, big hospital up to 1.8×.
 function _staffW(n){ if(!n||n<1) return 1; return Math.min(1.8, Math.max(0.8, Math.sqrt(n/2.5))); }
 // "DVMs on staff" popup block (optional — returns '' when no roster). Mirrors _analystPopupHTML's contract.
+// Modeled practice revenue: ~$650k annual production per FTE DVM is the GP industry benchmark
+// (AVMA/AAHA practice-management figures cluster $600-700k). Only computed off a REAL scraped
+// roster — no estimate is invented from the default-2 assumption. Analyst 'revenue' override
+// (clinic editor) always wins and is shown as-entered.
+const REV_PER_DVM=650000;
+function _revEst(c){
+  const ov=getOverrides()[clinicKey(c)];
+  if(ov && ov.revenue) return {txt:String(ov.revenue), analyst:true};
+  const st=_vetStaffAt(c.lat,c.lon);
+  if(st && st.n){ const v=st.n*REV_PER_DVM; return {txt:'~$'+(v/1e6).toFixed(1)+'M', n:st.n, val:v}; }
+  return null;
+}
+function _revEstLine(c){
+  const r=_revEst(c); if(!r) return '';
+  return r.analyst
+    ? `<div style="font-size:11px;color:#475569;margin-top:2px">Revenue ${String(r.txt).replace(/</g,'&lt;')} <span style="color:#94a3b8">· analyst</span></div>`
+    : `<div style="font-size:11px;color:#475569;margin-top:2px">Est. revenue <b>${r.txt}</b> <span style="color:#94a3b8">· ${r.n} DVM × $650k, modeled</span></div>`;
+}
 function _staffPopupHTML(c){
   const s=_vetStaffAt(c.lat,c.lon); if(!s||!s.n) return '';
   const list=(s.vets||[]).slice(0,6).join(', ');
   const extra=(s.vets&&s.vets.length>6)?` +${s.vets.length-6} more`:'';
+  const rv=_revEst(c);
   return `<div style="margin-top:9px;padding-top:9px;border-top:1px solid #eef2f7">`
     +`<div style="font-size:11px;font-weight:700;color:#0f172a">🩺 ${s.n} veterinarian${s.n!==1?'s':''} on staff</div>`
-    +(list?`<div style="font-size:11px;color:#475569;margin-top:2px;line-height:1.5">${list}${extra}</div>`:'')+`</div>`;
+    +(list?`<div style="font-size:11px;color:#475569;margin-top:2px;line-height:1.5">${list}${extra}</div>`:'')
+    +((rv&&!rv.analyst)?`<div style="font-size:11px;color:#64748b;margin-top:3px">Est. revenue <b>${rv.txt}</b> <span style="color:#94a3b8">(${rv.n} DVM × $650k, modeled)</span></div>`:'')
+    +`</div>`;
 }
 const MIN_ZOOM=10;
 
@@ -3929,6 +3955,8 @@ function exportAcqCSV(){
     {label:'Est. size (reviews)',get:r=>_acqSize(r.c.reviews)||''},
     {label:'Rating',get:r=>typeof r.c.rating==='number'?r.c.rating:''},
     {label:'Reviews',get:r=>typeof r.c.reviews==='number'?r.c.reviews:''},
+    {label:'DVMs (scraped)',get:r=>{ const st=_vetStaffAt(r.c.lat,r.c.lon); return (st&&st.n)?st.n:''; }},
+    {label:'Est. revenue (modeled $)',get:r=>{ const e=_revEst(r.c); return (e&&e.val)?e.val:''; }},
     {label:'PE within '+ACQ_RADIUS_MI+'mi',get:r=>r.peNear},
     {label:'Indep within '+ACQ_RADIUS_MI+'mi',get:r=>r.indNear},
     {label:'Phone',get:r=>r.c.tel||''},
@@ -3966,6 +3994,8 @@ function _acqRank(){
 }
 function renderAcquisitions(){
   const sb=document.querySelector('.sidebar'); if(!sb) return;
+  const seg=`<div style="padding:8px 14px 0"><div class="opp-view-seg"><button class="${acqView==='targets'?'on':''}" onclick="setAcqView('targets')">Targets</button><button class="${acqView==='groups'?'on':''}" onclick="setAcqView('groups')">PE groups</button></div></div>`;
+  if(acqView==='groups'){ _renderPeGroups(sb, seg); return; }
   const rows=_acqRank();
   window._vmAcqScope=rows; // export scope
   const cards=rows.slice(0,40).map(r=>{
@@ -3980,6 +4010,7 @@ function renderAcquisitions(){
         <div class="card-name">${r.c.name}${szBadge}</div>
         <div class="card-meta"><span class="tag-ind">Independent</span><span class="card-dist" style="font-weight:600;color:#15803d">${Math.round(r.score*100)}</span></div>
         <div style="font-size:11px;color:#475569;margin-top:3px">${rate}</div>
+        ${_revEstLine(r.c)}
         <div style="font-size:11px;color:#64748b;margin-top:2px">${r.peNear} PE · ${r.indNear} independent within ${ACQ_RADIUS_MI} mi</div>
         ${contact}
       </div>
@@ -3989,6 +4020,7 @@ function renderAcquisitions(){
   const chip=(k,label)=>`<span class="eval-chip ${acqRollup===k?'on':''}" onclick="setAcqRollup('${k}')">${label}</span>`;
   sb.innerHTML=`
     <div class="area-header"><span class="area-title">Acquisition Targets</span><span style="display:flex;align-items:center;gap:8px">${rows.length?_exportBtn('exportAcqCSV()','Export '+rows.length):''}<span style="font-size:12px;color:#64748b;font-weight:600">${rows.length}</span></span></div>
+    ${seg}
     <div class="eval-verdict">Independent clinics in view, ranked as roll-up targets.</div>
     <div class="eval-toggle-row">${chip('whitespace','Whitespace')}${chip('tuckin','Tuck-in')}</div>
     <div class="eval-cards">${cards}</div>
@@ -3996,6 +4028,85 @@ function renderAcquisitions(){
     <div class="status-bar" id="status"></div>`;
 }
 function setAcqRollup(k){ if(acqRollup===k) return; acqRollup=k; renderAcquisitions(); }
+/* ── PE ownership groups directory (Acquisitions · second view) ──────────────────────────────
+   Rollup of PE_COORDS by owner: clinic count, brands, top cities. Click a group → its FULL
+   footprint drawn as a dedicated dot layer straight from PE_COORDS (independent of which map
+   pins happen to be loaded) + fit. License-aware via _vfInLicense (demo sees DFW counts). */
+let acqView='targets', _peGroupLayer=null, _peGroupName=null;
+function _peGroups(){
+  const g=new Map();
+  if(typeof PE_COORDS==='undefined') return [];
+  for(const c of PE_COORDS){
+    if(typeof _vfInLicense==='function' && !_vfInLicense(c[0],c[1])) continue;
+    const owner=(c[2]&&String(c[2]).trim())||'Undisclosed owner';
+    let e=g.get(owner); if(!e){ e={owner,n:0,brands:new Map(),cities:new Map()}; g.set(owner,e); }
+    e.n++;
+    const br=(c[3]&&String(c[3]).trim())||''; if(br) e.brands.set(br,(e.brands.get(br)||0)+1);
+    // PE_COORDS[4] is the LOCATION name, not a city — real city comes from the Google-enriched
+    // address (cell-indexed lookup into VET_CLINICS, same joiner the popups use).
+    let ct='';
+    if(typeof _vetEnrichAt==='function'){ const enr=_vetEnrichAt(c[0],c[1]); if(enr&&enr.addr){ const m2=String(enr.addr).match(/,\s*([^,]+),\s*TX\b/i); if(m2) ct=m2[1].trim(); } }
+    if(ct) e.cities.set(ct,(e.cities.get(ct)||0)+1);
+  }
+  return [...g.values()].sort((a2,b2)=>b2.n-a2.n);
+}
+function _renderPeGroups(sb, seg){
+  const rows=_peGroups();
+  const esc=v=>String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const top=(m,k)=>[...m.entries()].sort((a2,b2)=>b2[1]-a2[1]).slice(0,k);
+  const cards=rows.map(r=>{
+    const brands=top(r.brands,3).map(([b3,n3])=>esc(b3)+(r.brands.size>1?' ('+n3+')':'')).join(', ');
+    const cities=top(r.cities,3).map(([c3])=>esc(c3)).join(', ');
+    const active=_peGroupName===r.owner;
+    return `<div class="card" style="${active?'border-color:var(--red);':''}" onclick="peGroupFocus('${esc(r.owner).replace(/'/g,"\\'")}')">
+      <div class="card-body">
+        <div class="card-name">${esc(r.owner)} <span style="font-size:11px;font-weight:800;color:#fff;background:var(--red);border-radius:9px;padding:1px 8px;margin-left:6px">${r.n}</span></div>
+        ${brands&&brands.toLowerCase()!==r.owner.toLowerCase()?`<div style="font-size:11px;color:#475569;margin-top:3px">${brands}</div>`:''}
+        ${cities?`<div style="font-size:11px;color:#64748b;margin-top:2px">${cities}${r.cities.size>3?' +'+(r.cities.size-3)+' more':''}</div>`:''}
+        <div style="font-size:10.5px;color:var(--navy);font-weight:700;margin-top:3px">${active?'Footprint on map ✓':'View footprint on map →'}</div>
+      </div>
+    </div>`;
+  }).join('') || '<div class="empty">PE ownership data not loaded.</div>';
+  const totClin=rows.reduce((a2,r)=>a2+r.n,0);
+  sb.innerHTML=`
+    <div class="area-header"><span class="area-title">PE Ownership Groups</span><span style="font-size:12px;color:#64748b;font-weight:600">${rows.length} groups · ${totClin.toLocaleString()} clinics</span></div>
+    ${seg}
+    <div class="eval-verdict">Every PE / corporate owner in the dataset, largest footprint first. Click one to see all of its locations on the map — the gaps between consolidators' footprints are the whitespace.</div>
+    <div class="eval-cards">${cards}</div>
+    <div class="eval-note">Counts come from the verified PE clinic list (national list filtered to Texas, boarding/grooming businesses removed). Brands shown where a group operates multiple banners.</div>
+    <div class="status-bar" id="status"></div>`;
+}
+function peGroupFocus(owner){
+  if(typeof PE_COORDS==='undefined') return;
+  peGroupClear(false);
+  const pts=PE_COORDS.filter(c=>((c[2]&&String(c[2]).trim())||'Undisclosed owner')===owner && (typeof _vfInLicense!=='function'||_vfInLicense(c[0],c[1])));
+  if(!pts.length) return;
+  _peGroupName=owner;
+  _peGroupLayer=L.layerGroup();
+  const esc=v=>String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  for(const c of pts){
+    L.circleMarker([c[0],c[1]],{radius:6,color:'#fff',weight:1.6,fillColor:'#dc2626',fillOpacity:0.95})
+      .bindTooltip(`<b>${esc(c[4]||c[3]||owner)}</b><br><span style="color:#64748b">${esc(owner)}</span>`,{opacity:0.95})
+      .addTo(_peGroupLayer);
+  }
+  _peGroupLayer.addTo(map);
+  const chip=document.getElementById('pe-group-chip'), txt=document.getElementById('pe-group-chip-txt');
+  if(txt) txt.textContent=owner+' — '+pts.length+' clinic'+(pts.length!==1?'s':'');
+  if(chip) chip.classList.add('show');
+  switchSection('map');
+  setTimeout(()=>{
+    map.invalidateSize();
+    try{ map.fitBounds(L.latLngBounds(pts.map(c=>[c[0],c[1]])).pad(0.12), {animate:false, maxZoom:11}); }catch(e){}
+  },90);
+  if(acqMode) renderAcquisitions();
+}
+function peGroupClear(rerender){
+  if(_peGroupLayer){ map.removeLayer(_peGroupLayer); _peGroupLayer=null; }
+  _peGroupName=null;
+  const chip=document.getElementById('pe-group-chip'); if(chip) chip.classList.remove('show');
+  if(rerender!==false && acqMode) renderAcquisitions();
+}
+function setAcqView(v){ if(acqView===v) return; acqView=v; renderAcquisitions(); }
 function enterAcquisitions(){ acqMode=true; renderAcquisitions(); }
 function exitAcquisitions(){ acqMode=false; renderNormalSidebar(); }
 
