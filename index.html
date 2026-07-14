@@ -5209,6 +5209,7 @@ function _stickyTipSweep(){
   }
 }
 map.on('movestart', _stickyTipSweep);
+map.on('zoomend', ()=>{ try{ _updateOptKpis(); }catch(e){} });   // optional KPIs gate on pin zoom
 function _oppKillChoropleths(){
   const off=(id,fn)=>{ const el=document.getElementById(id); if(el&&el.checked){ fn(false); el.checked=false; } };
   off('toggle-income', toggleIncomeLayer);
@@ -6436,6 +6437,13 @@ function _updateOptKpis(){
     }
   } else if(selectedZips.size){
     zips=[...selectedZips.keys()]; scope=selectedZips.size>1?'in selected ZIPs':'in selected ZIP';
+  } else if(map.getZoom()<MIN_ZOOM){
+    // Pure-viewport scope only reads at pin zoom — a statewide "median of 1,900 ZIPs" is noise.
+    // Explicit scopes (ZIP selection / drawn area / site pin) still read at any zoom above.
+    const dash=(id)=>{ const el=document.getElementById(id); if(el){ el.textContent='—'; el.classList.add('pending'); } const f=document.getElementById(id+'-foot'); if(f) f.textContent='Zoom in to city level'; };
+    if(_kpiOn('income')) dash('kpi-income');
+    if(_kpiOn('doghh')) dash('kpi-doghh');
+    return;
   } else if(geo && geo.features){
     const b=map.getBounds(), s2=b.getSouth(), n2=b.getNorth(), w2=b.getWest(), e2=b.getEast();
     for(const f of geo.features){
