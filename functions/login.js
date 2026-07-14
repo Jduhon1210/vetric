@@ -62,7 +62,7 @@ const HTML = `<!doctype html>
     </div>
 
     <div class="step on">
-      <h1>AI-Powered<br><em>Veterinary Market<br>Intelligence.</em></h1>
+      <h1>Veterinary Market<br><em>Intelligence,<br>Verified.</em></h1>
       <p class="sub">Sign in with your email and the access code you were given.</p>
       <form id="f1" onsubmit="return signIn(event)">
         <label for="email">Email</label>
