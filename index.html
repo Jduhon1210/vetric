@@ -1799,6 +1799,9 @@ function openClinicEditor(key){
           <div class="cedit-f"><label>Phone</label><input id="ce-tel" value="${esc(o.tel!=null?o.tel:(c.tel||''))}"></div>
           <div class="cedit-f"><label>Website</label><input id="ce-web" value="${esc(o.web!=null?o.web:(c.website||''))}"></div>
         </div></div>
+        <div class="cedit-sec"><div class="cedit-sec-h">Building &amp; layout <span style="font-weight:600;color:#94a3b8;font-size:10px;text-transform:none;letter-spacing:0">· county appraisal records + OpenStreetMap</span></div>
+          <div id="ce-bldg" style="font-size:12px;color:#64748b;padding:4px 0">Looking up the parcel record…</div>
+        </div>
         </div>
         <div class="cedit-notes">
           <div class="cedit-notes-h">Notes &amp; diligence</div>
@@ -1817,6 +1820,105 @@ function openClinicEditor(key){
     </div>
   </div>`;
   document.body.style.overflow='hidden';
+  setTimeout(()=>{ try{ _ceBldgLoad(c.lat, c.lon); }catch(e){} }, 60);
+}
+
+/* ── Building & layout lookup (clinic editor) — live, per-open, free ─────────────────────────
+   Tier 1: county appraisal-district parcel at the clinic's point (the same three CORS services
+   the Evaluate zoning gate uses). Field maps differ per county: Denton + Collin expose BUILDING
+   sq ft (LIVINGAREA / living_area); Dallas exposes parcel land area only (AREA_FEET) + the
+   taxpayer of record. Tier 2: OSM building outline within ~45m (best-effort, 6s cap).
+   Suite-tenant guardrail: building sq ft outside 1,200–12,000 is flagged, not priced — a strip
+   center's parcel would otherwise claim a $20M solo practice ($538/sq-ft is the AVMA 2024
+   benchmark, research/revenue-estimation-report.md). */
+const _BLDG_SOURCES=[
+  {county:'Denton', url:'https://gis.dentoncounty.gov/arcgis/rest/services/Parcels/MapServer/0',
+   f:{bldg:'LIVINGAREA', land:'LAND_SQFT', yr:'YR_BLT'}},
+  {county:'Collin', url:'https://gismaps.cityofallen.org/arcgis/rest/services/ReferenceData/Collin_County_Appraisal_District_Parcels/MapServer/1',
+   f:{bldg:'GIS_DBO_AD_Entity_living_area', land:'GIS_DBO_AD_Entity_land_sqft', yr:'GIS_DBO_AD_Entity_yr_blt', imprv:'GIS_DBO_AD_Entity_curr_imprv_no'}},
+  {county:'Dallas', url:'https://gis.dallascityhall.com/arcgis/rest/services/Basemap/DallasTaxParcels/FeatureServer/0',
+   f:{land:'AREA_FEET', taxpayer:'TAXPANAME1', bus:'BUSNAME'}}
+];
+async function _ceBldgLoad(lat,lon){
+  const el=document.getElementById('ce-bldg'); if(!el) return;
+  let parcel=null, county=null, fmap=null;
+  // point-in-parcel across the three counties (first hit wins; ~1 request in practice)
+  for(const src of _BLDG_SOURCES){
+    try{
+      const flds=Object.values(src.f).join(',');
+      const u=`${src.url}/query?geometry=${lon},${lat}&geometryType=esriGeometryPoint&inSR=4326&spatialRel=esriSpatialRelIntersects&outFields=${encodeURIComponent(flds)}&returnGeometry=true&outSR=4326&f=geojson`;
+      const ac=new AbortController(); const t=setTimeout(()=>ac.abort(),8000);
+      const r=await fetch(u,{signal:ac.signal}); clearTimeout(t);
+      if(!r.ok) continue;
+      const d=await r.json();
+      if(d && d.features && d.features.length){ parcel=d.features[0]; county=src.county; fmap=src.f; break; }
+    }catch(e){}
+    if(!document.getElementById('ce-bldg')) return;   // editor closed mid-lookup
+  }
+  // OSM building outline near the point (best-effort; Overpass may be down — fine)
+  let bldgRing=null;
+  try{
+    const q=`[out:json][timeout:8];(way["building"](around:45,${lat},${lon}););out geom 6;`;
+    const d=await Promise.race([_overpass(q,{timeout:6000}), new Promise(r=>setTimeout(()=>r(null),7000))]);
+    if(d && d.elements){
+      let best=null, bestA=0;
+      for(const w of d.elements){
+        if(!w.geometry || w.geometry.length<4) continue;
+        const ring=w.geometry.map(g=>[g.lon,g.lat]);
+        let a2=0; for(let i=0;i<ring.length-1;i++) a2+=ring[i][0]*ring[i+1][1]-ring[i+1][0]*ring[i][1];
+        a2=Math.abs(a2);
+        if(a2>bestA){ bestA=a2; best=ring; }
+      }
+      bldgRing=best;
+    }
+  }catch(e){}
+  const out=document.getElementById('ce-bldg'); if(!out) return;
+  if(!parcel && !bldgRing){ out.innerHTML='<span style="color:#94a3b8">No county parcel service covers this location (building records are live for Collin, Denton and Dallas counties), and no mapped building outline was found.</span>'; return; }
+  const props=(parcel&&parcel.properties)||{};
+  const num=v=>{ const x=parseFloat(v); return isFinite(x)&&x>0?x:null; };
+  const bldg=fmap&&fmap.bldg? num(props[fmap.bldg]) : null;
+  const land=fmap&&fmap.land? num(props[fmap.land]) : null;
+  const yr=fmap&&fmap.yr? num(props[fmap.yr]) : null;
+  const imprv=fmap&&fmap.imprv? num(props[fmap.imprv]) : null;
+  const taxp=fmap&&fmap.taxpayer? (props[fmap.taxpayer]||'') : '';
+  // mini plan: parcel ring (navy dashes) + building ring (slate fill) in a local projection
+  let svg='';
+  const rings=[];
+  if(parcel && parcel.geometry){
+    const g=parcel.geometry;
+    const pr=g.type==='Polygon'?g.coordinates[0]:(g.type==='MultiPolygon'?g.coordinates[0][0]:null);
+    if(pr) rings.push({ring:pr, cls:'parcel'});
+  }
+  if(bldgRing) rings.push({ring:bldgRing, cls:'bldg'});
+  if(rings.length){
+    let mnX=1e9,mxX=-1e9,mnY=1e9,mxY=-1e9;
+    const kx=Math.cos(lat*Math.PI/180)*111320, ky=110540;
+    const proj=p2=>[(p2[0]-lon)*kx,(lat-p2[1])*ky];
+    for(const rr of rings) for(const p2 of rr.ring){ const [x,y]=proj(p2); if(x<mnX)mnX=x; if(x>mxX)mxX=x; if(y<mnY)mnY=y; if(y>mxY)mxY=y; }
+    const w2=Math.max(mxX-mnX,1), h2=Math.max(mxY-mnY,1), sc=Math.min(250/w2, 160/h2)*0.92;
+    const off=[(260-w2*sc)/2 - mnX*sc, (170-h2*sc)/2 - mnY*sc];
+    const path=rr=>rr.ring.map((p2,i)=>{ const [x,y]=proj(p2); return (i?'L':'M')+(x*sc+off[0]).toFixed(1)+' '+(y*sc+off[1]).toFixed(1); }).join(' ')+' Z';
+    const widthFt=Math.round(w2*3.28084);
+    svg=`<svg viewBox="0 0 260 170" style="width:100%;max-width:300px;background:#f8fafc;border:1px solid #eef2f7;border-radius:10px;display:block;margin:6px 0">
+      ${rings.filter(r2=>r2.cls==='parcel').map(r2=>`<path d="${path(r2)}" fill="#eff6ff" stroke="#1e3a8a" stroke-width="1.4" stroke-dasharray="5 4"/>`).join('')}
+      ${rings.filter(r2=>r2.cls==='bldg').map(r2=>`<path d="${path(r2)}" fill="#cbd5e1" stroke="#475569" stroke-width="1.4"/>`).join('')}
+      <circle cx="130" cy="85" r="0" fill="none"/>
+      <text x="8" y="162" font-size="9" fill="#94a3b8" font-family="Inter,system-ui">${rings.some(r2=>r2.cls==='parcel')?'▢ parcel (dashed)':''}${rings.some(r2=>r2.cls==='bldg')?' · ▮ building (OSM)':''} · ~${widthFt.toLocaleString()} ft wide</text>
+    </svg>`;
+  }
+  const row=(l,v)=>`<div style="display:flex;justify-content:space-between;gap:10px;padding:2px 0"><span style="color:#64748b">${l}</span><b style="color:#1f2933">${v}</b></div>`;
+  let rowsH='';
+  const plausible=bldg!=null && bldg>=1200 && bldg<=12000;
+  if(bldg!=null) rowsH+=row('Building area (county record)', Math.round(bldg).toLocaleString()+' sq ft');
+  if(land!=null) rowsH+=row('Parcel land', Math.round(land).toLocaleString()+' sq ft ('+(land/43560).toFixed(2)+' ac)');
+  if(yr) rowsH+=row('Year built', String(Math.round(yr)));
+  if(imprv) rowsH+=row('Appraised improvement value', '$'+Math.round(imprv).toLocaleString());
+  if(taxp) rowsH+=row('Taxpayer of record', String(taxp).slice(0,34));
+  if(plausible) rowsH+=row('Revenue capacity at $538/sq ft', '~$'+((bldg*538)/1e6).toFixed(1)+'M <span style="font-weight:500;color:#94a3b8">AVMA 2024 cross-check</span>');
+  let warn='';
+  if(bldg!=null && !plausible) warn=`<div style="font-size:10.5px;color:#9f1239;background:#fff1f2;border:1px solid #fecdd3;border-radius:8px;padding:5px 9px;margin-top:6px">${bldg>12000?'Building reads '+Math.round(bldg).toLocaleString()+' sq ft — likely a shared building / strip center, so per-sq-ft revenue math doesn\'t apply to this tenant.':'Building reads under 1,200 sq ft — record may cover only part of the structure.'}</div>`;
+  if(!bldg && county==='Dallas') warn=`<div style="font-size:10.5px;color:#64748b;margin-top:4px">Dallas county publishes parcel land area but not building square footage in its GIS layer.</div>`;
+  out.innerHTML=`${svg}${rowsH||'<span style="color:#94a3b8">Parcel found, but no usable size fields on this record.</span>'}${warn}<div style="font-size:10px;color:#94a3b8;margin-top:6px">${county?county+' County appraisal district parcel at this pin':'No parcel record'}${bldgRing?' · building outline from OpenStreetMap':''}. Live lookup — nothing stored.</div>`;
 }
 function closeClinicEditor(){ const r=document.getElementById('clinic-editor-root'); if(r) r.innerHTML=''; document.body.style.overflow=''; }
 function _ceNum(id){ const x=parseFloat(document.getElementById(id)?.value); return isFinite(x)?x:null; }
