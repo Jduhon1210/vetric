@@ -1864,6 +1864,7 @@ function openClinicEditor(key){
           <div class="cedit-f full"><label>PE firm / owner — leave blank for independent</label><input id="ce-pe" list="ce-firms" value="${esc(owner)}" placeholder="e.g. Mars, Shore Capital Partners…"></div>
           ${_ceSel('ce-kind','Clinic type',kind,['small:Small animal','mixed:Mixed (small + large)','large:Large animal / equine','specialty:Specialty / ER','mobile:Mobile / house-call'])}
           ${(()=>{const sp=_speciesAt(c.lat,c.lon); if(!sp) return '<div class="cedit-f full" style="font-size:11px;color:#94a3b8;margin-top:-6px">Species scan: no readable website. Set the type above if you know this practice.</div>'; const l={small:'small animal',large:'large animal / equine',mixed:'mixed (small + large animal)'}[sp]; return `<div class="cedit-f full" style="font-size:11px;color:#475569;margin-top:-6px">Species scan (from the clinic's website): <b>${l}</b>. Your Clinic type selection overrides it.</div>`;})()}
+          <div class="cedit-f"><label>Year acquired (by current owner)</label><input id="ce-acqyear" type="number" min="1980" max="2026" step="1" value="${o.acqYear||''}" placeholder="e.g. 2021"></div>
           <div class="cedit-f"><label>Competition weight × (0–5)</label><input id="ce-mult" type="number" min="0" max="5" step="0.1" value="${mult}"></div>
           <div class="cedit-f full"><label class="cedit-check"><input type="checkbox" id="ce-exclude"${o.exclude?' checked':''}> Exclude from all scoring &amp; competition (keeps the pin, mutes its market impact)</label></div>
         </div></div>
@@ -2039,7 +2040,7 @@ function saveClinicEditor(key){
     ratingOv:_ceNum('ce-rating'), reviewsOv:_ceNum('ce-reviews'),
     revenue:_ceNum('ce-rev'), multiple:_ceNum('ce-mx'),
     addr:(g('ce-addr')?.value||'').trim(), tel:(g('ce-tel')?.value||'').trim(), web:(g('ce-web')?.value||'').trim(),
-    staffOv:_ceNum('ce-staff'),
+    staffOv:_ceNum('ce-staff'), acqYear:_ceNum('ce-acqyear'),
     tags:(g('ce-tags')?.value||'').trim(), notes:(g('ce-notes')?.value||'').trim()
   };
   setStore('vf_overrides',o);
@@ -4279,6 +4280,7 @@ function _renderPeGroups(sb, seg){
     <div class="area-header"><span class="area-title">PE Ownership Groups</span><span style="font-size:11.5px;color:#94a3b8;font-weight:600">${rows.length} groups · ${totClin.toLocaleString()} clinics</span></div>
     ${seg}
     <div style="padding:10px 14px 0"><input class="peg-filter" placeholder="Filter groups or brands…" value="${esc(_pegQ)}" oninput="_pegFilter(this.value)"/></div>
+    ${_pegTimelineHTML()}
     <div class="eval-scroll">
       <div class="eval-cards" id="peg-list" style="padding-top:2px">${cards}</div>
       <div class="eval-note">Bar = share of tracked PE clinics. Click a group to draw its full footprint on the map — the gaps between consolidators are the whitespace. Counts from the verified PE list; brands shown where a group runs multiple banners.</div>
@@ -4286,33 +4288,69 @@ function _renderPeGroups(sb, seg){
     <div class="status-bar" id="status"></div>`;
   if(_pegQ) _pegFilter(_pegQ);
 }
+let _peGroupPts=[], _pegYear=null;   // active group's dots (+acqYear where the analyst dated them) · timeline position
 function peGroupFocus(owner){
   if(typeof PE_COORDS==='undefined') return;
   peGroupClear(false);
+  const ov=getOverrides();
   const pts=PE_COORDS.filter(c=>((c[2]&&String(c[2]).trim())||'Undisclosed owner')===owner && (typeof _vfInLicense!=='function'||_vfInLicense(c[0],c[1])));
   if(!pts.length) return;
   _peGroupName=owner;
-  _peGroupLayer=L.layerGroup();
-  const esc=v=>String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  for(const c of pts){
-    L.circleMarker([c[0],c[1]],{radius:6,color:'#fff',weight:1.6,fillColor:'#dc2626',fillOpacity:0.95})
-      .bindTooltip(`<b>${esc(c[4]||c[3]||owner)}</b><br><span style="color:#64748b">${esc(owner)}</span>`,{opacity:0.95})
-      .addTo(_peGroupLayer);
-  }
-  _peGroupLayer.addTo(map);
+  _peGroupPts=pts.map(c=>{
+    const k=Math.round(c[0]*1000)+'_'+Math.round(c[1]*1000);
+    const yr=(ov[k]&&ov[k].acqYear!=null&&ov[k].acqYear!=='')?parseInt(ov[k].acqYear,10):null;
+    return {la:c[0], lo:c[1], name:c[4]||c[3]||owner, yr:(isFinite(yr)&&yr>1900)?yr:null};
+  });
+  _pegYear=null;
+  _peGroupDraw();
   const chip=document.getElementById('pe-group-chip'), txt=document.getElementById('pe-group-chip-txt');
   if(txt) txt.textContent=owner+' — '+pts.length+' clinic'+(pts.length!==1?'s':'');
   if(chip) chip.classList.add('show');
-  switchSection('map');
+  // NO section switch — the map is already visible in Acquisitions, and jumping to Map closed
+  // the PE list (user-reported). Fit the map behind the open sidebar instead.
   setTimeout(()=>{
-    map.invalidateSize();
     try{ map.fitBounds(L.latLngBounds(pts.map(c=>[c[0],c[1]])).pad(0.12), {animate:false, maxZoom:11}); }catch(e){}
-  },90);
+  },60);
   if(acqMode) renderAcquisitions();
+}
+// (Re)draw the active group's dots, honoring the timeline position: dated dots pop in once the
+// slider passes their year; undated dots render dimmed (we can't place them on a timeline).
+function _peGroupDraw(){
+  if(_peGroupLayer){ map.removeLayer(_peGroupLayer); _peGroupLayer=null; }
+  if(!_peGroupPts.length) return;
+  _peGroupLayer=L.layerGroup();
+  const esc=v=>String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  for(const p2 of _peGroupPts){
+    if(_pegYear!=null && p2.yr!=null && p2.yr>_pegYear) continue;      // not acquired yet at this point in time
+    const undated=(_pegYear!=null && p2.yr==null);
+    L.circleMarker([p2.la,p2.lo],{radius:6,color:'#fff',weight:1.6,fillColor:'#dc2626',fillOpacity:undated?0.30:0.95})
+      .bindTooltip(`<b>${esc(p2.name)}</b><br><span style="color:#64748b">${esc(_peGroupName)}${p2.yr?' · acquired '+p2.yr:' · acquisition date not recorded'}</span>`,{opacity:0.95})
+      .addTo(_peGroupLayer);
+  }
+  _peGroupLayer.addTo(map);
+}
+function pegTimeline(y){
+  _pegYear=+y;
+  _peGroupDraw();
+  const lab=document.getElementById('peg-tl-year'); if(lab) lab.textContent='through '+y;
+  const cnt=document.getElementById('peg-tl-count');
+  if(cnt){ const dated=_peGroupPts.filter(p2=>p2.yr!=null); const shown=dated.filter(p2=>p2.yr<=_pegYear).length; cnt.textContent=shown+' of '+dated.length+' dated acquisitions shown · '+(_peGroupPts.length-dated.length)+' undated (dimmed)'; }
+}
+function _pegTimelineHTML(){
+  if(!_peGroupName || !_peGroupPts.length) return '';
+  const dated=_peGroupPts.filter(p2=>p2.yr!=null).map(p2=>p2.yr);
+  if(!dated.length) return `<div style="margin:0 14px 8px;background:#f8fafc;border:1px solid #e7ecf5;border-radius:10px;padding:8px 11px;font-size:10.5px;color:#64748b;line-height:1.5"><b style="color:#334155">Timeline unavailable —</b> no acquisition dates recorded for ${_ceEsc(_peGroupName)} yet. Add "Year acquired" in a clinic's editor (⚙) and this becomes a drag-through-time view of the roll-up.</div>`;
+  const mn=Math.min(...dated)-1, mx=new Date().getFullYear();
+  const cur=_pegYear!=null?_pegYear:mx;
+  return `<div style="margin:0 14px 8px;background:#fff;border:1px solid #e7ecf5;border-radius:10px;padding:9px 12px">
+    <div style="display:flex;align-items:center;gap:8px;font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#94a3b8">Acquisition timeline<span id="peg-tl-year" style="margin-left:auto;color:var(--navy);text-transform:none;letter-spacing:0;font-size:11px">through ${cur}</span></div>
+    <input type="range" min="${mn}" max="${mx}" step="1" value="${cur}" style="width:100%;margin:6px 0 2px" oninput="pegTimeline(this.value)"/>
+    <div id="peg-tl-count" style="font-size:10px;color:#94a3b8">${dated.filter(y2=>y2<=cur).length} of ${dated.length} dated acquisitions shown · ${_peGroupPts.length-dated.length} undated (dimmed)</div>
+  </div>`;
 }
 function peGroupClear(rerender){
   if(_peGroupLayer){ map.removeLayer(_peGroupLayer); _peGroupLayer=null; }
-  _peGroupName=null;
+  _peGroupName=null; _peGroupPts=[]; _pegYear=null;
   const chip=document.getElementById('pe-group-chip'); if(chip) chip.classList.remove('show');
   if(rerender!==false && acqMode) renderAcquisitions();
 }
