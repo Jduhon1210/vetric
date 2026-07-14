@@ -830,14 +830,10 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
     </div>
     <div class="scr-body">
       <div class="scr-left">
-        <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
-          <select id="scr-add" style="flex:1;font:inherit;font-size:12px;padding:6px 8px;border:1px solid var(--border);border-radius:8px"></select>
-          <button class="vm-export-btn" onclick="scrAddFilter()">＋ Add</button>
-        </div>
+        <select id="scr-add" onchange="scrAddFilter(this.value)" style="width:100%;font:inherit;font-size:12.5px;padding:8px 10px;border:1px solid var(--border);border-radius:10px;margin-bottom:10px;color:var(--navy);font-weight:700"></select>
         <div id="scr-rows"></div>
         <div style="display:flex;gap:8px;margin-top:10px">
-          <button class="eval-btn" style="margin:0;flex:1" onclick="runScreener()">Run screen</button>
-          <button class="vm-export-btn" onclick="scrReset()">Clear</button>
+          <button class="vm-export-btn" onclick="scrReset()">Clear all filters</button>
         </div>
         <div style="font-size:10px;color:#94a3b8;margin-top:10px;line-height:1.5">DVM counts come from scraped website rosters; revenue is modeled (roster × $555k benchmark) unless an analyst value is saved; EBITDA multiples exist only where you've entered them in a clinic's editor.</div>
       </div>
@@ -4362,7 +4358,7 @@ function setAcqView(v){ if(acqView===v) return; acqView=v; renderAcquisitions();
    modeled revenue (_revEst) and analyst overrides (EBITDA multiple). Results render as a list
    + optional teal dot layer on the map (drawn straight from data, like the PE-group footprint). */
 const SCR_DEFS={
-  own:    {label:'Ownership', type:'select', opts:()=>[['any','Any'],['ind','Independent'],['pe','PE / corporate (any firm)']].concat(_peGroups().slice(0,40).map(g=>['pe:'+g.owner, g.owner+' ('+g.n+')'])), def:'any'},
+  own:    {label:'Ownership type', type:'own', def:'any'},
   kind:   {label:'Practice type', type:'select', opts:()=>[['any','Any'],['small','Small animal'],['mixed','Mixed (small + large)'],['large','Large animal / equine'],['specialty','Specialty / ER']], def:'any'},
   dvmMin: {label:'DVMs at least', type:'number', def:2, step:1},
   dvmMax: {label:'DVMs at most', type:'number', def:10, step:1},
@@ -4375,32 +4371,57 @@ const SCR_DEFS={
   watch:  {label:'On my watchlist', type:'select', opts:()=>[['yes','Yes'],['no','No']], def:'yes'}
 };
 let _scrActive=[], _scrResults=[], _scrLayer=null;
+let _scrRunT=null;
+function _scrAutoRun(){ clearTimeout(_scrRunT); _scrRunT=setTimeout(runScreener, 260); }
 function openScreener(){
   const sel=document.getElementById('scr-add');
-  if(sel && !sel.options.length) for(const k of Object.keys(SCR_DEFS)){ const o=document.createElement('option'); o.value=k; o.textContent=SCR_DEFS[k].label; sel.appendChild(o); }
-  if(!_scrActive.length){ _scrActive=[{k:'dvmMin', v:SCR_DEFS.dvmMin.def}]; }
+  if(sel && !sel.options.length){
+    const ph=document.createElement('option'); ph.value=''; ph.textContent='＋ Add a filter…'; ph.disabled=false; sel.appendChild(ph);
+    for(const k of Object.keys(SCR_DEFS)){ const o=document.createElement('option'); o.value=k; o.textContent=SCR_DEFS[k].label; sel.appendChild(o); }
+  }
+  if(sel) sel.selectedIndex=0;
   _scrRenderRows();
   document.getElementById('scr-overlay').classList.add('show');
+  runScreener();                                        // show the live universe count immediately
 }
 function closeScreener(){ document.getElementById('scr-overlay').classList.remove('show'); }
-function scrAddFilter(){
-  const sel=document.getElementById('scr-add'); if(!sel) return;
-  const k=sel.value; if(!k || _scrActive.some(f=>f.k===k)) { vfToast('That filter is already added.'); return; }
+function scrAddFilter(k){
+  const sel=document.getElementById('scr-add');
+  if(!k){ return; }
+  if(_scrActive.some(f=>f.k===k)){ vfToast('That filter is already added.'); if(sel) sel.selectedIndex=0; return; }
   _scrActive.push({k, v:SCR_DEFS[k].def});
-  _scrRenderRows();
+  if(sel) sel.selectedIndex=0;
+  _scrRenderRows(); _scrAutoRun();
 }
-function scrRemoveFilter(i){ _scrActive.splice(i,1); _scrRenderRows(); runScreener(); }
-function scrSetVal(i,v){ if(_scrActive[i]) _scrActive[i].v=v; }
-function scrReset(){ _scrActive=[]; _scrResults=[]; _scrRenderRows(); const r=document.getElementById('scr-results'); if(r) r.innerHTML='<div class="empty" style="padding:40px 20px">Add filters on the left, then Run screen.</div>'; const c=document.getElementById('scr-count'); if(c) c.textContent=''; _scrClearLayer(); }
+function scrRemoveFilter(i){ _scrActive.splice(i,1); _scrRenderRows(); _scrAutoRun(); }
+function scrSetVal(i,v){ if(_scrActive[i]) _scrActive[i].v=v; _scrAutoRun(); }
+function scrSetOwn(i,v){ if(_scrActive[i]){ _scrActive[i].v=v; _scrRenderRows(); _scrAutoRun(); } }
+function scrSetOwnFirm(i,v){ if(_scrActive[i]){ _scrActive[i].v = v? ('pe:'+v) : 'pe'; _scrAutoRun(); } }
+function scrReset(){ _scrActive=[]; _scrRenderRows(); _scrClearLayer(false); runScreener(); }
 function _scrRenderRows(){
   const wrap=document.getElementById('scr-rows'); if(!wrap) return;
   wrap.innerHTML=_scrActive.map((f,i)=>{
     const d=SCR_DEFS[f.k];
-    const inp = d.type==='select'
-      ? `<select onchange="scrSetVal(${i},this.value)">${d.opts().map(([v,l])=>`<option value="${_ceEsc(v)}"${String(f.v)===String(v)?' selected':''}>${_ceEsc(l)}</option>`).join('')}</select>`
-      : `<input type="number" step="${d.step||1}" value="${f.v}" oninput="scrSetVal(${i},parseFloat(this.value))">`;
+    let inp;
+    if(d.type==='own'){
+      // Two-part: ownership type first; picking PE reveals an optional "by firm" selector.
+      const v=String(f.v||'any');
+      const isPE=v==='pe'||v.startsWith('pe:');
+      const firm=v.startsWith('pe:')?v.slice(3):'';
+      const firms=_peGroups().map(g2=>`<option value="${_ceEsc(g2.owner)}"${firm===g2.owner?' selected':''}>${_ceEsc(g2.owner)} (${g2.n})</option>`).join('');
+      inp=`<select onchange="scrSetOwn(${i},this.value)">
+             <option value="any"${v==='any'?' selected':''}>Any</option>
+             <option value="ind"${v==='ind'?' selected':''}>Independent</option>
+             <option value="pe"${isPE?' selected':''}>PE / corporate</option>
+           </select>`
+         +(isPE?`<div style="margin-top:6px"><label style="margin-bottom:3px">by firm <span style="text-transform:none;letter-spacing:0;font-weight:600;color:#b6c0d4">(optional)</span></label><select onchange="scrSetOwnFirm(${i},this.value)"><option value=""${!firm?' selected':''}>Any firm</option>${firms}</select></div>`:'');
+    } else if(d.type==='select'){
+      inp=`<select onchange="scrSetVal(${i},this.value)">${d.opts().map(([v,l])=>`<option value="${_ceEsc(v)}"${String(f.v)===String(v)?' selected':''}>${_ceEsc(l)}</option>`).join('')}</select>`;
+    } else {
+      inp=`<input type="number" step="${d.step||1}" value="${f.v}" oninput="scrSetVal(${i},parseFloat(this.value))">`;
+    }
     return `<div class="scr-frow"><span class="fx" onclick="scrRemoveFilter(${i})">✕</span><label>${d.label}</label>${inp}</div>`;
-  }).join('') || '<div style="font-size:11.5px;color:#94a3b8;padding:6px 2px">No filters — add one above.</div>';
+  }).join('') || '<div style="font-size:11.5px;color:#94a3b8;padding:6px 2px;line-height:1.6">No filters yet — pick one from the menu above.<br>Results update as you type.</div>';
 }
 function _scrUniverse(){
   const rows=[], ov=getOverrides(), seen=new Set();
