@@ -1833,12 +1833,17 @@ function openClinicEditor(key){
    benchmark, research/revenue-estimation-report.md). */
 const _BLDG_SOURCES=[
   {county:'Denton', url:'https://gis.dentoncounty.gov/arcgis/rest/services/Parcels/MapServer/0',
-   f:{bldg:'LIVINGAREA', land:'LAND_SQFT', yr:'YR_BLT'}},
+   f:{bldg:'LIVINGAREA', land:'LAND_SQFT', yr:'YR_BLT', prop:'prop_id'},
+   rec:id=>'https://esearch.dentoncad.com/Property/View/'+id},
   {county:'Collin', url:'https://gismaps.cityofallen.org/arcgis/rest/services/ReferenceData/Collin_County_Appraisal_District_Parcels/MapServer/1',
-   f:{bldg:'GIS_DBO_AD_Entity_living_area', land:'GIS_DBO_AD_Entity_land_sqft', yr:'GIS_DBO_AD_Entity_yr_blt', imprv:'GIS_DBO_AD_Entity_curr_imprv_no'}},
+   f:{bldg:'GIS_DBO_AD_Entity_living_area', land:'GIS_DBO_AD_Entity_land_sqft', yr:'GIS_DBO_AD_Entity_yr_blt', imprv:'GIS_DBO_AD_Entity_curr_imprv_no', prop:'GIS_DBO_Parcel_PROP_ID'},
+   rec:id=>'https://esearch.collincad.org/Property/View/'+id},
   {county:'Dallas', url:'https://gis.dallascityhall.com/arcgis/rest/services/Basemap/DallasTaxParcels/FeatureServer/0',
-   f:{land:'AREA_FEET', taxpayer:'TAXPANAME1', bus:'BUSNAME'}}
+   f:{land:'AREA_FEET', taxpayer:'TAXPANAME1', bus:'BUSNAME', prop:'ACCT'},
+   rec:id=>'https://www.dallascad.org/AcctDetailCom.aspx?ID='+encodeURIComponent(id)}
 ];
+let _ceBldgMap=null;
+function _ceBldgMapKill(){ if(_ceBldgMap){ try{ _ceBldgMap.remove(); }catch(e){} _ceBldgMap=null; } }
 async function _ceBldgLoad(lat,lon){
   const el=document.getElementById('ce-bldg'); if(!el) return;
   let parcel=null, county=null, fmap=null;
@@ -1851,7 +1856,7 @@ async function _ceBldgLoad(lat,lon){
       const r=await fetch(u,{signal:ac.signal}); clearTimeout(t);
       if(!r.ok) continue;
       const d=await r.json();
-      if(d && d.features && d.features.length){ parcel=d.features[0]; county=src.county; fmap=src.f; break; }
+      if(d && d.features && d.features.length){ parcel=d.features[0]; county=src.county; fmap=src.f; var _srcHit=src; break; }
     }catch(e){}
     if(!document.getElementById('ce-bldg')) return;   // editor closed mid-lookup
   }
@@ -1881,32 +1886,21 @@ async function _ceBldgLoad(lat,lon){
   const yr=fmap&&fmap.yr? num(props[fmap.yr]) : null;
   const imprv=fmap&&fmap.imprv? num(props[fmap.imprv]) : null;
   const taxp=fmap&&fmap.taxpayer? (props[fmap.taxpayer]||'') : '';
-  // mini plan: parcel ring (navy dashes) + building ring (slate fill) in a local projection
-  let svg='';
-  const rings=[];
+  // Aerial mini-map (USGS orthoimagery — public domain, no key) with the parcel + building
+  // outlines drawn on it: the real shape of the site, not an abstract rectangle. Interior room
+  // layouts are NOT public data anywhere — the closest official artifact is the county's
+  // improvement sketch, deep-linked below.
+  const rows=[];
   if(parcel && parcel.geometry){
     const g=parcel.geometry;
     const pr=g.type==='Polygon'?g.coordinates[0]:(g.type==='MultiPolygon'?g.coordinates[0][0]:null);
-    if(pr) rings.push({ring:pr, cls:'parcel'});
+    if(pr) rows.push({ring:pr, cls:'parcel'});
   }
-  if(bldgRing) rings.push({ring:bldgRing, cls:'bldg'});
-  if(rings.length){
-    let mnX=1e9,mxX=-1e9,mnY=1e9,mxY=-1e9;
-    const kx=Math.cos(lat*Math.PI/180)*111320, ky=110540;
-    const proj=p2=>[(p2[0]-lon)*kx,(lat-p2[1])*ky];
-    for(const rr of rings) for(const p2 of rr.ring){ const [x,y]=proj(p2); if(x<mnX)mnX=x; if(x>mxX)mxX=x; if(y<mnY)mnY=y; if(y>mxY)mxY=y; }
-    const w2=Math.max(mxX-mnX,1), h2=Math.max(mxY-mnY,1), sc=Math.min(250/w2, 160/h2)*0.92;
-    const off=[(260-w2*sc)/2 - mnX*sc, (170-h2*sc)/2 - mnY*sc];
-    const path=rr=>rr.ring.map((p2,i)=>{ const [x,y]=proj(p2); return (i?'L':'M')+(x*sc+off[0]).toFixed(1)+' '+(y*sc+off[1]).toFixed(1); }).join(' ')+' Z';
-    const widthFt=Math.round(w2*3.28084);
-    svg=`<svg viewBox="0 0 260 170" style="width:100%;max-width:300px;background:#f8fafc;border:1px solid #eef2f7;border-radius:10px;display:block;margin:6px 0">
-      ${rings.filter(r2=>r2.cls==='parcel').map(r2=>`<path d="${path(r2)}" fill="#eff6ff" stroke="#1e3a8a" stroke-width="1.4" stroke-dasharray="5 4"/>`).join('')}
-      ${rings.filter(r2=>r2.cls==='bldg').map(r2=>`<path d="${path(r2)}" fill="#cbd5e1" stroke="#475569" stroke-width="1.4"/>`).join('')}
-      <circle cx="130" cy="85" r="0" fill="none"/>
-      <text x="8" y="162" font-size="9" fill="#94a3b8" font-family="Inter,system-ui">${rings.some(r2=>r2.cls==='parcel')?'▢ parcel (dashed)':''}${rings.some(r2=>r2.cls==='bldg')?' · ▮ building (OSM)':''} · ~${widthFt.toLocaleString()} ft wide</text>
-    </svg>`;
-  }
-  const row=(l,v)=>`<div style="display:flex;justify-content:space-between;gap:10px;padding:2px 0"><span style="color:#64748b">${l}</span><b style="color:#1f2933">${v}</b></div>`;
+  if(bldgRing) rows.push({ring:bldgRing, cls:'bldg'});
+  let mapH='';
+  if(rows.length) mapH=`<div id="ce-bldg-map" style="width:100%;max-width:420px;height:220px;border:1px solid #e2e8f0;border-radius:10px;margin:6px 0"></div>
+    <div style="font-size:9.5px;color:#94a3b8;margin:-2px 0 6px">Aerial: USGS · <span style="color:#93c5fd">▢ dashed = parcel</span>${bldgRing?' · <span style="color:#7dd3fc">▮ = building (OpenStreetMap)</span>':''}</div>`;
+  const row=(l,v)=>`<div style="display:flex;justify-content:space-between;gap:10px;padding:2px 0"><span style="color:#64748b">${l}</span><b style="color:#1f2933;text-align:right">${v}</b></div>`;
   let rowsH='';
   const plausible=bldg!=null && bldg>=1200 && bldg<=12000;
   if(bldg!=null) rowsH+=row('Building area (county record)', Math.round(bldg).toLocaleString()+' sq ft');
@@ -1914,13 +1908,40 @@ async function _ceBldgLoad(lat,lon){
   if(yr) rowsH+=row('Year built', String(Math.round(yr)));
   if(imprv) rowsH+=row('Appraised improvement value', '$'+Math.round(imprv).toLocaleString());
   if(taxp) rowsH+=row('Taxpayer of record', String(taxp).slice(0,34));
+  if(fmap&&fmap.prop&&props[fmap.prop]!=null) rowsH+=row('County property ID', String(props[fmap.prop]).trim());
   if(plausible) rowsH+=row('Revenue capacity at $538/sq ft', '~$'+((bldg*538)/1e6).toFixed(1)+'M <span style="font-weight:500;color:#94a3b8">AVMA 2024 cross-check</span>');
   let warn='';
   if(bldg!=null && !plausible) warn=`<div style="font-size:10.5px;color:#9f1239;background:#fff1f2;border:1px solid #fecdd3;border-radius:8px;padding:5px 9px;margin-top:6px">${bldg>12000?'Building reads '+Math.round(bldg).toLocaleString()+' sq ft — likely a shared building / strip center, so per-sq-ft revenue math doesn\'t apply to this tenant.':'Building reads under 1,200 sq ft — record may cover only part of the structure.'}</div>`;
-  if(!bldg && county==='Dallas') warn=`<div style="font-size:10.5px;color:#64748b;margin-top:4px">Dallas county publishes parcel land area but not building square footage in its GIS layer.</div>`;
-  out.innerHTML=`${svg}${rowsH||'<span style="color:#94a3b8">Parcel found, but no usable size fields on this record.</span>'}${warn}<div style="font-size:10px;color:#94a3b8;margin-top:6px">${county?county+' County appraisal district parcel at this pin':'No parcel record'}${bldgRing?' · building outline from OpenStreetMap':''}. Live lookup — nothing stored.</div>`;
+  if(bldg==null && county) warn=`<div style="font-size:10.5px;color:#64748b;margin-top:4px">${county==='Dallas'?'Dallas county publishes parcel land but not building square footage in its GIS layer':'The county GIS layer lists no building area for this parcel (common for commercial improvements)'} — the county record link below has the full improvement detail and building sketch.</div>`;
+  const propId=fmap&&fmap.prop? (props[fmap.prop]!=null?String(props[fmap.prop]).trim():'') : '';
+  const recLink=(propId && typeof _srcHit!=='undefined' && _srcHit && _srcHit.rec)
+    ? `<a href="${_srcHit.rec(propId)}" target="_blank" rel="noopener" style="color:var(--navy);font-weight:700;text-decoration:none;font-size:11px">View county record &amp; building sketch ↗</a>`
+    : '';
+  out.innerHTML=`${mapH}${rowsH||'<span style="color:#94a3b8">Parcel found, but no usable size fields on this record.</span>'}${warn}
+    <div style="display:flex;align-items:center;gap:12px;margin-top:7px">${recLink}<span style="font-size:10px;color:#94a3b8">${county?county+' County parcel at this pin':'No parcel record'} · live lookup, nothing stored.</span></div>`;
+  // Build the aerial map AFTER the div exists
+  if(rows.length){
+    _ceBldgMapKill();
+    try{
+      const mdiv=document.getElementById('ce-bldg-map'); if(!mdiv) return;
+      _ceBldgMap=L.map(mdiv,{zoomControl:false,attributionControl:false,dragging:false,scrollWheelZoom:false,doubleClickZoom:false,boxZoom:false,keyboard:false,touchZoom:false});
+      L.tileLayer('https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,maxNativeZoom:16}).addTo(_ceBldgMap);
+      let fit=null;
+      for(const rr of rows){
+        const latlngs=rr.ring.map(p2=>[p2[1],p2[0]]);
+        const poly=L.polygon(latlngs, rr.cls==='parcel'
+          ? {color:'#93c5fd',weight:2,dashArray:'6 5',fill:false,opacity:0.95}
+          : {color:'#38bdf8',weight:2,fillColor:'#38bdf8',fillOpacity:0.25,opacity:1});
+        poly.addTo(_ceBldgMap);
+        fit = fit? fit.extend(poly.getBounds()) : poly.getBounds();
+      }
+      L.circleMarker([lat,lon],{radius:4,color:'#fff',weight:1.5,fillColor:'#dc2626',fillOpacity:1}).addTo(_ceBldgMap);
+      _ceBldgMap.fitBounds(fit.pad(0.25));
+      setTimeout(()=>{ if(_ceBldgMap) _ceBldgMap.invalidateSize(); },80);
+    }catch(e){}
+  }
 }
-function closeClinicEditor(){ const r=document.getElementById('clinic-editor-root'); if(r) r.innerHTML=''; document.body.style.overflow=''; }
+function closeClinicEditor(){ const r=document.getElementById('clinic-editor-root'); if(r) r.innerHTML=''; document.body.style.overflow='';  _ceBldgMapKill(); }
 function _ceNum(id){ const x=parseFloat(document.getElementById(id)?.value); return isFinite(x)?x:null; }
 function saveClinicEditor(key){
   const g=id=>document.getElementById(id);
