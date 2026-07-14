@@ -83,6 +83,23 @@ body.dev-mode header{background:var(--amber-light);}
 .kpi-filter-pop label{display:flex;align-items:center;gap:8px;font-size:12.5px;color:#1f2933;padding:4px 0;cursor:pointer;}
 .kpi-filter-pop input{accent-color:var(--navy);}
 .kf-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;display:inline-block;}
+.scr-overlay{position:fixed;inset:0;background:rgba(15,23,42,.52);backdrop-filter:blur(4px);z-index:2000;display:none;align-items:center;justify-content:center;padding:24px;}
+.scr-overlay.show{display:flex;}
+.scr-modal{background:#fff;border-radius:18px;box-shadow:0 24px 80px rgba(15,23,42,.35);width:min(960px,96vw);max-height:88vh;display:flex;flex-direction:column;overflow:hidden;}
+.scr-head{display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid var(--border);}
+.scr-title{font-size:16px;font-weight:800;color:#0f172a;}
+.scr-body{display:flex;flex:1;min-height:0;}
+.scr-left{width:300px;flex-shrink:0;border-right:1px solid var(--border);padding:14px 16px;overflow-y:auto;background:#fbfcfe;}
+.scr-right{flex:1;min-width:0;display:flex;flex-direction:column;}
+.scr-results{flex:1;overflow-y:auto;padding:10px 14px;}
+.scr-frow{background:#fff;border:1px solid var(--border);border-radius:10px;padding:8px 10px;margin-bottom:8px;}
+.scr-frow label{display:block;font-size:9.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#94a3b8;margin-bottom:4px;}
+.scr-frow .fx{position:absolute;top:6px;right:8px;cursor:pointer;color:#94a3b8;font-weight:800;font-size:11px;}
+.scr-frow .fx:hover{color:#dc2626;}
+.scr-frow{position:relative;}
+.scr-frow input,.scr-frow select{width:100%;font:inherit;font-size:12.5px;padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:#fff;}
+.scr-row{display:flex;gap:10px;align-items:center;padding:8px 10px;border:1px solid #eef2f7;border-radius:10px;margin-bottom:7px;cursor:pointer;}
+.scr-row:hover{border-color:#c7d2ea;background:#fbfcfe;}
 .pe-group-chip{position:absolute;top:10px;left:12px;z-index:900;display:none;align-items:center;gap:8px;background:#fff;border:1px solid var(--border);border-radius:10px;box-shadow:0 4px 16px rgba(15,23,42,.14);padding:6px 11px;font-size:12px;font-weight:700;color:#0f172a;}
 .pe-group-chip.show{display:flex;}
 .pe-group-chip .x{cursor:pointer;color:#94a3b8;font-weight:800;padding:0 2px;}
@@ -779,6 +796,43 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
   <div class="vf-ai-msgs" id="vf-ai-msgs"></div>
   <div class="vf-ai-inrow"><input id="vf-ai-in" placeholder="Ask for reports, lists, settings changes…" onkeydown="if(event.key==='Enter')aiSend()"><button class="vf-ai-send" id="vf-ai-send" onclick="aiSend()">→</button></div>
 </div>
+<div class="scr-overlay" id="scr-overlay" onclick="if(event.target===this)closeScreener()">
+  <div class="scr-modal">
+    <div class="scr-head">
+      <span class="scr-title">Clinic Screener</span>
+      <select id="scr-scope" style="font:inherit;font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:8px" onchange="runScreener()">
+        <option value="tx">All loaded data (statewide)</option>
+        <option value="view">Current map view only</option>
+      </select>
+      <span style="flex:1"></span>
+      <span id="scr-count" style="font-size:12.5px;font-weight:700;color:#64748b"></span>
+      <button class="settings-close" onclick="closeScreener()" aria-label="Close">✕</button>
+    </div>
+    <div class="scr-body">
+      <div class="scr-left">
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
+          <select id="scr-add" style="flex:1;font:inherit;font-size:12px;padding:6px 8px;border:1px solid var(--border);border-radius:8px"></select>
+          <button class="vm-export-btn" onclick="scrAddFilter()">＋ Add</button>
+        </div>
+        <div id="scr-rows"></div>
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <button class="eval-btn" style="margin:0;flex:1" onclick="runScreener()">Run screen</button>
+          <button class="vm-export-btn" onclick="scrReset()">Clear</button>
+        </div>
+        <div style="font-size:10px;color:#94a3b8;margin-top:10px;line-height:1.5">DVM counts come from scraped website rosters; revenue is modeled (roster × $555k benchmark) unless an analyst value is saved; EBITDA multiples exist only where you've entered them in a clinic's editor.</div>
+      </div>
+      <div class="scr-right">
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border)">
+          <span style="font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#94a3b8">Results</span>
+          <span style="flex:1"></span>
+          <button class="vm-export-btn" onclick="_scrShowOnMap()">Show on map</button>
+          <button class="vm-export-btn" onclick="exportScreenCSV()">Export CSV</button>
+        </div>
+        <div class="scr-results" id="scr-results"><div class="empty" style="padding:40px 20px">Add filters on the left, then Run screen.</div></div>
+      </div>
+    </div>
+  </div>
+</div>
 <div class="settings-overlay" id="settings-overlay" onclick="if(event.target===this)closeSettings()">
   <div class="settings-modal">
     <div class="settings-head"><span>Settings</span><button class="settings-close" onclick="closeSettings()" aria-label="Close">✕</button></div>
@@ -845,6 +899,10 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
   <button id="site-btn" class="tool-btn" onclick="toggleSiteDrop()" title="Drop a pin on a potential site and get a verdict for that exact spot">
     <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0Z"/><circle cx="12" cy="10" r="3"/></svg>
     Drop Site
+  </button>
+  <button id="scr-btn" class="tool-btn" onclick="openScreener()" title="Screen every clinic by DVMs, type, owner, revenue and more">
+    <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><line x1="4" y1="6" x2="20" y2="6"/><line x1="7" y1="12" x2="17" y2="12"/><line x1="10" y1="18" x2="14" y2="18"/></svg>
+    Screener
   </button>
   <button id="layers-btn" class="tool-btn" onclick="toggleLayersPanel()" title="Data layers">
     <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
@@ -1078,7 +1136,8 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
       <div class="legend-scale-item"><div class="legend-scale-color" style="background:#e2e8f0"></div> No data</div>
     </div>
   </div>
-  <div class="pe-group-chip" id="pe-group-chip"><span style="width:9px;height:9px;border-radius:50%;background:var(--red);flex-shrink:0"></span><span id="pe-group-chip-txt"></span><span class="x" onclick="peGroupClear()" title="Clear group footprint">✕</span></div>
+  <div class="pe-group-chip" id="scr-chip" style="top:46px"><span style="width:9px;height:9px;border-radius:50%;background:#0d9488;flex-shrink:0"></span><span id="scr-chip-txt"></span><span class="x" onclick="_scrClearLayer()" title="Clear screener results">✕</span></div>
+<div class="pe-group-chip" id="pe-group-chip"><span style="width:9px;height:9px;border-radius:50%;background:var(--red);flex-shrink:0"></span><span id="pe-group-chip-txt"></span><span class="x" onclick="peGroupClear()" title="Clear group footprint">✕</span></div>
 <div class="dev-hint" id="dev-hint">Click anywhere on the map to add a clinic</div>
   <div class="traffic-legend" id="traffic-legend">
     <div class="legend-title">Traffic — vehicles/day (AADT)</div>
@@ -4230,6 +4289,159 @@ function peGroupClear(rerender){
   if(rerender!==false && acqMode) renderAcquisitions();
 }
 function setAcqView(v){ if(acqView===v) return; acqView=v; renderAcquisitions(); }
+
+/* ── Clinic Screener: filter-chip queries across the full datasets ───────────────────────────
+   Universe = PE_COORDS ∪ _activeVetClinics() (license-aware), joined live to rosters
+   (_vetStaffAt), species/type (_kindOf + analyst override), Google enrichment (_vetEnrichAt),
+   modeled revenue (_revEst) and analyst overrides (EBITDA multiple). Results render as a list
+   + optional teal dot layer on the map (drawn straight from data, like the PE-group footprint). */
+const SCR_DEFS={
+  own:    {label:'Ownership', type:'select', opts:()=>[['any','Any'],['ind','Independent'],['pe','PE / corporate (any firm)']].concat(_peGroups().slice(0,40).map(g=>['pe:'+g.owner, g.owner+' ('+g.n+')'])), def:'any'},
+  kind:   {label:'Practice type', type:'select', opts:()=>[['any','Any'],['small','Small animal'],['mixed','Mixed (small + large)'],['large','Large animal / equine'],['specialty','Specialty / ER']], def:'any'},
+  dvmMin: {label:'DVMs at least', type:'number', def:2, step:1},
+  dvmMax: {label:'DVMs at most', type:'number', def:10, step:1},
+  rating: {label:'Google rating at least', type:'number', def:4.0, step:0.1},
+  reviews:{label:'Reviews at least', type:'number', def:100, step:10},
+  revMin: {label:'Est. revenue at least ($M)', type:'number', def:1.0, step:0.1},
+  revMax: {label:'Est. revenue at most ($M)', type:'number', def:5.0, step:0.1},
+  multMin:{label:'EBITDA multiple at least (analyst-entered)', type:'number', def:6, step:0.5},
+  multMax:{label:'EBITDA multiple at most (analyst-entered)', type:'number', def:10, step:0.5},
+  watch:  {label:'On my watchlist', type:'select', opts:()=>[['yes','Yes'],['no','No']], def:'yes'}
+};
+let _scrActive=[], _scrResults=[], _scrLayer=null;
+function openScreener(){
+  const sel=document.getElementById('scr-add');
+  if(sel && !sel.options.length) for(const k of Object.keys(SCR_DEFS)){ const o=document.createElement('option'); o.value=k; o.textContent=SCR_DEFS[k].label; sel.appendChild(o); }
+  if(!_scrActive.length){ _scrActive=[{k:'dvmMin', v:SCR_DEFS.dvmMin.def}]; }
+  _scrRenderRows();
+  document.getElementById('scr-overlay').classList.add('show');
+}
+function closeScreener(){ document.getElementById('scr-overlay').classList.remove('show'); }
+function scrAddFilter(){
+  const sel=document.getElementById('scr-add'); if(!sel) return;
+  const k=sel.value; if(!k || _scrActive.some(f=>f.k===k)) { vfToast('That filter is already added.'); return; }
+  _scrActive.push({k, v:SCR_DEFS[k].def});
+  _scrRenderRows();
+}
+function scrRemoveFilter(i){ _scrActive.splice(i,1); _scrRenderRows(); runScreener(); }
+function scrSetVal(i,v){ if(_scrActive[i]) _scrActive[i].v=v; }
+function scrReset(){ _scrActive=[]; _scrResults=[]; _scrRenderRows(); const r=document.getElementById('scr-results'); if(r) r.innerHTML='<div class="empty" style="padding:40px 20px">Add filters on the left, then Run screen.</div>'; const c=document.getElementById('scr-count'); if(c) c.textContent=''; _scrClearLayer(); }
+function _scrRenderRows(){
+  const wrap=document.getElementById('scr-rows'); if(!wrap) return;
+  wrap.innerHTML=_scrActive.map((f,i)=>{
+    const d=SCR_DEFS[f.k];
+    const inp = d.type==='select'
+      ? `<select onchange="scrSetVal(${i},this.value)">${d.opts().map(([v,l])=>`<option value="${_ceEsc(v)}"${String(f.v)===String(v)?' selected':''}>${_ceEsc(l)}</option>`).join('')}</select>`
+      : `<input type="number" step="${d.step||1}" value="${f.v}" oninput="scrSetVal(${i},parseFloat(this.value))">`;
+    return `<div class="scr-frow"><span class="fx" onclick="scrRemoveFilter(${i})">✕</span><label>${d.label}</label>${inp}</div>`;
+  }).join('') || '<div style="font-size:11.5px;color:#94a3b8;padding:6px 2px">No filters — add one above.</div>';
+}
+function _scrUniverse(){
+  const rows=[], ov=getOverrides(), seen=new Set();
+  const push=(name,la,lo,pe)=>{
+    const key=Math.round(la*1000)+'_'+Math.round(lo*1000);
+    if(seen.has(key)) return; seen.add(key);
+    const o=ov[key]||{};
+    if(o.exclude) return;
+    const enr=(typeof _vetEnrichAt==='function')?_vetEnrichAt(la,lo):null;
+    const st=_vetStaffAt(la,lo);
+    const rec={name:o.name||name||'Veterinary Clinic', lat:la, lon:lo, pe, key,
+      staffN:(st&&st.n)||null,
+      rating:(o.ratingOv!=null?o.ratingOv:(enr&&enr.rating!=null?enr.rating:null)),
+      reviews:(o.reviewsOv!=null?o.reviewsOv:(enr&&enr.reviews!=null?enr.reviews:null)),
+      addr:(enr&&enr.addr)||'', tel:(enr&&enr.tel)||'', mult:(o.multiple!=null&&o.multiple!==''?parseFloat(o.multiple):null)};
+    if(o.kind) rec._kind=o.kind;
+    rec.kind=_kindOf(rec);
+    const rv=_revEst(rec);
+    rec.revTxt=rv?rv.txt:null;
+    rec.revVal=rv? (rv.val!=null?rv.val:(()=>{ const m2=String(rv.txt).replace(/,/g,'').match(/([0-9.]+)\s*([mMkK]?)/); if(!m2) return null; let v=parseFloat(m2[1]); if(/m/i.test(m2[2])) v*=1e6; else if(/k/i.test(m2[2])) v*=1e3; else if(v<100) v*=1e6; return v; })()) : null;
+    rows.push(rec);
+  };
+  if(peLoaded && typeof PE_COORDS!=='undefined') for(const c of PE_COORDS){
+    if(typeof _vfInLicense==='function' && !_vfInLicense(c[0],c[1])) continue;
+    push(c[4]||c[3]||c[2], c[0], c[1], {owner:c[2]||'PE', brand:c[3]||''});
+  }
+  for(const v of _activeVetClinics()){ if(!checkPE(v.name,v.lat,v.lon,null,ov)) push(v.name,v.lat,v.lon,null); }
+  return rows;
+}
+function runScreener(){
+  const scope=(document.getElementById('scr-scope')||{}).value||'tx';
+  const b=scope==='view'?map.getBounds():null;
+  let rows=_scrUniverse();
+  if(b) rows=rows.filter(r=>b.contains([r.lat,r.lon]));
+  for(const f of _scrActive){
+    const v=f.v;
+    if(f.k==='own'){ if(v==='ind') rows=rows.filter(r=>!r.pe); else if(v==='pe') rows=rows.filter(r=>!!r.pe); else if(String(v).startsWith('pe:')){ const ow=String(v).slice(3); rows=rows.filter(r=>r.pe&&r.pe.owner===ow); } }
+    else if(f.k==='kind' && v!=='any') rows=rows.filter(r=>r.kind===v);
+    else if(f.k==='dvmMin') rows=rows.filter(r=>r.staffN!=null && r.staffN>=v);
+    else if(f.k==='dvmMax') rows=rows.filter(r=>r.staffN!=null && r.staffN<=v);
+    else if(f.k==='rating') rows=rows.filter(r=>r.rating!=null && r.rating>=v);
+    else if(f.k==='reviews') rows=rows.filter(r=>r.reviews!=null && r.reviews>=v);
+    else if(f.k==='revMin') rows=rows.filter(r=>r.revVal!=null && r.revVal>=v*1e6);
+    else if(f.k==='revMax') rows=rows.filter(r=>r.revVal!=null && r.revVal<=v*1e6);
+    else if(f.k==='multMin') rows=rows.filter(r=>r.mult!=null && r.mult>=v);
+    else if(f.k==='multMax') rows=rows.filter(r=>r.mult!=null && r.mult<=v);
+    else if(f.k==='watch'){ const w=getWatch().filter(x=>x.type==='target').map(x=>x.id); rows=rows.filter(r=> (v==='yes')===w.includes(r.key)); }
+  }
+  rows.sort((a2,b2)=>(b2.staffN||0)-(a2.staffN||0) || (b2.reviews||0)-(a2.reviews||0));
+  _scrResults=rows;
+  const cnt=document.getElementById('scr-count'); if(cnt) cnt.textContent=rows.length.toLocaleString()+' match'+(rows.length===1?'':'es');
+  const out=document.getElementById('scr-results'); if(!out) return;
+  out.innerHTML=rows.slice(0,80).map((r,i)=>`
+    <div class="scr-row" onclick="scrGo(${i})">
+      <span style="width:8px;height:8px;border-radius:50%;background:${r.pe?'var(--red)':'var(--navy)'};flex-shrink:0"></span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12.5px;font-weight:700;color:#0f172a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_ceEsc(r.name)}</div>
+        <div style="font-size:10.5px;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.pe?_ceEsc(r.pe.owner):'Independent'}${r.kind&&CLINIC_KIND_LABEL[r.kind]?' · '+CLINIC_KIND_LABEL[r.kind]:''}${r.addr?' · '+_ceEsc(String(r.addr).split(',').slice(1,3).join(',').trim()):''}</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0;font-size:10.5px;color:#475569">
+        ${r.staffN!=null?`<b>${r.staffN} DVM</b>`:'<span style="color:#cbd5e1">roster n/a</span>'}${r.revTxt?` · ${_ceEsc(r.revTxt)}`:''}${r.mult!=null?` · ${r.mult}×`:''}
+        <div style="color:#94a3b8">${r.rating!=null?'★ '+r.rating:''}${r.reviews!=null?' · '+r.reviews.toLocaleString()+' rev':''}</div>
+      </div>
+    </div>`).join('') || '<div class="empty" style="padding:40px 20px">No clinics match — loosen a filter. Note DVM/revenue filters only match clinics with scraped rosters.</div>';
+  if(rows.length>80) out.innerHTML+=`<div style="font-size:10.5px;color:#94a3b8;padding:8px 4px">Showing 80 of ${rows.length.toLocaleString()} — tighten filters or export the full list.</div>`;
+}
+function scrGo(i){ const r=_scrResults[i]; if(!r) return; closeScreener(); _scrShowOnMap(true); _gotoClinic(r.lat, r.lon, r.name); }
+function _scrShowOnMap(quiet){
+  _scrClearLayer(false);
+  if(!_scrResults.length){ if(!quiet) vfToast('Run a screen first.'); return; }
+  _scrLayer=L.layerGroup();
+  for(const r of _scrResults){
+    L.circleMarker([r.lat,r.lon],{radius:6,color:'#fff',weight:1.6,fillColor:'#0d9488',fillOpacity:0.95})
+      .bindTooltip(`<b>${_ceEsc(r.name)}</b><br><span style="color:#64748b">${r.staffN!=null?r.staffN+' DVM · ':''}${r.pe?_ceEsc(r.pe.owner):'Independent'}</span>`,{opacity:0.95})
+      .on('click',()=>_gotoClinic(r.lat,r.lon,r.name))
+      .addTo(_scrLayer);
+  }
+  _scrLayer.addTo(map);
+  const chip=document.getElementById('scr-chip'), txt=document.getElementById('scr-chip-txt');
+  if(txt) txt.textContent='Screener — '+_scrResults.length.toLocaleString()+' match'+(_scrResults.length===1?'':'es');
+  if(chip) chip.classList.add('show');
+  if(!quiet){
+    closeScreener(); switchSection('map');
+    setTimeout(()=>{ map.invalidateSize(); try{ map.fitBounds(L.latLngBounds(_scrResults.map(r=>[r.lat,r.lon])).pad(0.12),{animate:false,maxZoom:12}); }catch(e){} },90);
+  }
+}
+function _scrClearLayer(rerender){
+  if(_scrLayer){ map.removeLayer(_scrLayer); _scrLayer=null; }
+  const chip=document.getElementById('scr-chip'); if(chip) chip.classList.remove('show');
+}
+function exportScreenCSV(){
+  if(!_scrResults.length){ vfToast('Run a screen first.'); return; }
+  downloadCSV(_scrResults.map((r,i)=>({r,i})), [
+    {label:'Clinic',get:x=>x.r.name},
+    {label:'Ownership',get:x=>x.r.pe?x.r.pe.owner:'Independent'},
+    {label:'Brand',get:x=>x.r.pe?(x.r.pe.brand||''):''},
+    {label:'Practice type',get:x=>CLINIC_KIND_LABEL[x.r.kind]||x.r.kind||''},
+    {label:'DVMs (scraped)',get:x=>x.r.staffN!=null?x.r.staffN:''},
+    {label:'Est. revenue ($)',get:x=>x.r.revVal!=null?Math.round(x.r.revVal):''},
+    {label:'EBITDA multiple (analyst)',get:x=>x.r.mult!=null?x.r.mult:''},
+    {label:'Rating',get:x=>x.r.rating!=null?x.r.rating:''},
+    {label:'Reviews',get:x=>x.r.reviews!=null?x.r.reviews:''},
+    {label:'Phone',get:x=>x.r.tel||''},
+    {label:'Address',get:x=>x.r.addr||''},
+    {label:'Lat',get:x=>x.r.lat},{label:'Lon',get:x=>x.r.lon}
+  ], 'vetric-screener.csv');
+}
 function enterAcquisitions(){ acqMode=true; renderAcquisitions(); }
 function exitAcquisitions(){ acqMode=false; renderNormalSidebar(); }
 
