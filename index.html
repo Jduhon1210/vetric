@@ -1407,11 +1407,11 @@ function _staffPopupHTML(c){
   const s=_vetStaffAt(c.lat,c.lon); if(!s||!s.n) return '';
   const list=(s.vets||[]).slice(0,6).join(', ');
   const extra=(s.vets&&s.vets.length>6)?` +${s.vets.length-6} more`:'';
-  const rv=_revEst(c);
+  // Est.-revenue line HIDDEN from the pin popup (2026-07-13, user pref) — the modeled figure
+  // still shows on Acquisitions cards, the Screener, and CSV exports where the deal context is.
   return `<div style="margin-top:9px;padding-top:9px;border-top:1px solid #eef2f7">`
     +`<div style="font-size:11px;font-weight:700;color:#0f172a">🩺 ${s.n} veterinarian${s.n!==1?'s':''} on staff</div>`
     +(list?`<div style="font-size:11px;color:#475569;margin-top:2px;line-height:1.5">${list}${extra}</div>`:'')
-    +((rv&&!rv.analyst)?`<div style="font-size:11px;color:#64748b;margin-top:3px">Est. revenue <b>${rv.txt}</b> <span style="color:#94a3b8">(${rv.n} DVM × $650k, modeled)</span></div>`:'')
     +`</div>`;
 }
 const MIN_ZOOM=10;
