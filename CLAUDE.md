@@ -28,6 +28,8 @@ vetmetric/
 ## Deploy
 Cloudflare Pages. Push to the connected GitHub repo — Pages auto-deploys on push. No build command needed (`index.html` is served directly).
 
+**Staging flow (2026-07-14, user ask)**: new work commits to the `staging` branch first → Pages auto-builds it at the branch preview URL `staging.<project>.pages.dev` (find the exact URL in the Pages dashboard → Deployments; it's stable per-branch). Test there, then merge to `main` (`git checkout main && git merge staging && git push`) to ship production. ONE-TIME dashboard requirement: the KV binding (VETRIC_KV) and AI binding must be set for the **Preview** environment too, or staging auth/AI 500s — functions/README.md already instructs binding both envs, so this is likely done; verify on first staging login. The vf_session cookie is host-only, so you log into staging separately with the same access code. Urgent hotfixes may still go straight to main.
+
 ## Architecture overview
 
 ### Map stack
