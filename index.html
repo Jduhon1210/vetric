@@ -5281,7 +5281,7 @@ function _mpcSweetNear(la,lo){
 }
 function _loadMpc(){
   if(_mpcP) return _mpcP;
-  _mpcP=fetch('dfw-mpc.json?v=6',{cache:'force-cache'}).then(r=>r.ok?r.json():null).then(d=>(_mpcData=(d&&d.list&&d.list.length)?d:null)).catch(()=>null);
+  _mpcP=fetch('dfw-mpc.json?v=7',{cache:'force-cache'}).then(r=>r.ok?r.json():null).then(d=>(_mpcData=(d&&d.list&&d.list.length)?d:null)).catch(()=>null);
   return _mpcP;
 }
 async function toggleMpcLayer(on){
@@ -6382,7 +6382,7 @@ const VF_DATASETS=[
  {name:'Independent clinics',     file:'vet-clinics.js',    src:'Google Places scan',         how:'node build-clinics.mjs (needs GOOGLE_PLACES_KEY)', last:'2026-07-14', every:90,  why:'openings / closures / ownership churn'},
  {name:'DVM rosters',             file:'vet-staff.js',      src:'clinic-website crawl',       how:'node build-vets.mjs', last:'2026-07-08', every:90,  why:'staff turnover moves competition weights'},
  {name:'Species verdicts',        file:'vet-species.js',    src:'clinic-website crawl',       how:'node build-species.mjs --all', last:'2026-07-09', every:180, why:'practice focus changes slowly'},
- {name:'Master-planned communities', file:'dfw-mpc.json',   src:'curated (news + RCLCO)',     how:'hand-edit JSON, bump ?v=', last:'2026-07-10', every:60,  why:'announcements and phase openings move fast'},
+ {name:'Master-planned communities', file:'dfw-mpc.json',   src:'curated (news + RCLCO)',     how:'hand-edit JSON, bump ?v=', last:'2026-07-14', every:60,  why:'announcements and phase openings move fast'},
  {name:'Retail / commercial fabric', file:'dfw-retail.json',src:'OSM Overpass bake',          how:'re-run Overpass query + dedupe', last:'2026-06-30', every:180, why:'retail land changes slowly'},
  {name:'Census tracts + demographics', file:'dfw-tracts.json', src:'TIGERweb + ACS 2024',     how:'node build-tracts.mjs', last:'2026-07-09', every:365, why:'annual ACS vintage'},
  {name:'ZIP boundaries',          file:'tx-zips.json',      src:'Census ZCTA 2020',           how:'re-download on new vintage', last:'2026-06-25', every:365, why:'boundaries change at census vintages'},
