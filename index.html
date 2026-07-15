@@ -121,6 +121,19 @@ body.dev-mode header{background:var(--amber-light);}
 .pe-group-chip.show{display:flex;}
 .pe-group-chip .x{cursor:pointer;color:#94a3b8;font-weight:800;padding:0 2px;}
 .pe-group-chip .x:hover{color:#dc2626;}
+/* Bottom-right map pin filter */
+.mapf-btn{position:absolute;right:14px;bottom:26px;z-index:1000;width:42px;height:42px;border-radius:50%;background:#fff;border:1px solid var(--border2);box-shadow:0 4px 16px rgba(15,23,42,.18);cursor:pointer;display:flex;align-items:center;justify-content:center;color:#334155;}
+.mapf-btn:hover{background:#f7f9fd;}
+.mapf-btn.on{background:var(--navy);color:#fff;border-color:var(--navy);}
+.mapf-pop{display:none;position:absolute;right:14px;bottom:78px;z-index:1001;background:#fff;border:1px solid var(--border);border-radius:12px;box-shadow:0 12px 40px rgba(15,23,42,.20);padding:12px 14px 13px;width:238px;font-size:12.5px;}
+.mapf-pop.show{display:block;}
+.mapf-h{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:#64748b;margin:11px 0 5px;}
+.mapf-h:first-of-type{margin-top:0;}
+.mapf-row{display:flex;flex-wrap:wrap;gap:5px;}
+.mapf-chip{border:1px solid var(--border2);border-radius:14px;padding:3px 10px;cursor:pointer;color:#475569;background:#fff;font-weight:600;font-size:11.5px;user-select:none;}
+.mapf-chip.on{background:var(--navy);border-color:var(--navy);color:#fff;}
+.mapf-sw{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;}
+.mapf-reset{font-size:11px;color:var(--navy);font-weight:700;cursor:pointer;margin-top:11px;display:inline-block;}
 .kpi{background:var(--surface);padding:11px 18px;position:relative;min-width:0;}
 .kpi .k-label{font-size:10.5px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;}
 .kpi .k-val{font-size:21px;font-weight:800;margin-top:5px;line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums;}
@@ -1166,7 +1179,7 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
       <div class="legend-scale-item"><div class="legend-scale-color" style="background:#fee8c8"></div> under 2k</div>
     </div>
   </div>
-  <div id="map"></div>
+  <div id="map"><button class="mapf-btn" id="mapf-btn" onclick="toggleMapFilter()" title="Filter map pins" aria-label="Filter map pins"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.5 10 19 14 21 14 12.5 22 3"></polygon></svg></button><div class="mapf-pop" id="mapf-pop"></div></div>
 
   <!-- ── Opportunity scoring panel ── -->
   <div class="opp-panel" id="opp-panel">
@@ -1631,9 +1644,60 @@ let TYPE_ON = {small:true, large:true, mixed:true, specialty:true};
 function _typeOKkind(k){ return TYPE_ON[k||'small']!==false; }
 function _typeOK(c){ return _typeOKkind(_kindOf(c)); }
 // Re-apply combined visibility = (base filter via _baseVisible) AND (clinic-type filter).
+// Map pin filter (bottom-right funnel): ownership + pin color, layered ON TOP of the
+// practice-type filter (TYPE_ON). One predicate — _mapfOK — owns the whole decision;
+// both applyTypeVisibility and setMarkerVisible route through it so the filters compose.
+const MAPF={own:'all', color:'all'};
+function _mapfOK(m){
+  if(m._baseVisible===false) return false;
+  if(!_typeOKkind(m._kind)) return false;
+  const c=m._c||{};
+  if(MAPF.own==='pe' && !c.pe) return false;
+  if(MAPF.own==='ind' && c.pe) return false;
+  if(MAPF.color!=='all'){
+    if(MAPF.color==='default'){ if(c._pinc) return false; }
+    else if((c._pinc||'')!==MAPF.color) return false;
+  }
+  return true;
+}
+function toggleMapFilter(){
+  const pop=document.getElementById('mapf-pop'); if(!pop) return;
+  if(pop.classList.contains('show')) pop.classList.remove('show');
+  else { _mapfRender(); pop.classList.add('show'); }
+}
+function _mapfRender(){
+  const pop=document.getElementById('mapf-pop'); if(!pop) return;
+  const chip=(on,click,label)=>`<span class="mapf-chip${on?' on':''}" onclick="${click}">${label}</span>`;
+  const own=[['all','All'],['pe','PE / corporate'],['ind','Independent']]
+    .map(([v,l])=>chip(MAPF.own===v,`mapfSet('own','${v}')`,l)).join('');
+  const kinds=[['small','Small animal'],['mixed','Mixed'],['large','Large animal'],['specialty','Specialty / ER'],['mobile','Mobile']]
+    .map(([k,l])=>chip(TYPE_ON[k]!==false,`mapfSet('kind','${k}')`,l)).join('');
+  const cols=[['all','All',''],['default','Default',''],['#16a34a','Green','#16a34a'],['#f59e0b','Gold','#f59e0b'],['#7c3aed','Purple','#7c3aed'],['#0d9488','Teal','#0d9488'],['#ec4899','Pink','#ec4899'],['#0f172a','Black','#0f172a']]
+    .map(([v,l,sw])=>chip(MAPF.color===v,`mapfSet('color','${v}')`,(sw?`<span class="mapf-sw" style="background:${sw}"></span>`:'')+l)).join('');
+  pop.innerHTML=`<div class="mapf-h">Ownership</div><div class="mapf-row">${own}</div>
+    <div class="mapf-h">Practice type</div><div class="mapf-row">${kinds}</div>
+    <div class="mapf-h">Pin color</div><div class="mapf-row">${cols}</div>
+    <span class="mapf-reset" onclick="mapfReset()">Reset filters</span>`;
+}
+function mapfSet(group,val){
+  if(group==='own') MAPF.own=val;
+  else if(group==='color') MAPF.color=val;
+  else TYPE_ON[val]=TYPE_ON[val]===false;   // kind chips toggle
+  applyTypeVisibility(); _mapfRender(); _mapfBadge();
+}
+function mapfReset(){
+  MAPF.own='all'; MAPF.color='all';
+  Object.keys(TYPE_ON).forEach(k=>TYPE_ON[k]=true); TYPE_ON.mobile=true;
+  applyTypeVisibility(); _mapfRender(); _mapfBadge();
+}
+function _mapfBadge(){
+  const b=document.getElementById('mapf-btn'); if(!b) return;
+  const active=MAPF.own!=='all'||MAPF.color!=='all'||Object.keys(TYPE_ON).some(k=>TYPE_ON[k]===false);
+  b.classList.toggle('on',active);
+}
 function applyTypeVisibility(){
   if(typeof markers==='undefined') return;
-  markers.forEach(m=>{ if(!m) return; const ok=(m._baseVisible!==false)&&_typeOKkind(m._kind); m.setOpacity(ok?1:0); if(m._icon) m._icon.style.pointerEvents=ok?'':'none'; });
+  markers.forEach(m=>{ if(!m) return; const ok=_mapfOK(m); m.setOpacity(ok?1:0); if(m._icon) m._icon.style.pointerEvents=ok?'':'none'; });
 }
 function toggleClinicType(kind,on){
   TYPE_ON[kind]=!!on;
@@ -1667,7 +1731,7 @@ function clearMarkers(){clusterGroup.clearLayers();markers=[];_markerByKey=new M
 function setMarkerVisible(m, visible){
   if(!m) return;
   m._baseVisible = visible;                              // remember the non-type filter state
-  const ok = visible && _typeOKkind(m._kind);            // AND the clinic-type filter
+  const ok = _mapfOK(m);                                 // AND the type + ownership + color filters
   m.setOpacity(ok ? 1 : 0);
   if(m._icon) m._icon.style.pointerEvents = ok ? '' : 'none';
 }
