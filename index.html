@@ -672,6 +672,7 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
 .vf-demo-pill{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#be123c;background:#fff1f2;border:1px solid #fecdd3;border-radius:9px;padding:3px 9px;margin-right:10px;white-space:nowrap;}
 .vf-stg-pill{display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:9px;padding:3px 9px;margin-right:10px;white-space:nowrap;}
 .vf-stg-pill::before{content:'';width:7px;height:7px;border-radius:50%;background:#f59e0b;}
+.vf-sig{width:13px;height:13px;transform:rotate(45deg);border:2px solid #fff;border-radius:3px;box-shadow:0 1px 5px rgba(15,23,42,.35);}
 .adm-table{width:100%;border-collapse:collapse;font-size:11.5px;margin-top:8px;}
 .adm-table th{text-align:left;font-size:9.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#94a3b8;padding:4px 8px;border-bottom:1px solid var(--border);}
 .adm-table td{padding:6px 8px;border-bottom:1px solid #f1f5f9;color:#1f2933;vertical-align:top;}
@@ -1134,7 +1135,7 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
       <div class="layer-row">
         <div>
           <div class="layer-name">Developing communities (master-planned)</div>
-          <div class="layer-desc">30 major DFW master-planned communities under development, with resident and pet-household estimates at buildout. Real mapped boundaries where available (20 of 30); circles sized by announced homes elsewhere. Bold teal = in the pad-engagement window (approaching the 1,500–2,500-rooftop trigger or anchor committed — when chains sign sites, 12–24 months before opening). Dashed = announced. Combinable with any fill layer.</div>
+          <div class="layer-desc">35 major DFW master-planned communities under development, with resident and pet-household estimates at buildout. Real mapped boundaries where available (20 of 35); circles sized by announced homes elsewhere. Bold teal = in the pad-engagement window (approaching the 1,500–2,500-rooftop trigger or anchor committed — when chains sign sites, 12–24 months before opening). Dashed = announced. Combinable with any fill layer.</div>
         </div>
         <label class="toggle">
           <input type="checkbox" id="toggle-mpc" onchange="toggleMpcLayer(this.checked)"/>
@@ -1142,6 +1143,19 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
         </label>
       </div>
       <div class="layer-status" id="mpc-status">Off</div>
+    </div>
+    <div class="layer-item">
+      <div class="layer-row">
+        <div>
+          <div class="layer-name">Development signals (zoning &amp; anchors)</div>
+          <div class="layer-desc">Curated point events where commercial development is landing: rezonings, grocery-anchor commitments, retail waves. Diamond pins — teal = anchor committed, purple = rezoning, navy = retail wave, slate = mixed-use. From the periodic news/zoning sweep; display-only, combinable with any fill.</div>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="toggle-signals" onchange="toggleSignalsLayer(this.checked)"/>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <div class="layer-status" id="signals-status">Off</div>
     </div>
     <div class="layer-item">
       <div class="layer-row">
@@ -5221,6 +5235,36 @@ async function toggleTractLayer(on){
   if(legend) legend.classList.add('show');
   if(status) status.textContent='On · '+geo.features.length.toLocaleString()+' tracts';
 }
+// ── Development signals (zoning & anchors) — curated point events, OVERLAY, display-only ────
+let _sigData=null,_sigP=null,sigLayer=null;
+function _loadSignals(){ if(_sigData) return Promise.resolve(_sigData); if(_sigP) return _sigP;
+  _sigP=fetch('dfw-signals.json?v=1',{cache:'force-cache'}).then(r=>r.ok?r.json():null).then(d=>(_sigData=(d&&d.list&&d.list.length)?d:null)).catch(()=>null);
+  return _sigP; }
+const _SIG_COLOR={anchor:'#0d9488', rezone:'#7c3aed', retail:'#1e3a8a', mixed:'#475569'};
+const _SIG_LABEL={anchor:'Anchor committed', rezone:'Rezoning', retail:'Retail wave', mixed:'Mixed-use'};
+async function toggleSignalsLayer(on){
+  const status=document.getElementById('signals-status');
+  if(!on){ if(sigLayer){ map.removeLayer(sigLayer); sigLayer=null; } if(status) status.textContent='Off'; return; }
+  if(status) status.textContent='Loading…';
+  const d=await _loadSignals();
+  if(!d){ if(status) status.textContent='Data unavailable'; const cb=document.getElementById('toggle-signals'); if(cb) cb.checked=false; return; }
+  if(sigLayer){ map.removeLayer(sigLayer); }
+  sigLayer=L.layerGroup();
+  for(const g of d.list){
+    const col=_SIG_COLOR[g.t]||'#475569';
+    const m=L.marker([g.lat,g.lon],{icon:L.divIcon({className:'',html:`<div class="vf-sig" style="background:${col}"></div>`,iconSize:[17,17],iconAnchor:[8,8]})});
+    m.bindTooltip(g.n,{direction:'top',offset:[0,-8]});
+    m.bindPopup(`<div style="min-width:210px;max-width:250px">
+      <div style="display:inline-block;font-size:9.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#fff;background:${col};border-radius:8px;padding:2px 8px">${_SIG_LABEL[g.t]||g.t}</div>
+      <div style="font-size:13px;font-weight:700;margin-top:6px;line-height:1.35">${g.n}</div>
+      <div style="font-size:10.5px;color:#64748b;margin:2px 0 6px">${g.city}${g.eta&&g.eta!=='—'?' · '+g.eta:''}</div>
+      <div style="font-size:11.5px;color:#334155;line-height:1.5">${g.note}</div>
+      <div style="font-size:9.5px;color:#94a3b8;margin-top:6px">${g.src}</div></div>`,{maxWidth:270});
+    sigLayer.addLayer(m);
+  }
+  map.addLayer(sigLayer);
+  if(status) status.textContent=d.list.length+' signals shown';
+}
 // ── Developing communities (master-planned) — OVERLAY, combinable with any fill ─────────────
 // dfw-mpc.json: curated list of DFW's major MPCs (developer announcements + RCLCO rankings).
 // Circles sized by announced homes; popup carries buildout estimates: residents ≈ homes × 3.0
@@ -6383,6 +6427,7 @@ const VF_DATASETS=[
  {name:'DVM rosters',             file:'vet-staff.js',      src:'clinic-website crawl',       how:'node build-vets.mjs', last:'2026-07-08', every:90,  why:'staff turnover moves competition weights'},
  {name:'Species verdicts',        file:'vet-species.js',    src:'clinic-website crawl',       how:'node build-species.mjs --all', last:'2026-07-09', every:180, why:'practice focus changes slowly'},
  {name:'Master-planned communities', file:'dfw-mpc.json',   src:'curated (news + RCLCO)',     how:'hand-edit JSON, bump ?v=', last:'2026-07-14', every:60,  why:'announcements and phase openings move fast'},
+ {name:'Development signals',     file:'dfw-signals.json',  src:'curated (news/zoning sweep)', how:'sweep + hand-edit JSON, bump ?v=', last:'2026-07-14', every:60,  why:'rezonings and anchor signings move fast'},
  {name:'Retail / commercial fabric', file:'dfw-retail.json',src:'OSM Overpass bake',          how:'re-run Overpass query + dedupe', last:'2026-06-30', every:180, why:'retail land changes slowly'},
  {name:'Census tracts + demographics', file:'dfw-tracts.json', src:'TIGERweb + ACS 2024',     how:'node build-tracts.mjs', last:'2026-07-09', every:365, why:'annual ACS vintage'},
  {name:'ZIP boundaries',          file:'tx-zips.json',      src:'Census ZCTA 2020',           how:'re-download on new vintage', last:'2026-06-25', every:365, why:'boundaries change at census vintages'},
