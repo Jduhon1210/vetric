@@ -10,9 +10,9 @@
 <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin/>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link rel="dns-prefetch" href="https://a.basemaps.cartocdn.com"/>
-<link rel="dns-prefetch" href="https://b.basemaps.cartocdn.com"/>
-<link rel="dns-prefetch" href="https://c.basemaps.cartocdn.com"/>
+<link rel="dns-prefetch" href="https://a.tile.openstreetmap.org"/>
+<link rel="dns-prefetch" href="https://b.tile.openstreetmap.org"/>
+<link rel="dns-prefetch" href="https://c.tile.openstreetmap.org"/>
 <!-- Warm the always-hit data origins so the first pan / scoring action skips a cold TLS handshake -->
 <link rel="preconnect" href="https://api.census.gov" crossorigin/>
 <link rel="preconnect" href="https://overpass.private.coffee" crossorigin/>
@@ -1567,9 +1567,9 @@ function checkPE(name, lat, lon, key, overrides) {
 // gotchas). 1.0 = the SVG is ~3× the viewport per axis; bigger smooths fast pans
 // but renders more off-screen choropleth polygons, so this balances the two.
 const map = L.map('map',{minZoom:4, boxZoom:false, attributionControl:false, renderer: L.svg({padding:1})}).setView([31.0,-99.0],7);
-// Carto Voyager basemap — muted but not washed-out: soft color (parks/water/land tint) with
-// quiet roads. Middle ground after Positron read too white. (Positron: light_all; OSM: old URL.)
-const baseTiles=L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{subdomains:'abcd',maxZoom:20}).addTo(map);
+// Standard OSM basemap (user preference 2026-07-14 — reverted from Carto Voyager "for now";
+// Voyager rollback URL: https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png subdomains abcd).
+const baseTiles=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map);
 
 // ── App-ready signal → drives the post-login loading screen ──────────────────
 // Hide the loader only once the things the user actually waits for are in: the base
