@@ -1568,6 +1568,7 @@ map.addLayer(clusterGroup);
 function _vfHidePins(){ try{ return localStorage.getItem('vf_hidepins')!=='0'; }catch(_){ return true; } }
 function _applyPinZoomVisibility(){
   if(typeof clusterGroup==='undefined') return;
+  if(typeof watchMode!=='undefined' && watchMode){ if(map.hasLayer(clusterGroup)) map.removeLayer(clusterGroup); return; }   // watchlist mode: only saved clinics on the map
   const below = map.getZoom() < MIN_ZOOM;
   const hide = _vfHidePins() && below;
   if(hide){ if(map.hasLayer(clusterGroup)) map.removeLayer(clusterGroup); }
@@ -1593,7 +1594,7 @@ function miniPin(color){
 // rebuilding the SVG string for every pin on every commit (up to MAX_CLINICS pins).
 const _iconCache={};
 function makeIcon(color, tier){ const k=color+(tier==null?'':'_t'+tier); return _iconCache[k] || (_iconCache[k]=L.divIcon({html:pinSVG(color,tier),iconSize:[28,38],iconAnchor:[14,38],popupAnchor:[0,-40],className:''})); }
-function pinColor(c){ return c.pe ? RED : (c.peChecked ? NAVY : AMBER); }
+function pinColor(c){ if(c._pinc) return c._pinc; return c.pe ? RED : (c.peChecked ? NAVY : AMBER); }  // _pinc = analyst pin-color override (vf_overrides[key].pinc)
 // Optional competition-strength encoding (default OFF, session-only so the ownership
 // view is the default). Pin inner-dot size = Google review-volume tier; colors unchanged.
 let STRENGTH_PINS=false;
@@ -1733,6 +1734,7 @@ function buildPopup(c) {
     ${svHTML}
     <div class="popup-header">
       <div class="popup-name">${c.name}</div>
+      <span class="vm-star ${_inWatch('target',key)?'on':''}" style="font-size:19px;align-self:center;padding:0 3px" title="Save clinic to watchlist" onclick="toggleWatchClinicKey('${key}',this)">★</span>
       <button class="gear-btn" onclick="openClinicEditor('${key}')" title="Edit this location" aria-label="Edit this location"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></button>
     </div>
     ${starHTML}${kindHTML}${multHTML}${addrHTML}${telHTML}${webHTML}${peHTML}${_staffPopupHTML(c)}${_analystPopupHTML(getOverrides()[key])}
@@ -1864,6 +1866,7 @@ function openClinicEditor(key){
           <div class="cedit-f full"><label>PE firm / owner — leave blank for independent</label><input id="ce-pe" list="ce-firms" value="${esc(owner)}" placeholder="e.g. Mars, Shore Capital Partners…"></div>
           ${_ceSel('ce-kind','Clinic type',kind,['small:Small animal','mixed:Mixed (small + large)','large:Large animal / equine','specialty:Specialty / ER','mobile:Mobile / house-call'])}
           ${(()=>{const sp=_speciesAt(c.lat,c.lon); if(!sp) return '<div class="cedit-f full" style="font-size:11px;color:#94a3b8;margin-top:-6px">Species scan: no readable website. Set the type above if you know this practice.</div>'; const l={small:'small animal',large:'large animal / equine',mixed:'mixed (small + large animal)'}[sp]; return `<div class="cedit-f full" style="font-size:11px;color:#475569;margin-top:-6px">Species scan (from the clinic's website): <b>${l}</b>. Your Clinic type selection overrides it.</div>`;})()}
+          ${(()=>{const cur=o.pinc||'';const opts=[['','Default (by ownership)'],['#16a34a','Green'],['#f59e0b','Gold'],['#7c3aed','Purple'],['#0d9488','Teal'],['#ec4899','Pink'],['#0f172a','Black']];return `<div class="cedit-f"><label>Pin color on the map</label><select id="ce-pinc">${opts.map(([v,l])=>`<option value="${v}"${cur===v?' selected':''}>${l}</option>`).join('')}</select></div>`;})()}
           <div class="cedit-f"><label>Year acquired (by current owner)</label><input id="ce-acqyear" type="number" min="1980" max="2026" step="1" value="${o.acqYear||''}" placeholder="e.g. 2021"></div>
           <div class="cedit-f"><label>Competition weight × (0–5)</label><input id="ce-mult" type="number" min="0" max="5" step="0.1" value="${mult}"></div>
           <div class="cedit-f full"><label class="cedit-check"><input type="checkbox" id="ce-exclude"${o.exclude?' checked':''}> Exclude from all scoring &amp; competition (keeps the pin, mutes its market impact)</label></div>
@@ -2033,7 +2036,7 @@ function saveClinicEditor(key){
   o[key]={
     name:(g('ce-name')?.value||'').trim(),
     pe:(g('ce-pe')?.value||'').trim()||null,
-    mult, kind:g('ce-kind')?.value||'small',
+    mult, kind:g('ce-kind')?.value||'small', pinc:(g('ce-pinc')?.value||''),
     status:g('ce-status')?.value||'operating',
     size:_sizeVal,
     exclude:!!(g('ce-exclude')&&g('ce-exclude').checked),
@@ -2072,6 +2075,7 @@ function _applyClinicOverride(key){
   c._status=o.status||null; c._size=o.size||null; c._excluded=!!o.exclude;
   c._revenue=(o.revenue!=null?o.revenue:null); c._multiple=(o.multiple!=null?o.multiple:null);
   c._tags=o.tags||null; c._notes=o.notes||null;
+  c._pinc=o.pinc||null;
   if(markers[idx]){ markers[idx]._kind=_kindOf(c); markers[idx].setIcon(makeIcon(pinColor(c), pinTier(c))); if(markers[idx].setOpacity) markers[idx].setOpacity(c._excluded?0.45:1); markers[idx].setPopupContent(buildPopup(c)); markers[idx].openPopup(); }
   applyTypeVisibility(); renderList();
 }
@@ -3574,7 +3578,7 @@ async function fetchClinics(){
       const pe=ovr?(ovr.pe?{owner:ovr.pe,brand:'Manual override',manual:true}:null):{owner,brand};
       const nm=ovr?.name||clinicName||'Unknown Clinic';
       const _pe=_vetEnrichAt(plat,plon); // pull Google rating/reviews/phone/addr for this PE clinic
-      local.push({name:nm,website:clinicWebsite||(_pe&&_pe.web)||'',addr:(_pe&&_pe.addr)||'',rating:_pe&&_pe.rating,reviews:_pe&&_pe.reviews,tel:_pe&&_pe.tel,days:_pe&&_pe.days,mult:(ovr&&ovr.mult),_kind:(ovr&&ovr.kind),pe,peChecked:true,lat:plat,lon:plon,dist:hav(lat,lng,plat,plon),fromSheet:true});
+      local.push({name:nm,website:clinicWebsite||(_pe&&_pe.web)||'',addr:(_pe&&_pe.addr)||'',rating:_pe&&_pe.rating,reviews:_pe&&_pe.reviews,tel:_pe&&_pe.tel,days:_pe&&_pe.days,mult:(ovr&&ovr.mult),_kind:(ovr&&ovr.kind),_pinc:(ovr&&ovr.pinc)||null,pe,peChecked:true,lat:plat,lon:plon,dist:hav(lat,lng,plat,plon),fromSheet:true});
     }
   }
 
@@ -3603,7 +3607,7 @@ async function fetchClinics(){
       if(dupe) continue;
       const pe=checkPE(vc.name,clat,clon,ck,overrides);
       const nm=overrides[ck]?.name||vc.name||'Veterinary Clinic';
-      local.push({name:nm,website:vc.web||'',addr:vc.addr||'',rating:vc.rating,reviews:vc.reviews,tel:vc.tel,days:vc.days,mult:(overrides[ck]&&overrides[ck].mult),_kind:(overrides[ck]&&overrides[ck].kind),pe,peChecked:peLoaded,lat:clat,lon:clon,dist:hav(lat,lng,clat,clon)});
+      local.push({name:nm,website:vc.web||'',addr:vc.addr||'',rating:vc.rating,reviews:vc.reviews,tel:vc.tel,days:vc.days,mult:(overrides[ck]&&overrides[ck].mult),_kind:(overrides[ck]&&overrides[ck].kind),_pinc:(overrides[ck]&&overrides[ck].pinc)||null,pe,peChecked:peLoaded,lat:clat,lon:clon,dist:hav(lat,lng,clat,clon)});
     }
   } else {
     // Overpass fallback (used outside DFW or if vet-clinics.js not loaded)
@@ -4015,7 +4019,7 @@ const SECTION_MSG={
 function getWatch(){ try{ return JSON.parse(localStorage.getItem('vf_watchlist')||'[]'); }catch(e){ return []; } }
 function saveWatch(a){ try{ localStorage.setItem('vf_watchlist', JSON.stringify(a)); }catch(e){} }
 function _inWatch(type,id){ return getWatch().some(w=>w.type===type && w.id===id); }
-function _watchRemove(type,id){ saveWatch(getWatch().filter(w=>!(w.type===type&&w.id===id))); if(watchMode) renderWatchlist(); if(type==='site'){ try{ _refreshSavedSitePins(); }catch(e){} } }
+function _watchRemove(type,id){ saveWatch(getWatch().filter(w=>!(w.type===type&&w.id===id))); if(watchMode){ renderWatchlist(); if(type==='target'){ try{ _watchMapRefresh(); }catch(e){} } } if(type==='site'){ try{ _refreshSavedSitePins(); }catch(e){} } }
 function toggleWatchMarket(zip, el){
   const a=getWatch(); const idx=a.findIndex(w=>w.type==='market'&&w.id===zip);
   if(idx>=0){ a.splice(idx,1); if(el)el.classList.remove('on'); }
@@ -4030,12 +4034,42 @@ function toggleWatchTarget(i, el){
   const c=clinics[i]; if(!c) return; const id=clinicKey(c);
   const a=getWatch(); const idx=a.findIndex(w=>w.type==='target'&&w.id===id);
   if(idx>=0){ a.splice(idx,1); if(el)el.classList.remove('on'); }
-  else{ a.push({type:'target', id, name:c.name, rating:c.rating, reviews:c.reviews, tel:c.tel, addr:c.addr, website:c.website, lat:c.lat, lon:c.lon, savedAt:new Date().toISOString().slice(0,10)}); if(el)el.classList.add('on'); vfToast('Saved '+c.name+' to watchlist'); }
-  saveWatch(a); if(watchMode) renderWatchlist();
+  else{ a.push({type:'target', id, name:c.name, rating:c.rating, reviews:c.reviews, tel:c.tel, addr:c.addr, website:c.website, lat:c.lat, lon:c.lon, pe:!!c.pe, savedAt:new Date().toISOString().slice(0,10)}); if(el)el.classList.add('on'); vfToast('Saved '+c.name+' to watchlist'); }
+  saveWatch(a); if(watchMode){ renderWatchlist(); _watchMapRefresh(); }
+}
+// Save a clinic from its pin popup (key-based — popups don't know their index).
+function toggleWatchClinicKey(key, el){
+  const i=clinics.findIndex(c=>clinicKey(c)===key); if(i<0) return;
+  toggleWatchTarget(i, el);
 }
 let watchMode=false;
-function enterWatchlist(){ watchMode=true; renderWatchlist(); }
-function exitWatchlist(){ watchMode=false; renderNormalSidebar(); }
+// Watchlist map mode: the map shows ONLY saved clinics (drawn straight from the watchlist records,
+// statewide -- independent of which pins happen to be loaded). clusterGroup is detached for the
+// duration; _applyPinZoomVisibility has a watchMode guard so zoomend can't re-attach it.
+let _watchClinicLayer=null;
+function _watchMapRefresh(){
+  if(_watchClinicLayer){ try{ map.removeLayer(_watchClinicLayer); }catch(e){} _watchClinicLayer=null; }
+  if(!watchMode) return;
+  if(map.hasLayer(clusterGroup)) map.removeLayer(clusterGroup);
+  const ovr=getOverrides();
+  const tg=getWatch().filter(w=>w.type==='target' && w.lat!=null);
+  if(!tg.length) return;
+  _watchClinicLayer=L.layerGroup();
+  const fit=[];
+  for(const t of tg){
+    const col=(ovr[t.id]&&ovr[t.id].pinc)||(t.pe?RED:NAVY);
+    const m=L.marker([t.lat,t.lon],{icon:makeIcon(col,null)});
+    const nm=String(t.name||'').replace(/'/g,"\\'").replace(/"/g,'&quot;');
+    m.bindPopup(`<div style="font-size:13.5px;font-weight:700">${t.name||''}</div>
+      <div style="font-size:11.5px;color:#64748b;margin:3px 0 8px">${t.rating!=null?('★ '+t.rating+' · '+(t.reviews||0).toLocaleString()+' reviews'):'No rating'}${t.savedAt?' · saved '+t.savedAt:''}</div>
+      <button class="settings-btn save" style="width:100%" onclick="switchSection('map');_gotoClinic(${t.lat},${t.lon},'${nm}')">Open full profile</button>`,{maxWidth:230});
+    _watchClinicLayer.addLayer(m); fit.push([t.lat,t.lon]);
+  }
+  map.addLayer(_watchClinicLayer);
+  try{ map.fitBounds(L.latLngBounds(fit).pad(0.25),{animate:false,maxZoom:12}); }catch(e){}
+}
+function enterWatchlist(){ watchMode=true; renderWatchlist(); _watchMapRefresh(); }
+function exitWatchlist(){ watchMode=false; _watchMapRefresh(); _applyPinZoomVisibility(); try{ applyTypeVisibility(); }catch(e){} renderNormalSidebar(); }
 function exportWatchCSV(){
   downloadCSV(getWatch(), [
     {label:'Type',key:'type'},{label:'Name',key:'name'},
