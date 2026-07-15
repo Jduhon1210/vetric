@@ -3545,7 +3545,14 @@ async function fetchClinics(){
   _applyPinZoomVisibility();   // re-attach the layer at this zoom + clear the prompt
   const b=map.getBounds();
   const {lat,lng}=map.getCenter();
-  const s=b.getSouth(),w=b.getWest(),n=b.getNorth(),e=b.getEast();
+  // Static sources (PE_COORDS / VET_CLINICS) load a ~60% halo PAST the viewport so pins already
+  // exist when the user pans — no more hard "load line" at the old fetch edge. In-memory filter,
+  // so the halo costs nothing. KPIs/list/status all re-filter to the true viewport, so counts
+  // are unaffected. Overpass (fallback path only) keeps the UNPADDED box — 2.5x the query area
+  // would slow/timeout the mirrors.
+  const pb=b.pad(0.6);
+  const s=pb.getSouth(),w=pb.getWest(),n=pb.getNorth(),e=pb.getEast();
+  const os=b.getSouth(),ow=b.getWest(),on=b.getNorth(),oe=b.getEast();
   showPill('Searching...');setStatus('Loading clinics...');
 
   const deleted=getDeleted(), overrides=getOverrides();
@@ -3602,7 +3609,7 @@ async function fetchClinics(){
     // Overpass fallback (used outside DFW or if vet-clinics.js not loaded)
     if(_clinicAbort) _clinicAbort.abort();
     _clinicAbort = new AbortController();
-    const q=`[out:json][timeout:20];(nwr["amenity"="veterinary"](${s},${w},${n},${e});nwr["healthcare"="veterinary"](${s},${w},${n},${e}););out center tags;`;
+    const q=`[out:json][timeout:20];(nwr["amenity"="veterinary"](${os},${ow},${on},${oe});nwr["healthcare"="veterinary"](${os},${ow},${on},${oe}););out center tags;`;
     const data = await _overpass(q, {timeout:16000, signal:_clinicAbort.signal});
     if(myReq!==fetchSeq) return; // superseded by newer fetch
     if(data){
