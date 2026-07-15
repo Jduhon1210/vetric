@@ -670,6 +670,8 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
 .hdr-icon-btn{background:none;border:none;color:#c7d2fe;cursor:pointer;padding:6px;border-radius:9px;display:flex;align-items:center;justify-content:center;}
 .hdr-icon-btn:hover{background:rgba(255,255,255,.12);color:#fff;}
 .vf-demo-pill{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#be123c;background:#fff1f2;border:1px solid #fecdd3;border-radius:9px;padding:3px 9px;margin-right:10px;white-space:nowrap;}
+.vf-stg-pill{display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:9px;padding:3px 9px;margin-right:10px;white-space:nowrap;}
+.vf-stg-pill::before{content:'';width:7px;height:7px;border-radius:50%;background:#f59e0b;}
 .adm-table{width:100%;border-collapse:collapse;font-size:11.5px;margin-top:8px;}
 .adm-table th{text-align:left;font-size:9.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#94a3b8;padding:4px 8px;border-bottom:1px solid var(--border);}
 .adm-table td{padding:6px 8px;border-bottom:1px solid #f1f5f9;color:#1f2933;vertical-align:top;}
@@ -1618,6 +1620,13 @@ function _vfMetroLimited(){ const m=window.VF_ME; return (m && m.tier==='demo' &
 function _vfInLicense(la,lo){ const r=_vfMetroLimited(); if(!r) return true; const b=VF_LICENSE_BBOX[r]; return !b || (la>=b.s&&la<=b.n&&lo>=b.w&&lo<=b.e); }
 function _vfApplyLicense(d){
   if(d.tier==='admin'){ ['cat-access','cat-datasets'].forEach(id=>{ const c=document.getElementById(id); if(c) c.style.display=''; }); }
+  // Staging banner: keyed off the hostname so this is merge-safe — invisible on vetric.co,
+  // lights up only on the staging.* branch alias (and localhost previews).
+  if(/^staging\./.test(location.hostname) && !document.querySelector('.vf-stg-pill')){
+    const av0=document.querySelector('.avatar');
+    if(av0){ const sp=document.createElement('span'); sp.className='vf-stg-pill'; sp.textContent='Staging';
+      sp.title='Test instance — this build may be ahead of production (vetric.co). Data and accounts are shared.';
+      av0.parentNode.insertBefore(sp, av0); } }
   if(d.tier!=='demo' || (d.regions||[]).includes('tx')) return;
   const region=(d.regions&&d.regions[0])||'dfw';
   const av=document.querySelector('.avatar');
