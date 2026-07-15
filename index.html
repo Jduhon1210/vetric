@@ -2792,6 +2792,7 @@ function selectZip(zip, feat, shiftHeld){
 }
 
 function clearZipSelection(){
+  _zipMpcClear();
   if(evalActive) _evalResetState();   // clicking off a ZIP also dismisses an active site analysis (no orphaned heatmap)
   selectedZips.forEach((entry, z) => _unhighlightZip(z));
   selectedZips.clear();
@@ -6285,6 +6286,30 @@ function _oppKpiTop(){
 
 // Click a ranked ZIP → prepare everything while still on the Opportunity
 // screen, then reveal the finished map (no watching it load).
+// Highlight the MPC footprints inside a selected opportunity ZIP (2026-07-14, user ask):
+// teal dashed outlines/circles drawn when oppSelect lands on the map, cleared with the selection.
+let _zipMpcLayer=null;
+function _zipMpcClear(){ if(_zipMpcLayer){ try{ map.removeLayer(_zipMpcLayer); }catch(e){} _zipMpcLayer=null; } }
+async function _zipMpcHighlight(zip, feat){
+  _zipMpcClear();
+  const d=await _loadMpc(); if(!d||!feat) return;
+  const g=L.layerGroup(); let n=0;
+  for(const m of d.list){
+    const rKm=Math.sqrt((m.homes/618)/Math.PI), rDeg=rKm/111, lonF=Math.cos(m.lat*Math.PI/180);
+    let inside=pointInGeoJSON(m.lat, m.lon, feat);
+    if(!inside) for(let k=0;k<8&&!inside;k++){ const ang=k*Math.PI/4; inside=pointInGeoJSON(m.lat+0.55*rDeg*Math.sin(ang), m.lon+0.55*rDeg*Math.cos(ang)/lonF, feat); }
+    if(!inside && m.polys) for(const ring of m.polys){ if(inside) break; let la=0,lo=0; for(const pt of ring){ la+=pt[1]; lo+=pt[0]; } inside=pointInGeoJSON(la/ring.length, lo/ring.length, feat); }
+    if(!inside) continue;
+    const rem=_mpcRemaining(m);
+    const style={color:'#0d9488',weight:3,dashArray:'7,5',fillColor:'#0d9488',fillOpacity:0.16};
+    let lyr;
+    if(m.polys&&m.polys.length) lyr=L.featureGroup(m.polys.map(ring=>L.polygon(ring.map(pt=>[pt[1],pt[0]]),style)));
+    else lyr=L.circle([m.lat,m.lon],Object.assign({radius:rKm*1000},style));
+    lyr.bindTooltip(`⚡ ${m.n} — ~${rem.toLocaleString()} homes to come`,{sticky:true});
+    g.addLayer(lyr); n++;
+  }
+  if(n){ _zipMpcLayer=g; map.addLayer(g); }
+}
 function oppSelect(zip){
   const r=oppScored.find(x=>x.zip===zip);
   if(!r || !r.feat){ return; }
@@ -6318,6 +6343,7 @@ function oppSelect(zip){
     const bl = zipBorderLayers.get(zip);
     if(bl && bl.bringToFront) bl.bringToFront();
     applyZipSelection();
+    _zipMpcHighlight(zip, r.feat);   // teal-dash the community footprints driving this ZIP's pipeline
     // Reveal the map
     overlay.classList.remove('show');
     switchSection('map');
@@ -7023,6 +7049,38 @@ let evalLayers={heat:null, comp:null, retail:null, hoods:null, zoning:null, pins
 let evalData={vets:[], retail:[], resid:[], roads:[], aadt:[], zoning:[], osmLU:[], parcels:[]};
 let evalDataOk={retail:false, roads:false, resid:false, aadt:false, zoning:false, parcels:false};
 let evalZoning=true;        // zoning FILTER on by default — drop residential/civic cells (user-toggleable)
+// Announced-development demand (2026-07-14, user ask): inject each MPC's REMAINING pipeline as
+// discounted future rooftops at its real footprint, so sites get pulled toward demand that's
+// coming, not just built. Confidence haircut: selling 0.6, announced 0.4 (announced ≠ built).
+// Calibration: one OSM residential-landuse point ≈ a ~300-home subdivision at w:1, so a future
+// point carries w = (remaining/points)/300 × conf, clamped ≤6. Points get _pw:1.3 (young-family
+// MPC = top of the pet-ownership range — same 0.55 dog-HH profile the MPC popup uses) so the
+// tract pass can't zero them out on today's empty-pasture demographics. Toggleable (evalFuture).
+let evalFuture=true, _evalFutInfo=null;
+function evalToggleFuture(){ evalFuture=!evalFuture; if(evalActive) _evalComputeAndRender(); }
+function _evalInjectFuture(bb){
+  evalData.resid=evalData.resid.filter(r=>!r._fut);
+  _evalFutInfo=null;
+  if(!evalFuture || !_mpcData) return;
+  const pad=0.05, midLa=(bb.minLa+bb.maxLa)/2, lonF=Math.cos(midLa*Math.PI/180);
+  const info=[];
+  for(const m of _mpcData.list){
+    const rem=_mpcRemaining(m); if(rem<200) continue;
+    const rKm=Math.sqrt((m.homes/618)/Math.PI), rDeg=rKm/111;
+    if(m.lat<bb.minLa-pad-rDeg || m.lat>bb.maxLa+pad+rDeg) continue;
+    if(m.lon<bb.minLo-(pad+rDeg)/lonF || m.lon>bb.maxLo+(pad+rDeg)/lonF) continue;
+    const conf=m.status==='announced'?0.4:0.6;
+    let pts=[];
+    if(m.polys&&m.polys.length){ for(const ring of m.polys){ let la=0,lo=0; for(const pt of ring){ la+=pt[1]; lo+=pt[0]; } pts.push([la/ring.length,lo/ring.length]); } }
+    if(!pts.length){ pts.push([m.lat,m.lon]); const rr=rDeg*0.55; for(let k=0;k<8;k++){ const ang=k*Math.PI/4; pts.push([m.lat+rr*Math.sin(ang), m.lon+rr*Math.cos(ang)/lonF]); } }
+    if(pts.length>24){ const step=Math.ceil(pts.length/24); pts=pts.filter((_,i)=>i%step===0); }
+    const wv=Math.min(6, (rem/pts.length)/300*conf);
+    if(wv<=0.05) continue;
+    for(const [la,lo] of pts) evalData.resid.push({lat:la,lon:lo,w:wv,_pw:1.3,_fut:1});
+    info.push({n:m.n, rem, conf});
+  }
+  if(info.length) _evalFutInfo=info;
+}
 let evalZoneCities=[];      // names of municipalities whose zoning covered this area
 let evalParcelCounties=[];  // county CADs whose parcels covered the gaps
 let evalZoneStat=null;      // {excluded, cities, counties, usedOSM, on} — sidebar readout
@@ -7596,6 +7654,7 @@ function _evalComputeAndRender(){
   const VIS_R=450, bVis=band(VIS_R); // frontage-traffic search radius for AADT
   const SITE_ROAD=200, SITE_COMM=280; // metres — a clinic sits ON arterial frontage (tight, so the heatmap never bleeds into a subdivision interior) or in a retail/commercial area
   const canGate=hasRoads||hasRetail;
+  _evalInjectFuture(bb);   // announced-development demand (after the tract pass — future points carry their own _pw)
   const cellsAcross=36;
   const stepLa=(bb.maxLa-bb.minLa)/cellsAcross, stepLo=(bb.maxLo-bb.minLo)/cellsAcross;
   // SITE BUFFER: let candidate sites extend a few cells PAST the boundary so the optimum
@@ -7835,7 +7894,7 @@ function _evalRenderLayers(){
   }
   if(evalShow.hoods && evalData.resid.length){
     const hoods=L.layerGroup();
-    for(const r of evalData.resid) L.circleMarker([r.lat,r.lon],{radius:r.place?4:2.5,color:'#15803d',weight:1,fillColor:'#22c55e',fillOpacity:0.7,interactive:false}).addTo(hoods);
+    for(const r of evalData.resid){ if(r._fut){ L.circleMarker([r.lat,r.lon],{radius:5,color:'#0d9488',weight:1.6,dashArray:'3,3',fillColor:'#5eead4',fillOpacity:0.5,interactive:false}).addTo(hoods); } else { L.circleMarker([r.lat,r.lon],{radius:r.place?4:2.5,color:'#15803d',weight:1,fillColor:'#22c55e',fillOpacity:0.7,interactive:false}).addTo(hoods); } }
     hoods.addTo(map); evalLayers.hoods=hoods;
   }
   if(evalShow.zoning && (evalData.zoning.length || evalData.parcels.length || evalData.osmLU.length)){
@@ -7892,6 +7951,7 @@ function _evalRenderLegend(){
   rows.push(`<div class="eval-leg-row"><span class="eval-sym"><span class="eval-sym-comp"></span></span>PE / corporate clinic</div>`);
   if(evalShow.comp) rows.push(`<div class="eval-leg-row"><span class="eval-sym"><span class="eval-sym-ring"></span></span>Competitor reach (${evalRadiusMi.toFixed(1)} mi)</div>`);
   if(evalShow.hoods) rows.push(`<div class="eval-leg-row"><span class="eval-sym"><span class="eval-sym-hood"></span></span>Neighborhood (demand)</div>`);
+  if(evalShow.hoods && _evalFutInfo) rows.push(`<div class="eval-leg-row"><span class="eval-sym" style="color:#0d9488">◌</span>Announced homes (future demand)</div>`);
   if(evalShow.retail) rows.push(`<div class="eval-leg-row"><span class="eval-sym"><span class="eval-sym-retail"></span></span>Retail / commercial</div>`);
   if(evalShow.zoning){
     rows.push(`<div class="eval-leg-row"><span class="eval-sym"><span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:#16a34a;opacity:0.55"></span></span>Zoned siteable (commercial/office/ind.)</div>`);
@@ -8113,7 +8173,8 @@ function _evalRenderSidebar(){
       <div class="eval-slider-row"><span>Competitor range</span><span id="eval-range-val">${evalRadiusMi.toFixed(1)} mi</span></div>
       <input type="range" min="1" max="6" step="0.5" value="${evalRadiusMi}" oninput="onEvalRadius(this.value)"/>
     </div>
-    <div class="eval-toggle-row">${chip('heat','Heatmap')}${chip('hoods','Neighborhoods')}${chip('retail','Retail')}${chip('comp','Competitor range')}${chip('zoning','Zoning map')}<span class="eval-chip ${evalZoning?'on':''}" onclick="evalToggleZoning()">Zoning filter</span></div>
+    <div class="eval-toggle-row">${chip('heat','Heatmap')}${chip('hoods','Neighborhoods')}${chip('retail','Retail')}${chip('comp','Competitor range')}${chip('zoning','Zoning map')}<span class="eval-chip ${evalZoning?'on':''}" onclick="evalToggleZoning()">Zoning filter</span><span class="eval-chip ${evalFuture?'on':''}" onclick="evalToggleFuture()">⚡ Announced homes</span></div>
+    ${_evalFutInfo?`<div style="font-size:11px;color:#0f766e;background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;padding:7px 10px;margin:8px 0 2px;line-height:1.5">⚡ Demand includes ~${_evalFutInfo.reduce((t,x)=>t+Math.round(x.rem*x.conf),0).toLocaleString()} confidence-discounted announced homes (${_evalFutInfo.map(x=>x.n).join(', ')}). Toggle “Announced homes” off for today-only demand.</div>`:''}
     <div class="eval-cards">${hideCards?'':cards}</div>
     <div class="eval-note">Neighborhood demand is weighted at census-tract grain — rooftops in higher pet-ownership communities pull sites harder than senior or renter-heavy pockets. Sites are limited to commercial land — either zoned/parceled commercial, or (where that's unavailable) within a real retail/commercial area; residential, civic and rural parcels are excluded, and arterial frontage alone is not enough. Coverage is layered: municipal zoning in the 16 mapped cities, county appraisal-district parcels (Collin / Denton / Dallas) for the exurbs, and OpenStreetMap land-use elsewhere. Road visibility is weighted by TxDOT traffic counts (AADT), so a busier frontage scores higher${hasAADT?'':' (traffic data unavailable here — using road class)'}. Competition counts every clinic within range, including ones just over the ZIP border. A recommended site can sit just past the boundary (within ~0.5&nbsp;mi) where the market actually peaks — catchments don't stop at the line.</div>
     </div>
@@ -8136,6 +8197,7 @@ function onEvalRadius(v){
 function evalToggle(k){ evalShow[k]=!evalShow[k]; _evalRenderLayers(); const sb=document.querySelector('.sidebar'); const c=sb&&sb.querySelector(`.eval-chip[onclick*="'${k}'"]`); if(c) c.classList.toggle('on', evalShow[k]); }
 // Zoning FILTER toggle — re-gates and rescores the grid (residential cells drop in/out).
 function evalToggleZoning(){ evalZoning=!evalZoning; if(evalActive) _evalComputeAndRender(); }
+// (evalFuture is a session preference — _evalResetState clears the info line via the per-compute rebuild)
 function evalFlyTo(i){ const g=evalTop[i]; if(g) map.setView([g.la,g.lo], Math.max(map.getZoom(),14), {animate:true}); }
 
 // ── Drive-time trade areas (Routes API via /api/route) — refines the top Evaluate sites ──
