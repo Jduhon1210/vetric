@@ -694,6 +694,33 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
 .adm-pill.due{color:#be123c;background:#fff1f2;border:1px solid #fecdd3;}
 .adm-pill.over{color:#fff;background:#dc2626;border:1px solid #dc2626;}
 .adm-pill.live{color:#1e3a8a;background:#eef2fb;border:1px solid #dbe3f4;}
+/* Data-pipeline dashboard */
+.ds-head{display:flex;justify-content:space-between;align-items:flex-start;gap:18px;margin-bottom:14px;}
+.ds-title{font-size:16px;font-weight:800;letter-spacing:-.02em;color:#0f172a;}
+.ds-sub{font-size:11.5px;color:#64748b;line-height:1.55;margin-top:3px;max-width:420px;}
+.ds-mono{font-family:'JetBrains Mono',monospace;font-size:10.5px;}
+.ds-kpis{display:flex;gap:8px;flex-shrink:0;}
+.ds-kpi{background:#fff;border:1px solid var(--border);border-radius:10px;padding:8px 13px;text-align:center;min-width:64px;}
+.ds-kpi .n{font-size:18px;font-weight:800;color:#0f172a;line-height:1.1;}
+.ds-kpi .l{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8;margin-top:2px;}
+.ds-kpi.warn .n{color:#be123c;}
+.ds-kpi.live .n{color:#1e3a8a;}
+.ds-group{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;margin:16px 2px 7px;}
+.ds-group:first-of-type{margin-top:2px;}
+.ds-row{display:grid;grid-template-columns:minmax(150px,1.25fr) minmax(140px,1fr) 150px 108px;gap:14px;align-items:center;background:#fff;border:1px solid var(--border);border-radius:12px;padding:11px 15px;margin-bottom:7px;transition:border-color .12s, box-shadow .12s;}
+.ds-row:hover{border-color:#c3cfe0;box-shadow:0 3px 12px rgba(15,23,42,.06);}
+.ds-name{font-size:12.5px;font-weight:700;color:#0f172a;line-height:1.3;}
+.ds-file{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#94a3b8;margin-top:2px;}
+.ds-src{font-size:11px;color:#475569;line-height:1.45;}
+.ds-why{font-size:10px;color:#94a3b8;line-height:1.4;margin-top:1px;}
+.ds-dates{font-size:10.5px;color:#475569;line-height:1.6;white-space:nowrap;}
+.ds-dates b{color:#0f172a;font-weight:700;}
+.ds-track{height:4px;border-radius:2px;background:#eef1f7;margin-top:6px;overflow:hidden;}
+.ds-fill{height:100%;border-radius:2px;background:#3b5bb5;}
+.ds-fill.warn{background:#be123c;}
+.ds-right{text-align:right;}
+.ds-how{grid-column:1 / -1;margin-top:2px;padding-top:8px;border-top:1px dashed #e8edf5;font-size:10px;color:#64748b;display:flex;align-items:center;gap:6px;}
+.ds-how code{font-family:'JetBrains Mono',monospace;font-size:9.5px;background:#f4f6fb;border:1px solid #e4e9f4;border-radius:6px;padding:2px 7px;color:#334155;}
 .settings-overlay{position:fixed;inset:0;background:rgba(15,23,42,.52);backdrop-filter:blur(4px);z-index:2000;display:none;align-items:center;justify-content:center;padding:24px;}
 .settings-overlay.show{display:flex;}
 .settings-modal{background:linear-gradient(180deg,#fff 0%,#fbfcfe 100%);border-radius:18px;box-shadow:0 24px 80px rgba(15,23,42,.38),0 2px 8px rgba(15,23,42,.12);width:780px;max-width:100%;max-height:84vh;display:flex;flex-direction:column;overflow:hidden;border:1px solid rgba(255,255,255,.6);}
@@ -886,6 +913,7 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
       <div class="settings-cats">
         <button class="settings-cat active" data-cat="data" onclick="switchSettingsCat('data')">Data &amp; Logic</button>
         <button class="settings-cat" data-cat="access" id="cat-access" onclick="switchSettingsCat('access');_admLoad()" style="display:none">Access &amp; licensing</button>
+        <button class="settings-cat" data-cat="datasets" id="cat-datasets" onclick="switchSettingsCat('datasets');_admDatasets()" style="display:none">Data sets</button>
         <button class="settings-cat" data-cat="about" onclick="switchSettingsCat('about')">About</button>
       </div>
       <div class="settings-content">
@@ -904,11 +932,6 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
             <div id="adm-roster"><div style="font-size:12px;color:#94a3b8;padding:14px 0">Loading accounts…</div></div>
           </div>
           <div class="adm-sec">
-            <div class="adm-sec-h">Data sets</div>
-            <div class="adm-sec-sub">Every data asset behind the app, when it was last resynced, and when it's due again — cadence depends on how fast each source moves. Refresh dates are stamped in <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px">VF_DATASETS</span> when a build script is re-run.</div>
-            <div id="adm-datasets"></div>
-          </div>
-          <div class="adm-sec">
           <div class="adm-sec-h">Add or update an account</div>
           <div class="adm-form" style="margin-top:6px;background:#f8fafc">
             <input id="adm-firm" placeholder="Firm name (e.g. Mesa Vet Partners)"/>
@@ -920,6 +943,16 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
           </div>
           <div class="set-opt-note" style="margin-top:10px;display:block">Updating an existing email keeps its original start date. Revoking cuts live sessions on their next request. You can't revoke or demote your own admin account.</div>
           </div>
+        </div>
+        <div class="settings-pane" data-pane="datasets">
+          <div class="ds-head">
+            <div>
+              <div class="ds-title">Data pipeline</div>
+              <div class="ds-sub">Every data asset behind Vetric — freshness tracked against a per-source cadence. Dates are stamped in <span class="ds-mono">VF_DATASETS</span> when a build script re-runs.</div>
+            </div>
+            <div class="ds-kpis" id="ds-kpis"></div>
+          </div>
+          <div id="adm-datasets"></div>
         </div>
         <div class="settings-pane" data-pane="about">
           <div class="set-h">Vetric</div>
@@ -1583,7 +1616,7 @@ const VF_LICENSE_BBOX={ dfw:{s:32.25,n:33.5,w:-97.95,e:-96.2} }; // data box: ma
 function _vfMetroLimited(){ const m=window.VF_ME; return (m && m.tier==='demo' && !(m.regions||[]).includes('tx')) ? ((m.regions&&m.regions[0])||'dfw') : null; }
 function _vfInLicense(la,lo){ const r=_vfMetroLimited(); if(!r) return true; const b=VF_LICENSE_BBOX[r]; return !b || (la>=b.s&&la<=b.n&&lo>=b.w&&lo<=b.e); }
 function _vfApplyLicense(d){
-  if(d.tier==='admin'){ const c=document.getElementById('cat-access'); if(c) c.style.display=''; }
+  if(d.tier==='admin'){ ['cat-access','cat-datasets'].forEach(id=>{ const c=document.getElementById(id); if(c) c.style.display=''; }); }
   if(d.tier!=='demo' || (d.regions||[]).includes('tx')) return;
   const region=(d.regions&&d.regions[0])||'dfw';
   const av=document.querySelector('.avatar');
@@ -6351,30 +6384,49 @@ const VF_DATASETS=[
 ];
 function _admDatasets(){
   const el=document.getElementById('adm-datasets'); if(!el) return {due:0};
-  const today=new Date(); let due=0;
-  const rows=VF_DATASETS.map(d=>{
-    let pill, next='—', nextTs=Infinity;
-    if(d.every==null){ pill='<span class="adm-pill live">'+_admEsc(d.live||'live')+'</span>'; }
-    else{
-      const lastD=new Date(d.last+'T12:00:00');
-      const nextD=new Date(lastD.getTime()+d.every*86400000);
-      nextTs=nextD.getTime();
-      next=nextD.toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'});
-      const days=Math.round((nextD-today)/86400000);
-      if(days<0){ pill='<span class="adm-pill over">Overdue '+(-days)+'d</span>'; due++; }
-      else if(days<=14){ pill='<span class="adm-pill due">Due in '+days+'d</span>'; due++; }
-      else pill='<span class="adm-pill ok">Fresh · '+days+'d left</span>';
+  const today=Date.now(); let due=0, over=0, live=0, fresh=0;
+  const enr=VF_DATASETS.map(d=>{
+    let state='live', days=null, nextTxt='—', pct=0;
+    if(d.every!=null){
+      const lastT=new Date(d.last+'T12:00:00').getTime();
+      const nextT=lastT+d.every*86400000;
+      days=Math.round((nextT-today)/86400000);
+      nextTxt=new Date(nextT).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'});
+      pct=Math.max(0,Math.min(1,(today-lastT)/(d.every*86400000)));
+      state=days<0?'over':days<=14?'due':'fresh';
     }
+    if(state==='live') live++; else if(state==='fresh') fresh++; else if(state==='due'){ due++; } else { over++; }
+    return {...d, state, days, nextTxt, pct};
+  });
+  const kp=document.getElementById('ds-kpis');
+  if(kp) kp.innerHTML=
+    '<div class="ds-kpi"><div class="n">'+fresh+'</div><div class="l">Fresh</div></div>'+
+    '<div class="ds-kpi'+((due+over)?' warn':'')+'"><div class="n">'+(due+over)+'</div><div class="l">Need resync</div></div>'+
+    '<div class="ds-kpi live"><div class="n">'+live+'</div><div class="l">Live feeds</div></div>';
+  const pill=d=>{
+    if(d.state==='live') return '<span class="adm-pill live">'+_admEsc(d.live||'live')+'</span>';
+    if(d.state==='over') return '<span class="adm-pill over">Overdue '+(-d.days)+'d</span>';
+    if(d.state==='due') return '<span class="adm-pill due">Due in '+d.days+'d</span>';
+    return '<span class="adm-pill ok">Fresh</span>';
+  };
+  const row=d=>{
     const lastTxt=d.last?new Date(d.last+'T12:00:00').toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'}):'—';
-    return {nextTs, html:'<tr><td><b>'+_admEsc(d.name)+'</b><br><span style="color:#94a3b8;font-size:10px;font-family:\'JetBrains Mono\',monospace">'+_admEsc(d.file)+'</span></td>'+
-      '<td><span style="color:#475569">'+_admEsc(d.src)+'</span>'+(d.why?'<br><span style="color:#94a3b8;font-size:10px">'+_admEsc(d.why)+'</span>':'')+'</td>'+
-      '<td style="white-space:nowrap">'+lastTxt+'</td>'+
-      '<td style="white-space:nowrap">'+next+'</td>'+
-      '<td>'+pill+'</td>'+
-      '<td><span style="color:#64748b;font-size:10.5px">'+_admEsc(d.how)+'</span></td></tr>'};
-  }).sort((x,y)=>x.nextTs-y.nextTs);
-  el.innerHTML='<table class="adm-table"><thead><tr><th>Data set</th><th>Source</th><th>Last resync</th><th>Next due</th><th>Status</th><th>How to refresh</th></tr></thead><tbody>'+rows.map(r=>r.html).join('')+'</tbody></table>';
-  return {due};
+    const dates=d.every==null
+      ? '<div class="ds-dates">Queried on demand<br><b>never stale</b></div>'
+      : '<div class="ds-dates">Synced <b>'+lastTxt+'</b><br>Due <b>'+d.nextTxt+'</b><div class="ds-track"><div class="ds-fill'+(d.state!=='fresh'?' warn':'')+'" style="width:'+Math.round(d.pct*100)+'%"></div></div></div>';
+    return '<div class="ds-row">'+
+      '<div><div class="ds-name">'+_admEsc(d.name)+'</div><div class="ds-file">'+_admEsc(d.file)+'</div></div>'+
+      '<div><div class="ds-src">'+_admEsc(d.src)+'</div>'+(d.why?'<div class="ds-why">'+_admEsc(d.why)+'</div>':'')+'</div>'+
+      dates+
+      '<div class="ds-right">'+pill(d)+'</div>'+
+      (d.how?'<div class="ds-how">Refresh<code>'+_admEsc(d.how)+'</code></div>':'')+
+    '</div>';
+  };
+  const staleables=enr.filter(d=>d.every!=null).sort((x,y)=>x.days-y.days);
+  const lives=enr.filter(d=>d.every==null);
+  el.innerHTML='<div class="ds-group">Built data sets — soonest due first</div>'+staleables.map(row).join('')+
+    '<div class="ds-group">Live feeds — queried at use time</div>'+lives.map(row).join('');
+  return {due:due+over};
 }
 function _admStats(accounts, dsDue){
   const el=document.getElementById('adm-stats'); if(!el) return;
