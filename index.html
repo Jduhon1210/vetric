@@ -133,6 +133,7 @@ body.dev-mode header{background:var(--amber-light);}
 .mapf-chip{border:1px solid var(--border2);border-radius:14px;padding:3px 10px;cursor:pointer;color:#475569;background:#fff;font-weight:600;font-size:11.5px;user-select:none;}
 .mapf-chip.on{background:var(--navy);border-color:var(--navy);color:#fff;}
 .mapf-sw{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;}
+.mapf-sel{width:100%;font:inherit;font-size:12px;font-weight:600;color:#334155;padding:6px 8px;border:1px solid var(--border2);border-radius:8px;background:#fff;}
 .mapf-reset{font-size:11px;color:var(--navy);font-weight:700;cursor:pointer;margin-top:11px;display:inline-block;}
 .kpi{background:var(--surface);padding:11px 18px;position:relative;min-width:0;}
 .kpi .k-label{font-size:10.5px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;}
@@ -1672,11 +1673,11 @@ function _mapfRender(){
     .map(([v,l])=>chip(MAPF.own===v,`mapfSet('own','${v}')`,l)).join('');
   const kinds=[['small','Small animal'],['mixed','Mixed'],['large','Large animal'],['specialty','Specialty / ER'],['mobile','Mobile']]
     .map(([k,l])=>chip(TYPE_ON[k]!==false,`mapfSet('kind','${k}')`,l)).join('');
-  const cols=[['all','All',''],['default','Default',''],['#16a34a','Green','#16a34a'],['#f59e0b','Gold','#f59e0b'],['#7c3aed','Purple','#7c3aed'],['#0d9488','Teal','#0d9488'],['#ec4899','Pink','#ec4899'],['#0f172a','Black','#0f172a']]
-    .map(([v,l,sw])=>chip(MAPF.color===v,`mapfSet('color','${v}')`,(sw?`<span class="mapf-sw" style="background:${sw}"></span>`:'')+l)).join('');
+  const colOpts=[['all','All colors'],['default','Default (navy / red)'],['#16a34a','Green'],['#f59e0b','Gold'],['#7c3aed','Purple'],['#0d9488','Teal'],['#ec4899','Pink'],['#0f172a','Black']];
+  const cols=`<select class="mapf-sel" onchange="mapfSet('color',this.value)">${colOpts.map(([v,l])=>`<option value="${v}"${MAPF.color===v?' selected':''}>${l}</option>`).join('')}</select>`;
   pop.innerHTML=`<div class="mapf-h">Ownership</div><div class="mapf-row">${own}</div>
     <div class="mapf-h">Practice type</div><div class="mapf-row">${kinds}</div>
-    <div class="mapf-h">Pin color</div><div class="mapf-row">${cols}</div>
+    <div class="mapf-h">Pin color</div>${cols}
     <span class="mapf-reset" onclick="mapfReset()">Reset filters</span>`;
 }
 function mapfSet(group,val){
