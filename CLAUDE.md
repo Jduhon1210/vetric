@@ -65,6 +65,7 @@ let lastIndependents = []; // Cache of last good Overpass result (Overpass fallb
 
 ### Clinic fetch flow (`fetchClinics`)
 - Increments `fetchSeq` — each fetch checks `myReq !== fetchSeq` after every `await` and bails if superseded
+- **Static sources load a 60% HALO past the viewport (2026-07-14, user: visible "line where clinics load in" when panning)**: PE_COORDS + VET_CLINICS filter against `map.getBounds().pad(0.6)` (`pb`/s/w/n/e) so pins already exist when the user pans; in-memory, zero cost. The Overpass fallback query keeps the UNPADDED box (`os/ow/on/oe` — 2.5× the query area would slow/timeout mirrors); the `lastIndependents` cache fallback uses the halo. KPIs/list/status all re-filter to the true viewport, so counts are unaffected. Do not drop the pad or reuse the padded box for Overpass.
 - Builds into local `local[]` array, only commits to `clinics[]` + redraws at the very end
 - Source 1: PE clinics from `PE_COORDS` (gated on `peLoaded`)
 - Source 2: Overpass with mirror fallback (kumi.systems) and 400ms backoff between mirrors
