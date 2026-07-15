@@ -680,6 +680,20 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
 .adm-form{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;background:#f8fafc;border:1px solid var(--border);border-radius:10px;padding:12px;}
 .adm-form input,.adm-form select{font:inherit;font-size:12px;padding:7px 9px;border:1px solid var(--border);border-radius:8px;background:#fff;}
 .adm-form .adm-full{grid-column:1 / -1;}
+/* Admin dashboard shell */
+.adm-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:2px 0 14px;}
+.adm-stat{background:#fff;border:1px solid var(--border);border-radius:12px;padding:11px 13px;}
+.adm-stat .n{font-size:21px;font-weight:800;color:#0f172a;letter-spacing:-.02em;line-height:1.1;}
+.adm-stat .l{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8;margin-top:3px;}
+.adm-stat.warn .n{color:#be123c;}
+.adm-sec{background:#fff;border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:14px;box-shadow:0 1px 3px rgba(15,23,42,.04);}
+.adm-sec-h{display:flex;align-items:center;justify-content:space-between;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:#334155;margin-bottom:4px;}
+.adm-sec-sub{font-size:11.5px;color:#64748b;line-height:1.55;margin-bottom:6px;}
+.adm-pill{font-size:9.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;border-radius:8px;padding:2px 8px;white-space:nowrap;display:inline-block;}
+.adm-pill.ok{color:#15803d;background:#f0fdf4;border:1px solid #bbf7d0;}
+.adm-pill.due{color:#be123c;background:#fff1f2;border:1px solid #fecdd3;}
+.adm-pill.over{color:#fff;background:#dc2626;border:1px solid #dc2626;}
+.adm-pill.live{color:#1e3a8a;background:#eef2fb;border:1px solid #dbe3f4;}
 .settings-overlay{position:fixed;inset:0;background:rgba(15,23,42,.52);backdrop-filter:blur(4px);z-index:2000;display:none;align-items:center;justify-content:center;padding:24px;}
 .settings-overlay.show{display:flex;}
 .settings-modal{background:linear-gradient(180deg,#fff 0%,#fbfcfe 100%);border-radius:18px;box-shadow:0 24px 80px rgba(15,23,42,.38),0 2px 8px rgba(15,23,42,.12);width:780px;max-width:100%;max-height:84vh;display:flex;flex-direction:column;overflow:hidden;border:1px solid rgba(255,255,255,.6);}
@@ -883,11 +897,20 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
 
         </div>
         <div class="settings-pane" data-pane="access">
-          <div class="set-h">Who's using Vetric</div>
-          <div class="set-intro" style="margin-bottom:2px">Every account, its licensing phase, and the market it can see. Pilot (demo) accounts get DFW-only data served from the server — the statewide files never reach their browser — and exports are disabled.</div>
-          <div id="adm-roster"><div style="font-size:12px;color:#94a3b8;padding:14px 0">Loading accounts…</div></div>
-          <div class="set-h" style="margin-top:16px">Add or update an account</div>
-          <div class="adm-form">
+          <div class="adm-stats" id="adm-stats"></div>
+          <div class="adm-sec">
+            <div class="adm-sec-h">Accounts</div>
+            <div class="adm-sec-sub">Every account, its licensing phase, and the market it can see. Pilot (demo) accounts get DFW-only data served from the server — the statewide files never reach their browser — and exports are disabled.</div>
+            <div id="adm-roster"><div style="font-size:12px;color:#94a3b8;padding:14px 0">Loading accounts…</div></div>
+          </div>
+          <div class="adm-sec">
+            <div class="adm-sec-h">Data sets</div>
+            <div class="adm-sec-sub">Every data asset behind the app, when it was last resynced, and when it's due again — cadence depends on how fast each source moves. Refresh dates are stamped in <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px">VF_DATASETS</span> when a build script is re-run.</div>
+            <div id="adm-datasets"></div>
+          </div>
+          <div class="adm-sec">
+          <div class="adm-sec-h">Add or update an account</div>
+          <div class="adm-form" style="margin-top:6px;background:#f8fafc">
             <input id="adm-firm" placeholder="Firm name (e.g. Mesa Vet Partners)"/>
             <input id="adm-email" placeholder="email@firm.com"/>
             <div style="display:flex;gap:6px"><input id="adm-code" placeholder="Access code" style="flex:1"/><button class="vm-export-btn" style="white-space:nowrap" onclick="_admGen()">Generate</button></div>
@@ -896,6 +919,7 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
             <div class="adm-full" style="display:flex;gap:8px;align-items:center"><button class="eval-btn" style="margin:0" onclick="_admSubmit()">Save account</button><span id="adm-msg" style="font-size:11.5px;color:#64748b"></span></div>
           </div>
           <div class="set-opt-note" style="margin-top:10px;display:block">Updating an existing email keeps its original start date. Revoking cuts live sessions on their next request. You can't revoke or demote your own admin account.</div>
+          </div>
         </div>
         <div class="settings-pane" data-pane="about">
           <div class="set-h">Vetric</div>
@@ -6307,6 +6331,63 @@ function toggleIncludeMobile(on){
   if(typeof evalActive!=='undefined' && evalActive && typeof _evalComputeAndRender==='function') _evalComputeAndRender();  // evaluate
 }
 function closeSettings(){ document.getElementById('settings-overlay').classList.remove('show'); }
+/* ── Data-set freshness registry (admin dashboard) ──
+   last = date the asset was last rebuilt/resynced (UPDATE THIS when you re-run the script).
+   every = resync cadence in days, chosen per source velocity; null = live API, never stale. */
+const VF_DATASETS=[
+ {name:'PE-owned clinics',        file:'pe-data.js',        src:'privateequityvet.org sheet', how:'re-import sheet, filter State==TX', last:'2026-07-08', every:90,  why:'PE deal flow — new acquisitions monthly'},
+ {name:'Independent clinics',     file:'vet-clinics.js',    src:'Google Places scan',         how:'node build-clinics.mjs (needs GOOGLE_PLACES_KEY)', last:'2026-07-14', every:90,  why:'openings / closures / ownership churn'},
+ {name:'DVM rosters',             file:'vet-staff.js',      src:'clinic-website crawl',       how:'node build-vets.mjs', last:'2026-07-08', every:90,  why:'staff turnover moves competition weights'},
+ {name:'Species verdicts',        file:'vet-species.js',    src:'clinic-website crawl',       how:'node build-species.mjs --all', last:'2026-07-09', every:180, why:'practice focus changes slowly'},
+ {name:'Master-planned communities', file:'dfw-mpc.json',   src:'curated (news + RCLCO)',     how:'hand-edit JSON, bump ?v=', last:'2026-07-10', every:60,  why:'announcements and phase openings move fast'},
+ {name:'Retail / commercial fabric', file:'dfw-retail.json',src:'OSM Overpass bake',          how:'re-run Overpass query + dedupe', last:'2026-06-30', every:180, why:'retail land changes slowly'},
+ {name:'Census tracts + demographics', file:'dfw-tracts.json', src:'TIGERweb + ACS 2024',     how:'node build-tracts.mjs', last:'2026-07-09', every:365, why:'annual ACS vintage'},
+ {name:'ZIP boundaries',          file:'tx-zips.json',      src:'Census ZCTA 2020',           how:'re-download on new vintage', last:'2026-06-25', every:365, why:'boundaries change at census vintages'},
+ {name:'Water outlines',          file:'dfw-water.json',    src:'OSM Overpass bake',          how:'re-run natural=water query', last:'2026-07-05', every:365, why:'lakes do not move'},
+ {name:'Airport polygons',        file:'tx-airports.json',  src:'OSM Overpass bake',          how:'node build-airports.mjs', last:'2026-07-13', every:365, why:'static infrastructure'},
+ {name:'ACS demographics (income / pets / growth / age)', file:'live API', src:'api.census.gov', how:'automatic — new vintage lands ~Dec', last:'2026-07-01', every:null, live:'ACS 2024 vintage', why:''},
+ {name:'City zoning + county parcels', file:'live API',     src:'municipal / CAD ArcGIS',     how:'automatic per evaluate', last:null, every:null, live:'queried live', why:''},
+ {name:'Traffic counts (AADT)',   file:'live API',          src:'TxDOT ArcGIS',               how:'automatic per evaluate', last:null, every:null, live:'queried live', why:''}
+];
+function _admDatasets(){
+  const el=document.getElementById('adm-datasets'); if(!el) return {due:0};
+  const today=new Date(); let due=0;
+  const rows=VF_DATASETS.map(d=>{
+    let pill, next='—', nextTs=Infinity;
+    if(d.every==null){ pill='<span class="adm-pill live">'+_admEsc(d.live||'live')+'</span>'; }
+    else{
+      const lastD=new Date(d.last+'T12:00:00');
+      const nextD=new Date(lastD.getTime()+d.every*86400000);
+      nextTs=nextD.getTime();
+      next=nextD.toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'});
+      const days=Math.round((nextD-today)/86400000);
+      if(days<0){ pill='<span class="adm-pill over">Overdue '+(-days)+'d</span>'; due++; }
+      else if(days<=14){ pill='<span class="adm-pill due">Due in '+days+'d</span>'; due++; }
+      else pill='<span class="adm-pill ok">Fresh · '+days+'d left</span>';
+    }
+    const lastTxt=d.last?new Date(d.last+'T12:00:00').toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'}):'—';
+    return {nextTs, html:'<tr><td><b>'+_admEsc(d.name)+'</b><br><span style="color:#94a3b8;font-size:10px;font-family:\'JetBrains Mono\',monospace">'+_admEsc(d.file)+'</span></td>'+
+      '<td><span style="color:#475569">'+_admEsc(d.src)+'</span>'+(d.why?'<br><span style="color:#94a3b8;font-size:10px">'+_admEsc(d.why)+'</span>':'')+'</td>'+
+      '<td style="white-space:nowrap">'+lastTxt+'</td>'+
+      '<td style="white-space:nowrap">'+next+'</td>'+
+      '<td>'+pill+'</td>'+
+      '<td><span style="color:#64748b;font-size:10.5px">'+_admEsc(d.how)+'</span></td></tr>'};
+  }).sort((x,y)=>x.nextTs-y.nextTs);
+  el.innerHTML='<table class="adm-table"><thead><tr><th>Data set</th><th>Source</th><th>Last resync</th><th>Next due</th><th>Status</th><th>How to refresh</th></tr></thead><tbody>'+rows.map(r=>r.html).join('')+'</tbody></table>';
+  return {due};
+}
+function _admStats(accounts, dsDue){
+  const el=document.getElementById('adm-stats'); if(!el) return;
+  const a=accounts||[];
+  const pilots=a.filter(x=>x.tier==='demo').length;
+  const licensed=a.filter(x=>x.tier==='full').length;
+  const seen7=a.filter(x=>x.lastSeen && (Date.now()-new Date(x.lastSeen).getTime())<7*86400000).length;
+  el.innerHTML=
+    '<div class="adm-stat"><div class="n">'+a.length+'</div><div class="l">Accounts</div></div>'+
+    '<div class="adm-stat"><div class="n">'+pilots+'</div><div class="l">Active pilots</div></div>'+
+    '<div class="adm-stat"><div class="n">'+licensed+'</div><div class="l">Licensed firms</div></div>'+
+    '<div class="adm-stat'+(dsDue?' warn':'')+'"><div class="n">'+dsDue+'</div><div class="l">Data sets due</div></div>';
+}
 /* ── Access & licensing (admin only — backed by /api/admin/accounts) ── */
 let _admCache=null;
 const _admEsc=v=>String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -6331,7 +6412,9 @@ async function _admLoad(){
         '<td style="text-align:right;white-space:nowrap"><button class="vm-export-btn" onclick="_admEdit(\''+_admEsc(a.email)+'\')">Edit</button>'+(self?'':' <button class="vm-export-btn" style="color:#dc2626;border-color:#fecaca" onclick="_admRevoke(\''+_admEsc(a.email)+'\')">Revoke</button>')+'</td></tr>';
     }).join('');
     el.innerHTML='<table class="adm-table"><thead><tr><th>Firm / email</th><th>Phase</th><th>Market</th><th>Access code</th><th>Last login</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>';
+    const _ds=_admDatasets(); _admStats(_admCache,_ds.due);
   }catch(e){ el.innerHTML='<div style="font-size:12px;color:#dc2626;padding:10px 0">Could not load accounts — check your connection.</div>'; }
+  try{ const _ds=_admDatasets(); _admStats(_admCache||[],_ds.due); }catch(e){}
 }
 // Random access code: 12 chars from an unambiguous alphabet (no 0/O/1/I/L — survives being
 // read aloud or retyped), grouped for easy copy-paste. ~59 bits of entropy via crypto.
