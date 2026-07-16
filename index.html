@@ -6148,12 +6148,30 @@ function renderOppDetail(r,i){
   // ── demand funnel, always visible ──
   let funnel='';
   {
-    const fb=(bg,tc,stc,v,l,flex)=>`<div style="flex:${flex};background:${bg};border-radius:7px;padding:6px 6px;text-align:center;min-width:0"><div style="font-size:11.5px;font-weight:800;color:${tc}">${v}</div><div style="font-size:8.5px;color:${stc}">${l}</div></div>`;
+    const kf=v=>v>=1000?(v/1000).toFixed(1)+'k':String(Math.round(v));
+    const fb=(bg,tc,stc,v,l,flex,extra)=>`<div style="flex:${flex};background:${bg};border-radius:7px;padding:6px 6px;text-align:center;min-width:0${extra||''}"><div style="font-size:11.5px;font-weight:800;color:${tc}">${v}</div><div style="font-size:8.5px;color:${stc}">${l}</div></div>`;
     const stages=[];
-    if(hh!=null) stages.push(fb('#eef2fb','#0f172a','#64748b',Math.round(hh).toLocaleString(),'households',2.4));
-    if(petHH!=null) stages.push(fb('#dbe7fb','#0f172a','#64748b',petHH.toLocaleString(),catHH!=null?'dog + cat HH':'dog HH',2));   // SUM of species counts, NOT unique pet households (dual-owner homes appear in both — visits math is per-species, so the sum is the right feeder; the label just must not claim uniqueness)
-    if(visits!=null) stages.push(fb('#bfd4f7','#0f172a','#475569','~'+(visits>=1000?(visits/1000).toFixed(1)+'k':visits),'visits/yr',1.8));
-    if(sustain!=null) stages.push(fb('#1e3a8a','#fff','#bfd0f0','~'+sustain,'vets fit',1.5));
+    if(hh!=null) stages.push(fb('#eef2fb','#0f172a','#64748b',Math.round(hh).toLocaleString(),'households',2.2));
+    // Projected household growth: the past-3yr trend carried forward (natural construction)
+    // PLUS remaining announced MPC homes. The two components can overlap in fast exurbs
+    // (the trend partly IS the MPCs building out) — title discloses; display-only.
+    if(hh!=null){
+      const nat=(r.grow!=null&&r.grow>0)?Math.round(hh*Math.min(r.grow,0.6)):0;
+      const proj=nat+(r.mpcRem||0);
+      if(proj>=100) stages.push(fb('#f0fdfa','#0f766e','#5eead4','+'+kf(proj),'proj. growth',1.8,';border:1.5px dashed #5eead4" title="~'+kf(nat)+' if the \u201921\u2192\u201924 pace continues + '+kf(r.mpcRem||0)+' announced MPC homes (components can overlap)'));
+    }
+    // Species breakdown box: dog and cat households side by side (per-species — the visits
+    // math consumes each separately; dual-owner homes legitimately appear in both).
+    if(r.dog!=null){
+      const sp=`<div style="flex:2.1;background:#dbe7fb;border-radius:7px;padding:4px 6px;min-width:0;display:flex;align-items:center;justify-content:center;gap:8px">
+        <span style="text-align:center"><span style="display:block;font-size:11px;font-weight:800;color:#0f172a">${Math.round(r.dog).toLocaleString()}</span><span style="display:block;font-size:8px;color:#64748b">dog HH</span></span>
+        <span style="width:1px;align-self:stretch;background:#b6cbf0;margin:2px 0"></span>
+        <span style="text-align:center"><span style="display:block;font-size:11px;font-weight:800;color:#0f172a">${catHH!=null?Math.round(catHH).toLocaleString():'—'}</span><span style="display:block;font-size:8px;color:#64748b">cat HH</span></span>
+      </div>`;
+      stages.push(sp);
+    }
+    if(visits!=null) stages.push(fb('#bfd4f7','#0f172a','#475569','~'+kf(visits),'visits/yr',1.6));
+    if(sustain!=null) stages.push(fb('#1e3a8a','#fff','#bfd0f0','~'+sustain,'vets fit',1.4));
     if(stages.length>=2) funnel=`<div style="font-size:9.5px;font-weight:800;letter-spacing:.06em;color:#94a3b8;margin:9px 0 5px">DEMAND FUNNEL</div>
       <div style="display:flex;align-items:center;gap:3px">${stages.join('<span style="color:#cbd5e1">›</span>')}</div>`;
   }
