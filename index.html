@@ -6129,31 +6129,22 @@ function renderOppDetail(r,i){
   const catHH=(typeof dogData!=='undefined'&&dogData[r.zip]&&dogData[r.zip].catEst!=null)?dogData[r.zip].catEst:null;
   const visits=r.dog!=null?Math.round(r.dog*OPP_VISITS_PER_DOGHH+(catHH||0)*OPP_VISITS_PER_CATHH):null;
   const rank=(typeof i==='number'&&i>=0)?i+1:(oppScored.findIndex(x=>x.zip===r.zip)+1);
-  const rank2=rank, sustain=(visits!=null)?Math.max(1,Math.round(visits/OPP_VISITS_PER_DVM)):null;
+  const sustain=(visits!=null)?Math.max(1,Math.round(visits/OPP_VISITS_PER_DVM)):null;
   const head=(sustain!=null&&r.dvm!=null)?sustain-r.dvm:null;
   const petHH=(r.dog!=null)?Math.round(r.dog+(catHH||0)):null;
-  // memo narrative
-  const facts=[['Income',r.fIncome],['Demand',r.fDemand],['Competition',r.fComp],['Growth',r.fGrowth||0]];
-  const fSort=[...facts].sort((a,b)=>b[1]-a[1]);
-  let memo=`${r.city?_ceEsc(r.city):r.zip} ranks <b>#${rank2>0?rank2:'—'} of ${oppScored.length}</b> ${oppRegion.name} ZIPs. `;
-  if(head!=null){
-    if(head>=2) memo+=`Demand fits <b>~${sustain} full-time vets</b> against <b>${r.dvm} practicing</b> — genuine whitespace`;
-    else if(head<=-2) memo+=`An established service hub — its <b>${r.dvm} vets</b> also serve surrounding ZIPs`;
-    else memo+=`Supply roughly matches demand (<b>${r.dvm} vets</b> for ~${sustain} supported)`;
-  } else memo+=`Demand data is partial here`;
-  if(r.mpcRem) memo+=`, with <b>~${(r.mpcRem>=1000?(r.mpcRem/1000).toFixed(1)+'k':r.mpcRem)} master-planned homes</b> still coming${(r.mpcNames&&r.mpcNames.length)?' ('+_ceEsc(r.mpcNames[0])+(r.mpcNames.length>1?' +'+(r.mpcNames.length-1):'')+')':''}`;
-  if(r.grow!=null) memo+=` on top of ${_fmtPct(r.grow)} growth`;
-  memo+=`. ${fSort[0][0]} is the strongest factor; ${fSort[3][0].toLowerCase()} is the weakest.`;
-  const ringCol=oppScoreColor(Math.round(r.score));
-  const ring=`<svg width="46" height="46" viewBox="0 0 40 40" style="flex-shrink:0"><circle cx="20" cy="20" r="16" fill="none" stroke="#eef1f7" stroke-width="5"/><circle cx="20" cy="20" r="16" fill="none" stroke="${ringCol}" stroke-width="5" stroke-dasharray="${(Math.round(r.score)*1.005).toFixed(1)} 100.5" stroke-linecap="round" transform="rotate(-90 20 20)"/><text x="20" y="24" text-anchor="middle" font-size="11" font-weight="700" fill="#0f172a">${Math.round(r.score)}</text></svg>`;
-  const chipF=(bg,bd,tc,v,l)=>`<span style="flex:1;text-align:center;background:${bg};border:1px solid ${bd};border-radius:8px;padding:5px 0;font-size:10.5px;color:${tc}"><b>${v.toFixed(0)}</b> ${l}</span>`;
-  const chips=`<div style="display:flex;gap:6px;margin-top:10px">${chipF('#f0fdf4','#bbf7d0','#166534',r.fIncome,'Income')}${chipF('#f5f3ff','#ddd6fe','#5b21b6',r.fDemand,'Demand')}${chipF('#fffbeb','#fde68a','#92400e',r.fComp,'Compet.')}${chipF('#f0fdfa','#99f6e4','#0f766e',r.fGrowth||0,'Growth')}</div>`;
-  const fullOpen=_oppFullZips.has(r.zip);
-  // demand funnel (Full numbers)
+  // ── KPI strip (mockup 1): income / growth / pipeline / clinics ──
+  const tile=(v,l,c)=>`<div style="text-align:center;min-width:0"><div style="font-size:13px;font-weight:800;color:${c||'#0f172a'};letter-spacing:-.01em;white-space:nowrap">${v}</div><div style="font-size:8.5px;font-weight:700;color:#94a3b8;letter-spacing:.05em">${l}</div></div>`;
+  const kpiStrip=`<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;background:#f8fafc;border:1px solid #eef2f7;border-radius:10px;padding:8px 10px">
+    ${tile(r.inc!=null?_fmtMoney(r.inc):'—','INCOME')}
+    ${tile(r.grow!=null?_fmtPct(r.grow):'—','GROWTH', r.grow!=null&&r.grow>0?'#15803d':undefined)}
+    ${tile(r.mpcRem?(r.mpcRem>=1000?(r.mpcRem/1000).toFixed(1)+'k':r.mpcRem):'0','PIPELINE', r.mpcRem?'#0f766e':'#94a3b8')}
+    ${tile(String(r.peCount+r.indCount),'CLINICS')}
+  </div>`;
+  // ── demand funnel, always visible ──
   let funnel='';
   if(hh!=null&&petHH!=null&&visits!=null&&sustain!=null){
     const fb=(bg,tc,stc,v,l,flex)=>`<div style="flex:${flex};background:${bg};border-radius:7px;padding:6px 6px;text-align:center;min-width:0"><div style="font-size:11.5px;font-weight:800;color:${tc}">${v}</div><div style="font-size:8.5px;color:${stc}">${l}</div></div>`;
-    funnel=`<div style="font-size:9.5px;font-weight:800;letter-spacing:.06em;color:#94a3b8;margin:8px 0 5px">DEMAND FUNNEL</div>
+    funnel=`<div style="font-size:9.5px;font-weight:800;letter-spacing:.06em;color:#94a3b8;margin:9px 0 5px">DEMAND FUNNEL</div>
       <div style="display:flex;align-items:center;gap:3px">
         ${fb('#eef2fb','#0f172a','#64748b',Math.round(hh).toLocaleString(),'households',2.4)}<span style="color:#cbd5e1">›</span>
         ${fb('#dbe7fb','#0f172a','#64748b',petHH.toLocaleString(),'pet HH',2)}<span style="color:#cbd5e1">›</span>
@@ -6161,28 +6152,32 @@ function renderOppDetail(r,i){
         ${fb('#1e3a8a','#fff','#bfd0f0','~'+sustain,'vets fit',1.5)}
       </div>`;
   }
-  const verdictPill=(()=>{ if(head==null) return '';
-    if(head>=2) return pill('#f0fdf4','#bbf7d0','#15803d','Whitespace opportunity',`Local demand could support about ${head} more full-time veterinarian${head!==1?'s':''} than practice here today.`);
-    if(head<=-2) return pill('#f8fafc','#e2e8f0','#475569','Established service hub',`This ZIP already has more veterinarians than its own residents need. They also draw patients from the surrounding area.`);
-    return pill('#f8fafc','#e2e8f0','#64748b','Balanced market',`Veterinary supply here is roughly in line with local demand.`); })();
+  // ── one-line verdict ──
+  let verdictLine='';
+  if(head!=null){
+    const perVet=u!=null?` · ${Math.round(u).toLocaleString()} dog HH per vet`:'';
+    if(head>=2) verdictLine=`<div style="margin-top:8px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:7px 10px;font-size:11px;color:#15803d;font-weight:700">Whitespace — supports ~${head} more full-time vet${head!==1?'s':''} than the ${r.dvm} here today${perVet}</div>`;
+    else if(head<=-2) verdictLine=`<div style="margin-top:8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:7px 10px;font-size:11px;color:#475569;font-weight:700">Service hub — its ${r.dvm} vets also draw from surrounding ZIPs${perVet}</div>`;
+    else verdictLine=`<div style="margin-top:8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:7px 10px;font-size:11px;color:#64748b;font-weight:700">Balanced — supply roughly matches local demand (${r.dvm} vets for ~${sustain} supported)${perVet}</div>`;
+  }
+  const fullOpen=_oppFullZips.has(r.zip);
   const fullPane=`<div id="oppfull-${i}" style="display:${fullOpen?'block':'none'}">
-    ${funnel}
-    ${verdictPill}
     ${sec('Detail')}
     ${line('Dog / cat households', (r.dog!=null?Math.round(r.dog).toLocaleString():'—')+' / '+(catHH!=null?Math.round(catHH).toLocaleString():'—'))}
-    ${line('Dog households per vet', u!=null?Math.round(u).toLocaleString():'—','more per vet means less competition')}
-    ${line('Median income', _fmtMoney(r.inc))}
-    ${line('Population growth ’21→’24', _fmtPct(r.grow), r.cons!=null?((r.cons*100).toFixed(0)+'% built 2010+'):'')}
+    ${line('New construction (2010+)', r.cons!=null?(r.cons*100).toFixed(0)+'%':'—')}
     ${r.mpcRem?line('Master-planned pipeline', '~'+r.mpcRem.toLocaleString()+' homes', (r.mpcNames||[]).slice(0,2).join(', ')+((r.mpcNames||[]).length>2?' +'+(r.mpcNames.length-2)+' more':'')):''}
     ${(()=>{const dd=(typeof dogData!=='undefined')&&dogData[r.zip]; const aF=dd&&dd.ageF; if(aF==null||aF>=0.97) return ''; const ma=(typeof ageData!=='undefined')&&ageData[r.zip]; return line('Senior-age adjustment', '−'+Math.round((1-aF)*100)+'% pet demand', ma?('median age '+Math.round(ma)):''); })()}
     ${(()=>{const dd=(typeof dogData!=='undefined')&&dogData[r.zip]; const iF=dd&&dd.incF; if(iF==null||iF>=0.97) return ''; return line('Low-income adjustment', '−'+Math.round((1-iF)*100)+'% pet demand', 'ownership rates dip in low-income areas'); })()}
     ${line('Clinics', (r.peCount+r.indCount), `${r.peCount} PE / ${r.indCount} indep`)}
     ${_oppFabricLine(r)}
+    ${line('Income · Demand · Competition · Growth', `${r.fIncome.toFixed(0)} · ${r.fDemand.toFixed(0)} · ${r.fComp.toFixed(0)} · ${(r.fGrowth||0).toFixed(0)}`)}
     <div style="font-size:10.5px;color:#94a3b8;margin-top:6px;line-height:1.4">Sub-scores are ranked <b>within ${oppRegion.name}</b> and do not compare across regions.</div>
   </div>`;
   return `<div class="opp-detail-inner">
-    <div style="display:flex;gap:11px;align-items:flex-start">${ring}<p style="font-size:12px;line-height:1.6;margin:0;color:#0f172a">${memo}</p></div>
-    ${chips}
+    ${rank>0?`<div style="font-size:11px;font-weight:800;color:#1e3a8a;margin-bottom:7px">Ranks #${rank} of ${oppScored.length} ZIPs in ${oppRegion.name}</div>`:''}
+    ${kpiStrip}
+    ${funnel}
+    ${verdictLine}
     <div style="display:flex;gap:8px;margin-top:10px;align-items:center" onclick="event.stopPropagation()">
       <button class="vm-export-btn" style="flex:1;justify-content:center" onclick="oppSelect('${r.zip}')">View on map →</button>
       <button class="vm-export-btn" style="flex:1;justify-content:center;background:var(--navy);color:#fff;border-color:var(--navy)" onclick="oppEvaluate('${r.zip}')">Evaluate placement →</button>
