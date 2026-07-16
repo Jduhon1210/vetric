@@ -679,6 +679,17 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
 .vf-lp{position:relative;width:34px;height:46px;}
 .vf-lp svg{display:block;filter:drop-shadow(0 3px 6px rgba(13,148,136,.4));}
 .vf-lp-n{position:absolute;top:-5px;right:-6px;width:16px;height:16px;border-radius:50%;background:#fff;border:1.5px solid #0d9488;color:#0f766e;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;}
+/* Evaluate sidebar: analyst memo + tabbed console (2026-07-15 redesign) */
+.eval-memo{background:#fff;border:1px solid #dde4ef;border-radius:12px;padding:11px 13px;margin-bottom:10px;box-shadow:0 1px 4px rgba(15,23,42,.04);}
+.eval-memo p{font-size:12.5px;line-height:1.62;color:#0f172a;margin:0;}
+.eval-memo-row{display:flex;align-items:center;gap:10px;border-top:1px solid #eef1f7;padding-top:9px;margin-top:9px;cursor:pointer;}
+.eval-memo-row .t{font-size:11.5px;color:#334155;flex:1;min-width:0;line-height:1.45;}
+.eval-memo-row .t .sub{color:#94a3b8;font-size:10.5px;}
+.eval-tabs{display:flex;border-bottom:1.5px solid #dde4ef;margin:2px 0 10px;}
+.eval-tab{flex:1;text-align:center;padding:7px 0 8px;font-size:11.5px;font-weight:700;color:#64748b;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1.5px;user-select:none;white-space:nowrap;}
+.eval-tab.on{color:var(--navy);border-bottom-color:var(--navy);}
+.eval-tab-n{font-size:9.5px;font-weight:800;background:#eef2fb;color:var(--navy);border-radius:8px;padding:0.5px 5px;margin-left:2px;}
+.eval-tab.on .eval-tab-n{background:var(--navy);color:#fff;}
 .adm-table{width:100%;border-collapse:collapse;font-size:11.5px;margin-top:8px;}
 .adm-table th{text-align:left;font-size:9.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#94a3b8;padding:4px 8px;border-bottom:1px solid var(--border);}
 .adm-table td{padding:6px 8px;border-bottom:1px solid #f1f5f9;color:#1f2933;vertical-align:top;}
@@ -7056,6 +7067,8 @@ let evalZoning=true;        // zoning FILTER on by default — drop residential/
 // MPC = top of the pet-ownership range — same 0.55 dog-HH profile the MPC popup uses) so the
 // tract pass can't zero them out on today's empty-pasture demographics. Toggleable (evalFuture).
 let evalFuture=true, _evalFutInfo=null, evalLandPlays=[], evalHiddenWeak=0;
+let evalTab='sites';
+function evalSetTab(t){ evalTab=t; _evalRenderSidebar(); }
 function evalToggleFuture(){ evalFuture=!evalFuture; if(evalActive) _evalComputeAndRender(); }
 function _evalInjectFuture(bb){
   evalData.resid=evalData.resid.filter(r=>!r._fut);
@@ -8216,13 +8229,35 @@ function _evalRenderSidebar(){
     const un=_speciesUnverified();
     if(un.length) speciesPrompt=`<div style="font-size:11px;font-weight:700;color:var(--navy);background:#eef2fb;border:1px solid #dbe3f4;border-radius:9px;padding:6px 10px;margin:8px 0;cursor:pointer" onclick="_speciesModalOpen()">${un.length} competitor${un.length!==1?'s':''} missing species data · review</div>`;
   }
+  // ── Analyst memo (the judgment, written out) + ring rows for the top moves ──
+  const _lpBest=evalLandPlays.length?evalLandPlays[0]:null;
+  const _lpSc=_lpBest?_evalDisp(_lpBest.score):null;
+  const _lpHomes=_lpBest?(_lpBest.coms||[]).reduce((t,x)=>t+Math.round(x.rem*x.conf),0):0;
+  const _lpName=_lpBest&&_lpBest.coms&&_lpBest.coms.length?_lpBest.coms[0].n:null;
+  const _futHomes=_evalFutInfo?_evalFutInfo.reduce((t,x)=>t+Math.round(x.rem*x.conf),0):0;
+  let _memoTxt='';
+  if(evalSat) _memoTxt+=`This market grades <b style="color:${evalSat.grade.c}">${evalSat.grade.l} — ${evalSat.grade.t.toLowerCase()}</b>. `;
+  if(evalSat) _memoTxt+=`${evalSat.peInRange} PE + ${evalSat.indInRange} independent clinics compete in range${_futHomes?`, with ~${_futHomes.toLocaleString()} announced homes on the way`:''}. `;
+  else if(_futHomes) _memoTxt+=`~${_futHomes.toLocaleString()} announced homes are on the way here. `;
+  if(evalTop.length && evalTopMode==='good'){ _memoTxt+=`The call: <b>lease</b> — Site 1 clears the bar at ${_bestSc}`; if(_lpSc&&_lpSc>_bestSc) _memoTxt+=`, though the ${_lpName?_ceEsc(_lpName)+' ':''}land play (${_lpSc}) outscores every lease option — dirt may beat rent here`; _memoTxt+='.'; }
+  else if(evalTop.length && evalTopMode==='fair'){ _memoTxt+=`The call: <b>don't force a lease</b> — the best spot (${_bestSc}) is held back: ${_evalWeakWhy(_bestG)}. `+(_lpSc?`The stronger move is dirt — the top land play scores ${_lpSc}${_lpHomes?` with ~${_lpHomes.toLocaleString()} homes in reach`:''}.`:`An acquisition may beat a new build here.`); }
+  else if(evalTop.length && evalTopMode==='none'){ _memoTxt+=`The call: <b>no new build</b> — every buildable spot scores under ${_evalDisp(EVAL_FLOOR)}. Acquire an incumbent or pick another market.`; }
+  else if(!evalTop.length){ _memoTxt+=`No commercially-siteable spots were found — this area may be largely rural${_lpSc?`; the land plays are the only moves here`:''}.`; }
+  const _ring=(scv,col,track)=>`<svg width="38" height="38" viewBox="0 0 40 40" style="flex-shrink:0"><circle cx="20" cy="20" r="16" fill="none" stroke="${track}" stroke-width="5"/><circle cx="20" cy="20" r="16" fill="none" stroke="${col}" stroke-width="5" stroke-dasharray="${(scv*1.005).toFixed(1)} 100.5" stroke-linecap="round" transform="rotate(-90 20 20)"/><text x="20" y="24" text-anchor="middle" font-size="11" font-weight="700" fill="#0f172a">${scv}</text></svg>`;
+  let _memoRows='';
+  if(_bestG){ const nearStr=isFinite(_bestG.nearC)?(_bestG.nearC/1609.344).toFixed(1)+' mi to nearest clinic':'no clinics nearby';
+    _memoRows+=`<div class="eval-memo-row" onclick="evalSetTab('sites');evalFlyTo(0)">${_ring(_bestSc,'#1e3a8a','#eef1f7')}<span class="t"><b>Lease · Site 1</b> — ${_bestG.tier==='strong'?'recommended':_bestG.tier==='fair'?'best available':'weak'}<br><span class="sub">demand ${Math.round(_bestG.demandN*100)} · share ${(_bestG.share*100).toFixed(0)}% · ${nearStr}</span></span></div>`; }
+  if(_lpBest){ _memoRows+=`<div class="eval-memo-row" onclick="evalSetTab('land');map.setView([${_lpBest.la},${_lpBest.lo}],13,{animate:false})">${_ring(_lpSc,'#0d9488','#ccfbf1')}<span class="t"><b>Buy dirt · Land play 1</b>${_lpName?' — '+_ceEsc(_lpName)+' corridor':''}<br><span class="sub">${_lpHomes?`~${_lpHomes.toLocaleString()} homes in reach · `:''}share today ${(_lpBest.share*100).toFixed(0)}%</span></span></div>`; }
+  const _memoCard=`<div class="eval-memo"><p>${_memoTxt}</p>${_memoRows}</div>`;
+  const _tabBtn=(id,label,n)=>`<span class="eval-tab ${evalTab===id?'on':''}" onclick="evalSetTab('${id}')">${label}${n!=null?` <span class="eval-tab-n">${n}</span>`:''}</span>`;
+  const _pane=(id,html)=>`<div style="display:${evalTab===id?'block':'none'}">${html}</div>`;
   sb.innerHTML=`
     <div class="area-header">
       <span class="area-title">Placement analysis · ${evalZip||(evalSitePt?'dropped site':'drawn area')}</span>
       <span style="display:flex;gap:8px;align-items:center">${evalTop.length?_exportBtn('exportEvalCSV()','Export'):''}<button class="clear-area-btn" onclick="clearEvaluate()">Clear</button></span>
     </div>
     <div class="eval-scroll">
-    ${evalSat?`<div class="eval-grade" style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="font-weight:800;font-size:18px;color:${evalSat.grade.c};border:2px solid ${evalSat.grade.c};border-radius:8px;padding:2px 10px">${evalSat.grade.l}</span><span style="font-weight:700;color:${evalSat.grade.c}">${evalSat.grade.t}</span></div><div class="eval-verdict">${evalSat.capCeil<0.30?'<span class="eval-strong">No strong placement in this ZIP — market is saturated.</span> ':''}Best winnable score ${_evalDisp(evalSat.capCeil)}/100 · median share ${evalSat.medShare.toFixed(2)} · ${evalSat.peInRange} PE + ${evalSat.indInRange} independent in range · ${evalSat.pctInCatch}% of buildable land inside a competitor catchment.${evalHiddenWeak?` ${evalHiddenWeak} weak spot${evalHiddenWeak!==1?'s':''} scored under ${_evalDisp(EVAL_FLOOR)}/100 and ${evalHiddenWeak!==1?'are':'is'} hidden.`:''}${warn}</div>`:`<div class="eval-verdict"><span class="eval-strong">${strongN} recommended site${strongN!==1?'s':''}${strongN<evalTop.length?` · ${evalTop.length-strongN} below the bar`:''}${evalHiddenWeak?` · ${evalHiddenWeak} weak spot${evalHiddenWeak!==1?'s':''} hidden`:''}.</span> ${evalCells.length} commercially-siteable cells scored; subdivision interiors &amp; rural land excluded.${warn}</div>`}
+    ${_memoCard}
     ${(()=>{ if(!evalSiteCell) return '';
       const g=evalSiteCell, sc=_evalDisp(g.score);
       const tier=g.score>=EVAL_STRONG?'strong':g.score>=EVAL_FLOOR?'fair':'weak';
@@ -8290,15 +8325,10 @@ function _evalRenderSidebar(){
           <span style="font-size:10px;color:#94a3b8">drag the ★ to re-evaluate</span>
         </div>
       </div>`; })()}
-    ${verdictBanner}
     ${speciesPrompt}
-    ${zoneLine}
-    <div class="eval-slider">
-      <div class="eval-slider-row"><span>Competitor range</span><span id="eval-range-val">${evalRadiusMi.toFixed(1)} mi</span></div>
-      <input type="range" min="1" max="6" step="0.5" value="${evalRadiusMi}" oninput="onEvalRadius(this.value)"/>
-    </div>
-    <div class="eval-toggle-row">${chip('heat','Heatmap')}${chip('hoods','Neighborhoods')}${chip('retail','Retail')}${chip('comp','Competitor range')}${chip('zoning','Zoning map')}<span class="eval-chip ${evalZoning?'on':''}" onclick="evalToggleZoning()">Zoning filter</span><span class="eval-chip ${evalFuture?'on':''}" onclick="evalToggleFuture()">⚡ Announced homes</span></div>
-    ${_evalFutInfo?`<div style="font-size:11px;color:#0f766e;background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;padding:7px 10px;margin:8px 0 2px;line-height:1.5">⚡ Demand includes ~${_evalFutInfo.reduce((t,x)=>t+Math.round(x.rem*x.conf),0).toLocaleString()} confidence-discounted announced homes (${_evalFutInfo.map(x=>x.n).join(', ')}). Toggle “Announced homes” off for today-only demand.</div>`:''}
+    <div class="eval-tabs">${_tabBtn('sites','Sites',evalTop.length)}${_tabBtn('land','Land',evalLandPlays.length)}${_tabBtn('layers','Layers',null)}${_tabBtn('data','Data',null)}</div>
+    ${_pane('sites', `${verdictBanner}<div class="eval-cards">${hideCards?'':cards}</div>`)}
+    ${_pane('land', `${_evalFutInfo?`<div style="font-size:11px;color:#0f766e;background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;padding:7px 10px;margin:8px 0 2px;line-height:1.5">⚡ Demand includes ~${_evalFutInfo.reduce((t,x)=>t+Math.round(x.rem*x.conf),0).toLocaleString()} confidence-discounted announced homes (${_evalFutInfo.map(x=>x.n).join(', ')}). Toggle “Announced homes” off for today-only demand.</div>`:''}
     ${evalLandPlays.length?`<div style="border:1.5px dashed #0d9488;background:#f0fdfa;border-radius:10px;padding:10px 12px;margin:8px 0 2px">
       <div style="font-size:12px;font-weight:800;color:#0f766e">⚡ Land plays — ranked like sites, retail fabric assumed</div>
       <div style="font-size:10.5px;color:#64748b;margin-top:2px;line-height:1.5">Same demand + competition + road math as the numbered sites; the retail term is held neutral because the fabric arrives with the rooftops. Not leaseable today — these are buy-dirt positions.</div>
@@ -8308,9 +8338,15 @@ function _evalRenderSidebar(){
         <span style="font-size:10.5px;font-weight:700;color:var(--navy);cursor:pointer;white-space:nowrap" onclick="map.setView([${lp.la},${lp.lo}],14,{animate:false})">Map →</span>
         <span style="font-size:10.5px;font-weight:700;color:var(--navy);cursor:pointer;white-space:nowrap" onclick="openLeaseSearch(${lp.la},${lp.lo},null,'land')">Land ↗</span>
       </div>`; }).join('')}
-    </div>`:''}
-    <div class="eval-cards">${hideCards?'':cards}</div>
-    <div class="eval-note">Neighborhood demand is weighted at census-tract grain — rooftops in higher pet-ownership communities pull sites harder than senior or renter-heavy pockets. Sites are limited to commercial land — either zoned/parceled commercial, or (where that's unavailable) within a real retail/commercial area; residential, civic and rural parcels are excluded, and arterial frontage alone is not enough. Coverage is layered: municipal zoning in the 16 mapped cities, county appraisal-district parcels (Collin / Denton / Dallas) for the exurbs, and OpenStreetMap land-use elsewhere. Road visibility is weighted by TxDOT traffic counts (AADT), so a busier frontage scores higher${hasAADT?'':' (traffic data unavailable here — using road class)'}. Competition counts every clinic within range, including ones just over the ZIP border. A recommended site can sit just past the boundary (within ~0.5&nbsp;mi) where the market actually peaks — catchments don't stop at the line.</div>
+    </div>`:`<div class="empty" style="padding:14px 4px">No qualifying land plays here — either no announced development in reach, or no open dirt clear of built neighborhoods.</div>`}`)}
+    ${_pane('layers', `<div class="eval-slider">
+      <div class="eval-slider-row"><span>Competitor range</span><span id="eval-range-val">${evalRadiusMi.toFixed(1)} mi</span></div>
+      <input type="range" min="1" max="6" step="0.5" value="${evalRadiusMi}" oninput="onEvalRadius(this.value)"/>
+    </div>
+    <div class="eval-toggle-row">${chip('heat','Heatmap')}${chip('hoods','Neighborhoods')}${chip('retail','Retail')}${chip('comp','Competitor range')}${chip('zoning','Zoning map')}<span class="eval-chip ${evalZoning?'on':''}" onclick="evalToggleZoning()">Zoning filter</span><span class="eval-chip ${evalFuture?'on':''}" onclick="evalToggleFuture()">⚡ Announced homes</span></div>
+    ${zoneLine}`)}
+    ${_pane('data', `${evalSat?`<div class="eval-grade" style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="font-weight:800;font-size:18px;color:${evalSat.grade.c};border:2px solid ${evalSat.grade.c};border-radius:8px;padding:2px 10px">${evalSat.grade.l}</span><span style="font-weight:700;color:${evalSat.grade.c}">${evalSat.grade.t}</span></div><div class="eval-verdict">${evalSat.capCeil<0.30?'<span class="eval-strong">No strong placement in this ZIP — market is saturated.</span> ':''}Best winnable score ${_evalDisp(evalSat.capCeil)}/100 · median share ${evalSat.medShare.toFixed(2)} · ${evalSat.peInRange} PE + ${evalSat.indInRange} independent in range · ${evalSat.pctInCatch}% of buildable land inside a competitor catchment.${evalHiddenWeak?` ${evalHiddenWeak} weak spot${evalHiddenWeak!==1?'s':''} scored under ${_evalDisp(EVAL_FLOOR)}/100 and ${evalHiddenWeak!==1?'are':'is'} hidden.`:''}${warn}</div>`:`<div class="eval-verdict"><span class="eval-strong">${strongN} recommended site${strongN!==1?'s':''}${strongN<evalTop.length?` · ${evalTop.length-strongN} below the bar`:''}${evalHiddenWeak?` · ${evalHiddenWeak} weak spot${evalHiddenWeak!==1?'s':''} hidden`:''}.</span> ${evalCells.length} commercially-siteable cells scored; subdivision interiors &amp; rural land excluded.${warn}</div>`}
+    <div class="eval-note">Neighborhood demand is weighted at census-tract grain — rooftops in higher pet-ownership communities pull sites harder than senior or renter-heavy pockets. Sites are limited to commercial land — either zoned/parceled commercial, or (where that's unavailable) within a real retail/commercial area; residential, civic and rural parcels are excluded, and arterial frontage alone is not enough. Coverage is layered: municipal zoning in the 16 mapped cities, county appraisal-district parcels (Collin / Denton / Dallas) for the exurbs, and OpenStreetMap land-use elsewhere. Road visibility is weighted by TxDOT traffic counts (AADT), so a busier frontage scores higher${hasAADT?'':' (traffic data unavailable here — using road class)'}. Competition counts every clinic within range, including ones just over the ZIP border. A recommended site can sit just past the boundary (within ~0.5&nbsp;mi) where the market actually peaks — catchments don't stop at the line.</div>`)}
     </div>
     <div class="status-bar" id="status"></div>`;
 }
@@ -8709,7 +8745,7 @@ function _evalResetState(){
   evalTopMode=null; evalShowWeak=false; evalSpeciesIgnored=false; evalSpeciesPrompted=false; _speciesModalClose();
   _evalClearLayers(); _evalHideLegend(); _evalClearDrive();
   evalData={vets:[], retail:[], resid:[], roads:[], aadt:[], zoning:[], osmLU:[], parcels:[]}; evalDataOk={retail:false,roads:false,resid:false,aadt:false,zoning:false,parcels:false};
-  evalCells=[]; evalTop=[]; evalCompsCache=[]; evalLandPlays=[]; _evalFutInfo=null; evalHiddenWeak=0;
+  evalCells=[]; evalTop=[]; evalCompsCache=[]; evalLandPlays=[]; _evalFutInfo=null; evalHiddenWeak=0; evalTab='sites';
   if(typeof _siteClear==='function') _siteClear();
 }
 function clearEvaluate(){
