@@ -7098,6 +7098,16 @@ const EVAL_STRONG=0.40, EVAL_FLOOR=0.22;
 // 45-score retail-corner cell are indistinguishable. Skipped when retail data didn't load.
 const EVAL_RET_MIN=2.0;
 function _evalStrongOK(g){ return g.score>=EVAL_STRONG && (!evalDataOk.retail || g.ret>=EVAL_RET_MIN); }
+// DISPLAY scale for site scores (2026-07-15, user: top-ranked ZIPs read as sub-50 failing grades).
+// The multiplicative capture score is honest but its raw ceiling in a CONTESTED market is ~0.45,
+// so raw*100 shows "45/100" on a genuinely strong site — same misread the List composite solved
+// with a monotonic 0-100 stretch. Piecewise anchors: FLOOR(0.22)->55, STRONG(0.40)->85, 0.55->95,
+// 1.0->100. PRESENTATION ONLY: g.score stays raw internally; ranking, tiers, verdicts unchanged.
+function _evalDisp(sc){
+  const a=[[0,0],[EVAL_FLOOR,55],[EVAL_STRONG,85],[0.55,95],[1,100]];
+  for(let i=1;i<a.length;i++){ if(sc<=a[i][0]){ const x0=a[i-1][0],y0=a[i-1][1],x1=a[i][0],y1=a[i][1]; return Math.round(y0+(sc-x0)/(x1-x0)*(y1-y0)); } }
+  return 100;
+}
 let evalTopMode=null, evalShowWeak=false;   // 'good' | 'fair' | 'none' ; reveal-weak-sites toggle
 let evalSpeciesIgnored=false, evalSpeciesPrompted=false;   // unverified-species popup state (per analysis)
 const _grav=(d,R)=>d<R?1-d/R:0;
@@ -7886,13 +7896,13 @@ function _evalSitePopup(g,i){
   const z=g.zone?`<br>Zoning: ${g.zone}${g.zcity?' ('+g.zcity+')':''}`:'';
   const cannib=_evalCannib(g);
   return `<div style="font-size:12.5px;min-width:180px">
-    <b>${g.tier==='strong'?'Recommended site':'Site'} ${i+1}</b> · score ${Math.round(g.score*100)}/100${g.tier!=='strong'?' · <span style="color:#be123c;font-weight:700">below the recommendation bar</span>':''}<br>
+    <b>${g.tier==='strong'?'Recommended site':'Site'} ${i+1}</b> · score ${_evalDisp(g.score)}/100${g.tier!=='strong'?' · <span style="color:#be123c;font-weight:700">below the recommendation bar</span>':''}<br>
     <span style="color:#64748b">${near}${z}</span>
     ${cannib?`<br><span style="color:#be123c;font-weight:600">${cannib}</span>`:''}
     <div style="margin-top:7px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
       <a href="https://www.google.com/maps/search/?api=1&query=${g.la},${g.lo}" target="_blank" rel="noopener" style="font-size:11px;color:var(--navy);font-weight:700;text-decoration:none">Open in Maps ↗</a>
       <span style="cursor:pointer;font-size:11px;color:var(--navy);font-weight:700" onclick="navigator.clipboard&&navigator.clipboard.writeText('${ll}');vfToast('Copied ${ll}')">Copy coords</span>
-      <span class="vm-star ${_inWatch('site',sid)?'on':''}" title="Save site to watchlist" onclick="toggleWatchSite(${g.la},${g.lo},${Math.round(g.score*100)},this)">★</span>
+      <span class="vm-star ${_inWatch('site',sid)?'on':''}" title="Save site to watchlist" onclick="toggleWatchSite(${g.la},${g.lo},${_evalDisp(g.score)},this)">★</span>
     </div>
     <div style="font-size:10px;color:#94a3b8;margin-top:4px">${ll}</div>
   </div>`;
@@ -7909,7 +7919,7 @@ function exportEvalCSV(){
   downloadCSV(evalTop.map((g,i)=>({g,i})), [
     {label:'Site rank',get:x=>x.i+1},
     {label:'Verdict',get:x=>x.g.tier==='strong'?'Recommended':x.g.tier==='fair'?'Best available (below bar)':'Weak - not recommended'},
-    {label:'Score',get:x=>Math.round(x.g.score*100)},
+    {label:'Score',get:x=>_evalDisp(x.g.score)},
     {label:'Lat',get:x=>x.g.la.toFixed(6)},
     {label:'Lon',get:x=>x.g.lo.toFixed(6)},
     {label:'Mi to nearest clinic',get:x=>isFinite(x.g.nearC)?(x.g.nearC/1609.344).toFixed(2):''},
@@ -8077,7 +8087,7 @@ function _evalRenderSidebar(){
   const bar=(label,v,on)=>{ const pct=on?Math.round(Math.max(0,Math.min(1,v))*100):null;
     return `<div class="eval-bar"><span>${label}</span><span class="eval-track"><span style="width:${pct==null?0:pct}%;background:${pct==null?'#cbd5e1':'#3b5bb5'}"></span></span><span class="eval-pct">${pct==null?'—':pct}</span></div>`; };
   const cards=evalTop.map((g,i)=>{
-    const headline=Math.round(g.score*100);
+    const headline=_evalDisp(g.score);
     const nearStr = isFinite(g.nearC) ? (g.nearC/1609.344).toFixed(1)+' mi to nearest clinic' : 'no clinics nearby';
     const kfmt=v=>v>=10000?Math.round(v/1000)+'k':v>=1000?(v/1000).toFixed(1)+'k':String(v);
     const roadStr = g.aadt>0 ? `~${kfmt(g.aadt)} cars/day${g.aadtRoad?' · '+g.aadtRoad:''}`
@@ -8130,13 +8140,13 @@ function _evalRenderSidebar(){
     zoneLine=`<div class="eval-verdict" style="margin-top:6px">Zoning filter <span class="eval-strong">off</span>.</div>`;
   }
   // Honest verdict banner — the engine's own call on whether this area deserves a build at all.
-  const _bestG=evalTop.length?evalTop[0]:null, _bestSc=_bestG?Math.round(_bestG.score*100):0;
+  const _bestG=evalTop.length?evalTop[0]:null, _bestSc=_bestG?_evalDisp(_bestG.score):0;
   const strongN=evalTop.filter(g=>g.tier==='strong').length;
   let verdictBanner='';
   if(evalTop.length && evalTopMode==='fair'){
-    verdictBanner=`<div style="background:#fff1f2;border:1px solid #fecdd3;border-radius:10px;padding:9px 12px;margin:8px 0"><div style="font-size:12px;font-weight:800;color:#be123c">No strong site in this area</div><div style="font-size:11.5px;color:#9f1239;margin-top:3px;line-height:1.5">The best buildable spot scores ${_bestSc}/100, below the ${Math.round(EVAL_STRONG*100)}-point recommendation bar: ${_evalWeakWhy(_bestG)}. The sites below are the best available, not endorsements — an acquisition (Acquisitions tab) or waiting for the growth corridor may beat a new build here.</div></div>`;
+    verdictBanner=`<div style="background:#fff1f2;border:1px solid #fecdd3;border-radius:10px;padding:9px 12px;margin:8px 0"><div style="font-size:12px;font-weight:800;color:#be123c">No strong site in this area</div><div style="font-size:11.5px;color:#9f1239;margin-top:3px;line-height:1.5">The best buildable spot scores ${_bestSc}/100, below the ${_evalDisp(EVAL_STRONG)}-point recommendation bar: ${_evalWeakWhy(_bestG)}. The sites below are the best available, not endorsements — an acquisition (Acquisitions tab) or waiting for the growth corridor may beat a new build here.</div></div>`;
   } else if(evalTop.length && evalTopMode==='none'){
-    verdictBanner=`<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:9px 12px;margin:8px 0"><div style="font-size:12px;font-weight:800;color:#dc2626">No recommendable site in this area</div><div style="font-size:11.5px;color:#7f1d1d;margin-top:3px;line-height:1.5">Every buildable spot scores under ${Math.round(EVAL_FLOOR*100)}/100 (best: ${_bestSc}) — ${_evalWeakWhy(_bestG)}. Honest call: do not force a new build here. Acquiring an incumbent or picking a different market is the better play.</div>${evalShowWeak?'':`<button class="vm-export-btn" style="margin-top:7px" onclick="evalRevealWeak()">Show the ${evalTop.length} best spots anyway →</button>`}</div>`;
+    verdictBanner=`<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:9px 12px;margin:8px 0"><div style="font-size:12px;font-weight:800;color:#dc2626">No recommendable site in this area</div><div style="font-size:11.5px;color:#7f1d1d;margin-top:3px;line-height:1.5">Every buildable spot scores under ${_evalDisp(EVAL_FLOOR)}/100 (best: ${_bestSc}) — ${_evalWeakWhy(_bestG)}. Honest call: do not force a new build here. Acquiring an incumbent or picking a different market is the better play.</div>${evalShowWeak?'':`<button class="vm-export-btn" style="margin-top:7px" onclick="evalRevealWeak()">Show the ${evalTop.length} best spots anyway →</button>`}</div>`;
   }
   const hideCards = evalTopMode==='none' && !evalShowWeak;
   // Unverified-species: the full prompt is a SCREEN MODAL (auto-pops once per analysis from
@@ -8152,9 +8162,9 @@ function _evalRenderSidebar(){
       <span style="display:flex;gap:8px;align-items:center">${evalTop.length?_exportBtn('exportEvalCSV()','Export'):''}<button class="clear-area-btn" onclick="clearEvaluate()">Clear</button></span>
     </div>
     <div class="eval-scroll">
-    ${evalSat?`<div class="eval-grade" style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="font-weight:800;font-size:18px;color:${evalSat.grade.c};border:2px solid ${evalSat.grade.c};border-radius:8px;padding:2px 10px">${evalSat.grade.l}</span><span style="font-weight:700;color:${evalSat.grade.c}">${evalSat.grade.t}</span></div><div class="eval-verdict">${evalSat.capCeil<0.30?'<span class="eval-strong">No strong placement in this ZIP — market is saturated.</span> ':''}Best winnable score ${Math.round(evalSat.capCeil*100)}/100 · median share ${evalSat.medShare.toFixed(2)} · ${evalSat.peInRange} PE + ${evalSat.indInRange} independent in range · ${evalSat.pctInCatch}% of buildable land inside a competitor catchment.${warn}</div>`:`<div class="eval-verdict"><span class="eval-strong">${strongN} recommended site${strongN!==1?'s':''}${strongN<evalTop.length?` · ${evalTop.length-strongN} below the bar`:''}.</span> ${evalCells.length} commercially-siteable cells scored; subdivision interiors &amp; rural land excluded.${warn}</div>`}
+    ${evalSat?`<div class="eval-grade" style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="font-weight:800;font-size:18px;color:${evalSat.grade.c};border:2px solid ${evalSat.grade.c};border-radius:8px;padding:2px 10px">${evalSat.grade.l}</span><span style="font-weight:700;color:${evalSat.grade.c}">${evalSat.grade.t}</span></div><div class="eval-verdict">${evalSat.capCeil<0.30?'<span class="eval-strong">No strong placement in this ZIP — market is saturated.</span> ':''}Best winnable score ${_evalDisp(evalSat.capCeil)}/100 · median share ${evalSat.medShare.toFixed(2)} · ${evalSat.peInRange} PE + ${evalSat.indInRange} independent in range · ${evalSat.pctInCatch}% of buildable land inside a competitor catchment.${warn}</div>`:`<div class="eval-verdict"><span class="eval-strong">${strongN} recommended site${strongN!==1?'s':''}${strongN<evalTop.length?` · ${evalTop.length-strongN} below the bar`:''}.</span> ${evalCells.length} commercially-siteable cells scored; subdivision interiors &amp; rural land excluded.${warn}</div>`}
     ${(()=>{ if(!evalSiteCell) return '';
-      const g=evalSiteCell, sc=Math.round(g.score*100);
+      const g=evalSiteCell, sc=_evalDisp(g.score);
       const tier=g.score>=EVAL_STRONG?'strong':g.score>=EVAL_FLOOR?'fair':'weak';
       // LAND REALITY OUTRANKS THE SCORE TIER: a pin on a runway, a lake, or land with zero
       // commercial context must not wear an endorsement chip just because nothing competes
@@ -8174,7 +8184,7 @@ function _evalRenderSidebar(){
       else if(!g.gateOk) warns.push('Not inside a mapped commercial corridor — the site-finder would not have picked this parcel on its own; verify there is (or will be) commercial land here.');
       if(!evalCells.some(c=>!c.forced)) warns.push('No commercially-siteable land was found anywhere in this area — treat the bars as low-confidence.');
       const nearStr=isFinite(g.nearC)?(g.nearC/1609.344).toFixed(1)+' mi to nearest clinic':'no clinics nearby';
-      const best=evalTop.length?Math.round(evalTop[0].score*100):null;
+      const best=evalTop.length?_evalDisp(evalTop[0].score):null;
       const compare=best!=null?(sc>=best?`Your pin matches the best spot found in this area (${best}).`:`Best spot found nearby scores ${best} — your pin trails it by ${best-sc}.`):'';
       const sid=g.la.toFixed(4)+','+g.lo.toFixed(4);
       const cn=_evalCannib(g);
@@ -8571,7 +8581,7 @@ function saveSitePlacement(btn){
   if(!evalSiteCell || !evalSitePt) return;
   const g=evalSiteCell, id=g.la.toFixed(4)+','+g.lo.toFixed(4);
   const v=_siteVerdict(g), k=_siteKpis(_siteCtxMi);
-  const rec={ type:'site', placement:1, id, lat:g.la, lon:g.lo, score:Math.round(g.score*100),
+  const rec={ type:'site', placement:1, id, lat:g.la, lon:g.lo, score:_evalDisp(g.score),
     verdict:v.t, vk:v.k, share:Math.round(g.share*100), nComp:g.nComp, nPE:g.nPE,
     name:'Placement · '+id, region:evalZip||'dropped site', savedAt:new Date().toISOString().slice(0,10),
     kpi:k?{ r:_siteCtxMi, clinics:k.n, pe:k.pe, pePct:k.pePct, growth:k.growth, sat:k.sat!=null?+k.sat.toFixed(1):null, satTag:k.satTag, dogHH:k.dogHH }:null };
