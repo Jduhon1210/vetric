@@ -6151,7 +6151,7 @@ function renderOppDetail(r,i){
     const fb=(bg,tc,stc,v,l,flex)=>`<div style="flex:${flex};background:${bg};border-radius:7px;padding:6px 6px;text-align:center;min-width:0"><div style="font-size:11.5px;font-weight:800;color:${tc}">${v}</div><div style="font-size:8.5px;color:${stc}">${l}</div></div>`;
     const stages=[];
     if(hh!=null) stages.push(fb('#eef2fb','#0f172a','#64748b',Math.round(hh).toLocaleString(),'households',2.4));
-    if(petHH!=null) stages.push(fb('#dbe7fb','#0f172a','#64748b',petHH.toLocaleString(),catHH!=null?'pet HH':'dog HH',2));
+    if(petHH!=null) stages.push(fb('#dbe7fb','#0f172a','#64748b',petHH.toLocaleString(),catHH!=null?'dog + cat HH':'dog HH',2));   // SUM of species counts, NOT unique pet households (dual-owner homes appear in both — visits math is per-species, so the sum is the right feeder; the label just must not claim uniqueness)
     if(visits!=null) stages.push(fb('#bfd4f7','#0f172a','#475569','~'+(visits>=1000?(visits/1000).toFixed(1)+'k':visits),'visits/yr',1.8));
     if(sustain!=null) stages.push(fb('#1e3a8a','#fff','#bfd0f0','~'+sustain,'vets fit',1.5));
     if(stages.length>=2) funnel=`<div style="font-size:9.5px;font-weight:800;letter-spacing:.06em;color:#94a3b8;margin:9px 0 5px">DEMAND FUNNEL</div>
