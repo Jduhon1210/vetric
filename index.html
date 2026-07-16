@@ -7849,8 +7849,16 @@ function _evalComputeAndRender(){
       const accessMult = (hasRoads||hasAADT) ? 0.65+0.40*g.accessN : 1;
       g.score = Math.max(0, Math.min(1, g.demandN * Math.pow(Math.min(g.share,0.85), GAMMA) * accessMult));
     }
-    // qualify: meaningful FUTURE demand (it's a land play, not a today-site that lacks retail)
-    const cand=landGrid.filter(g=>(g.demF||0)>=0.8).sort((a,b)=>b.score-a.score);
+    // qualify: meaningful FUTURE demand (it's a land play, not a today-site that lacks retail),
+    // AND genuinely open dirt (2026-07-15, user: sprouts landed mid-neighborhood): a vacant
+    // parcel INSIDE mapped residential fabric (interior greenbelt / HOA open space / a
+    // developer's future phase) is legal-vacant but not buyable market land — the tiered zoning
+    // lookup lets a 'fallback' parcel shadow the OSM residential poly, so re-check the fabric
+    // directly; and any cell within ~600m of already-built rooftops is infill, not a land play.
+    const _lpResid=(la,lo)=>{ for(const pp of evalData.osmLU){ if(pp.gate==='exclude' && pp.label && pp.label.indexOf('Residential')===0){ if(la<pp.bb.minLa||la>pp.bb.maxLa||lo<pp.bb.minLo||lo>pp.bb.maxLo) continue; if(pointInGeoJSON(la,lo,pp.f)) return true; } } return false; };
+    const _bLp=600/111000;
+    const _lpNearBuilt=(la,lo)=>{ for(const r of evalData.resid){ if(r._fut||r._cons) continue; if(Math.abs(r.lat-la)>_bLp) continue; if(hav(la,lo,r.lat,r.lon)<600) return true; } return false; };
+    const cand=landGrid.filter(g=>(g.demF||0)>=0.8 && !_lpResid(g.la,g.lo) && !_lpNearBuilt(g.la,g.lo)).sort((a,b)=>b.score-a.score);
     const sepLP=0.0175; // ~1.2mi fixed — land corridors are distinct at this grain
     for(const g of cand){ if(evalLandPlays.every(t=>Math.hypot(t.la-g.la,t.lo-g.lo)>sepLP)){ evalLandPlays.push(g); if(evalLandPlays.length===3) break; } }
     for(const g of evalLandPlays){
