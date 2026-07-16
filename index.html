@@ -7097,7 +7097,9 @@ const EVAL_STRONG=0.40, EVAL_FLOOR=0.22;
 // corners 3.8-9.5 — clean gap, threshold 2.0). Without it, a 45-score empty-pasture cell and a
 // 45-score retail-corner cell are indistinguishable. Skipped when retail data didn't load.
 const EVAL_RET_MIN=2.0;
-function _evalStrongOK(g){ return g.score>=EVAL_STRONG && (!evalDataOk.retail || g.ret>=EVAL_RET_MIN); }
+// 'Recommended' also requires REAL demand (demandN>=0.45) — emptiness + a gas-station strip
+// can pass the score bar and the fabric guard, but a green badge needs rooftops to serve.
+function _evalStrongOK(g){ return g.score>=EVAL_STRONG && g.demandN>=0.45 && (!evalDataOk.retail || g.ret>=EVAL_RET_MIN); }
 // DISPLAY scale for site scores (2026-07-15, user: top-ranked ZIPs read as sub-50 failing grades).
 // The multiplicative capture score is honest but its raw ceiling in a CONTESTED market is ~0.45,
 // so raw*100 shows "45/100" on a genuinely strong site — same misread the List composite solved
@@ -7443,8 +7445,18 @@ async function _evalFetchContext(feat, setStage){
       if(!la||!lo) continue;
       const t=el.tags||{};
       if(t.amenity==='veterinary') evalData.vets.push({lat:la,lon:lo});
-      else if(t.shop) evalData.retail.push({lat:la,lon:lo});
-      else if(t.landuse==='commercial'||t.landuse==='retail'){ evalData.retail.push({lat:la,lon:lo,area:true}); evalData.resid.push({lat:la,lon:lo,w:0.4}); }
+      // Retail-fabric QUALITY filter (2026-07-15, user caught Site 1 snapped to an RV park):
+      // OSM tags storage compounds shop=storage_rental and RV parks/self-storage often carry
+      // landuse=commercial — zero co-tenancy value for a clinic. Drop B2B/storage/RV noise by
+      // tag and by name before it can anchor the siting gate or the strong-tier fabric guard.
+      else if(t.shop || t.landuse==='commercial' || t.landuse==='retail'){
+        const _junkShop=/^(storage_rental|trade|wholesale|farm)$/.test(t.shop||'');
+        const _junkName=/self.?storage|mini.?storage|storage unit|rv|caravan|campground|camp ground|mobile home/i.test(t.name||'');
+        if(!_junkShop && !_junkName){
+          if(t.shop) evalData.retail.push({lat:la,lon:lo});
+          else { evalData.retail.push({lat:la,lon:lo,area:true}); evalData.resid.push({lat:la,lon:lo,w:0.4}); }
+        }
+      }
       else if(t.landuse==='residential') evalData.resid.push({lat:la,lon:lo,w:1});
       else if(t.place) evalData.resid.push({lat:la,lon:lo,w:1.3});
     }
@@ -7806,7 +7818,11 @@ function _evalComputeAndRender(){
     g.lowComp = g.share; // alias: the "Low competition" bar now shows absolute winnable share
     // Core is MULTIPLICATIVE captured demand — what the site actually WINS. Demand can no longer
     // additively buy back a competition-taken site (the 75077 bug).
-    const core = g.demandN * Math.pow(g.share, GAMMA);
+    // Share SATURATES at 0.85 (2026-07-15, user: #1 site landed at an empty rural crossroads):
+    // past ~0.85, uncontested is uncontested — share 1.0 at 5.6mi-from-anything must not outbid
+    // share 0.47 sitting on real rooftops. Demand decides between open sites, which pulls
+    // winners toward the rooftops (and injected MPC future demand) instead of pristine emptiness.
+    const core = g.demandN * Math.pow(Math.min(g.share, 0.85), GAMMA);
     // Modifiers: low road visibility discounts up to 35%; a busy high-traffic frontage
     // lifts the score up to ~5% (the revenue payoff). Retail co-tenancy is a bonus.
     // Each defaults to neutral (=1) when its layer is missing so it can't sink every site.
