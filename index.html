@@ -1069,16 +1069,9 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
 <div class="main">
   <div class="dev-badge" id="dev-badge">DEV MODE</div>
   <div class="layers-panel" id="layers-panel">
-    <div class="layers-panel-header">Clinic Type</div>
-    <div class="company-filters" style="border-bottom:1px solid var(--border)">
-      <div class="company-filters-title">Show clinic types <span style="font-weight:500;text-transform:none;letter-spacing:0;color:var(--subtle)">— from websites + names</span></div>
-      <div class="company-check"><input type="checkbox" id="type-small" checked onchange="toggleClinicType('small',this.checked)"/><label for="type-small">Small animal</label></div>
-      <div class="company-check"><input type="checkbox" id="type-mixed" checked onchange="toggleClinicType('mixed',this.checked)"/><label for="type-mixed">Mixed (small + large)</label></div>
-      <div class="company-check"><input type="checkbox" id="type-large" checked onchange="toggleClinicType('large',this.checked)"/><label for="type-large">Large animal / equine</label></div>
-      <div class="company-check"><input type="checkbox" id="type-specialty" checked onchange="toggleClinicType('specialty',this.checked)"/><label for="type-specialty">Specialty / ER</label></div>
-      <div class="layer-status" id="type-status" style="padding-top:4px">All types shown</div>
-    </div>
-    <div class="layers-panel-header" style="border-top:1px solid var(--border)">Data Layers</div>
+    <div class="layers-panel-header">Data Layers</div>
+    <!-- Clinic-type checkboxes removed 2026-07-15 (user ask) — the bottom-right map filter
+         (funnel button → Practice type chips) drives the same TYPE_ON state now. -->
     <div style="padding:0 16px 10px;font-size:11px;color:var(--subtle);line-height:1.5;border-bottom:1px solid var(--border);margin-bottom:2px;">The map shows one color scheme at a time — turning one on switches the other off, so the colors stay readable.</div>
     <div class="layer-item">
       <div class="layer-row">
