@@ -673,12 +673,12 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
 .vf-stg-pill{display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:9px;padding:3px 9px;margin-right:10px;white-space:nowrap;}
 .vf-stg-pill::before{content:'';width:7px;height:7px;border-radius:50%;background:#f59e0b;}
 .vf-sig{width:13px;height:13px;transform:rotate(45deg);border:2px solid #fff;border-radius:3px;box-shadow:0 1px 5px rgba(15,23,42,.35);}
-/* Land-play pin: solid teal squircle w/ white bolt + corner rank badge + grounded tail; a faint
-   dashed halo keeps the "speculative / future" language without the old washed-out look. */
-.vf-lp{position:relative;width:34px;height:34px;border-radius:10px;background:#0d9488;border:2px solid #fff;box-shadow:0 3px 10px rgba(13,148,136,.45);display:flex;align-items:center;justify-content:center;font-size:17px;color:#fff;}
-.vf-lp::before{content:'';position:absolute;inset:-6px;border-radius:14px;border:1.5px dashed rgba(13,148,136,.65);pointer-events:none;}
-.vf-lp::after{content:'';position:absolute;left:50%;bottom:-8px;transform:translateX(-50%);width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:8px solid #0d9488;filter:drop-shadow(0 2px 2px rgba(13,148,136,.3));}
-.vf-lp-n{position:absolute;top:-7px;right:-7px;width:16px;height:16px;border-radius:50%;background:#fff;border:1.5px solid #0d9488;color:#0f766e;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;}
+/* Land-play pin (design F, 2026-07-15): teal teardrop with a white SPROUT — growth that isn't
+   built yet — plus a white corner rank badge. SVG-drawn in the divIcon; these classes only
+   position the badge over it. */
+.vf-lp{position:relative;width:34px;height:46px;}
+.vf-lp svg{display:block;filter:drop-shadow(0 3px 6px rgba(13,148,136,.4));}
+.vf-lp-n{position:absolute;top:-5px;right:-6px;width:16px;height:16px;border-radius:50%;background:#fff;border:1.5px solid #0d9488;color:#0f766e;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;}
 .adm-table{width:100%;border-collapse:collapse;font-size:11.5px;margin-top:8px;}
 .adm-table th{text-align:left;font-size:9.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#94a3b8;padding:4px 8px;border-bottom:1px solid var(--border);}
 .adm-table td{padding:6px 8px;border-bottom:1px solid #f1f5f9;color:#1f2933;vertical-align:top;}
@@ -8030,7 +8030,8 @@ function _evalRenderLayers(){
     });
   }
   evalLandPlays.forEach((lp,i)=>{
-    const m=L.marker([lp.la,lp.lo],{icon:L.divIcon({className:'',html:'<div class="vf-lp">⚡<span class="vf-lp-n">'+(i+1)+'</span></div>',iconSize:[34,44],iconAnchor:[17,44],popupAnchor:[0,-46]})});
+    const _lpSvg='<svg width="34" height="46" viewBox="0 0 34 46" xmlns="http://www.w3.org/2000/svg"><path d="M17 2C9.3 2 3 8.3 3 16C3 27.5 17 44 17 44C17 44 31 27.5 31 16C31 8.3 24.7 2 17 2Z" fill="#0d9488" stroke="#fff" stroke-width="2"/><path d="M17 23 V13" stroke="#fff" stroke-width="2.2" fill="none" stroke-linecap="round"/><path d="M17 16 C17 12.5 20 10.5 23 10.5 C23 14 20.5 16 17 16 Z" fill="#fff"/><path d="M17 19 C17 15.5 14 13.5 11 13.5 C11 17 13.5 19 17 19 Z" fill="#fff"/></svg>';
+    const m=L.marker([lp.la,lp.lo],{icon:L.divIcon({className:'',html:'<div class="vf-lp">'+_lpSvg+'<span class="vf-lp-n">'+(i+1)+'</span></div>',iconSize:[34,46],iconAnchor:[17,44],popupAnchor:[0,-46]})});
     m.bindTooltip('Land play '+(i+1)+' — future-demand corridor',{direction:'top',offset:[0,-48]});
     m.bindPopup(()=>{
       const homes=(lp.coms||[]).reduce((t,x)=>t+Math.round(x.rem*x.conf),0);
@@ -8060,7 +8061,7 @@ function _evalRenderLegend(){
   if(evalShow.comp) rows.push(`<div class="eval-leg-row"><span class="eval-sym"><span class="eval-sym-ring"></span></span>Competitor reach (${evalRadiusMi.toFixed(1)} mi)</div>`);
   if(evalShow.hoods) rows.push(`<div class="eval-leg-row"><span class="eval-sym"><span class="eval-sym-hood"></span></span>Neighborhood (demand)</div>`);
   if(evalShow.hoods && _evalFutInfo) rows.push(`<div class="eval-leg-row"><span class="eval-sym" style="color:#0d9488">◌</span>Announced homes (future demand)</div>`);
-  if(evalLandPlays.length) rows.push(`<div class="eval-leg-row"><span class="eval-sym"><span style="display:inline-block;width:11px;height:11px;border-radius:3.5px;background:#0d9488;border:1.5px solid #fff;box-shadow:0 0 0 1.5px rgba(13,148,136,.5)"></span></span>Land plays (ranked, future demand)</div>`);
+  if(evalLandPlays.length) rows.push(`<div class="eval-leg-row"><span class="eval-sym"><svg width="11" height="15" viewBox="0 0 34 46"><path d="M17 2C9.3 2 3 8.3 3 16C3 27.5 17 44 17 44C17 44 31 27.5 31 16C31 8.3 24.7 2 17 2Z" fill="#0d9488" stroke="#fff" stroke-width="3"/></svg></span>Land plays (ranked, future demand)</div>`);
   if(evalShow.retail) rows.push(`<div class="eval-leg-row"><span class="eval-sym"><span class="eval-sym-retail"></span></span>Retail / commercial</div>`);
   if(evalShow.zoning){
     rows.push(`<div class="eval-leg-row"><span class="eval-sym"><span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:#16a34a;opacity:0.55"></span></span>Zoned siteable (commercial/office/ind.)</div>`);
