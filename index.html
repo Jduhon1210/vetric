@@ -7735,14 +7735,14 @@ function _evalComputeAndRender(){
       // neighborhood demand — the rooftops within ~2.5mi this site can draw from, each WEIGHTED
       // by its census tract's modeled pet rate (tractsOn) so sites gravitate toward high-pet
       // neighborhoods and away from senior/renter pockets, sub-ZIP (user ask, Phase 2).
-      let dem=0; for(const r of evalData.resid){ if(Math.abs(r.lat-la)>bDem) continue; const d=hav(la,lo,r.lat,r.lon); if(d<DEM_R) dem+=(r.w||1)*(tractsOn?(r._pw||1):1)*_grav(d,DEM_R); }
+      let dem=0, demF=0; for(const r of evalData.resid){ if(Math.abs(r.lat-la)>bDem) continue; const d=hav(la,lo,r.lat,r.lon); if(d<DEM_R){ const v=(r.w||1)*(tractsOn?(r._pw||1):1)*_grav(d,DEM_R); if(r._fut) demF+=v; else dem+=v; } }
       // retail access (co-tenancy / visibility)
       let ret=0; for(const r of evalData.retail){ if(Math.abs(r.lat-la)>bRet) continue; const d=hav(la,lo,r.lat,r.lon); if(d<RET_R) ret+=(r.area?0.6:1)*_grav(d,RET_R); }
       // competition (border-aware gravity); scan all comps for the true nearest readout
       let comp=0, nearC=Infinity, nearPE=Infinity, nComp=0, nPE=0; for(const c of comps){ const d=hav(la,lo,c.lat,c.lon); if(d<nearC)nearC=d; if(d<R){ comp+=(c.pe?1.6:1)*_revW(c.reviews,compMedRev)*_staffW(c.staffN)*(c.mult||1)*_grav(d,R); nComp++; if(c.pe){ nPE++; if(d<nearPE) nearPE=d; } } }
       const affl=_cellAffl(la,lo); // per-cell ZIP demographics in area mode; constant in ZIP mode
       const ageF=_cellAgeF(la,lo); // senior-skew demand damp for the containing ZIP
-      grid.push({la,lo,dem,ret,comp,nearC,nearPE,nComp,nPE,affl,ageF,nearRoad,nearCls,aadt,aadtRoad,stepLa,stepLo,zone:zinfo?zinfo.label:null,zcity:zinfo?zinfo.city:null});
+      grid.push({la,lo,dem,demF,ret,comp,nearC,nearPE,nComp,nPE,affl,ageF,nearRoad,nearCls,aadt,aadtRoad,stepLa,stepLo,zone:zinfo?zinfo.label:null,zcity:zinfo?zinfo.city:null});
     }
   // Dropped-site FORCED cell — the user's exact pin, scored with the identical formulas. It
   // skips the zoning-exclude drop and the green/blue siting gate (the question is "how good is
@@ -7754,11 +7754,11 @@ function _evalComputeAndRender(){
     let nearRetail=Infinity; for(const r of evalData.retail){ if(Math.abs(r.lat-la)>bRet) continue; const d=hav(la,lo,r.lat,r.lon); if(d<nearRetail){ nearRetail=d; if(d<40) break; } }
     const zinfo=evalZoning?_zoneClassAt(la,lo):null;
     let aadt=0, aadtRoad=null; for(const a2 of evalData.aadt){ if(Math.abs(a2.lat-la)>bVis) continue; const d=hav(la,lo,a2.lat,a2.lon); if(d<VIS_R && a2.v>aadt){ aadt=a2.v; aadtRoad=a2.road; } }
-    let dem=0; for(const r of evalData.resid){ if(Math.abs(r.lat-la)>bDem) continue; const d=hav(la,lo,r.lat,r.lon); if(d<DEM_R) dem+=(r.w||1)*(tractsOn?(r._pw||1):1)*_grav(d,DEM_R); }
+    let dem=0, demF=0; for(const r of evalData.resid){ if(Math.abs(r.lat-la)>bDem) continue; const d=hav(la,lo,r.lat,r.lon); if(d<DEM_R){ const v=(r.w||1)*(tractsOn?(r._pw||1):1)*_grav(d,DEM_R); if(r._fut) demF+=v; else dem+=v; } }
     let ret=0; for(const r of evalData.retail){ if(Math.abs(r.lat-la)>bRet) continue; const d=hav(la,lo,r.lat,r.lon); if(d<RET_R) ret+=(r.area?0.6:1)*_grav(d,RET_R); }
     let comp=0, nearC=Infinity, nearPE=Infinity, nComp=0, nPE=0; for(const c of comps){ const d=hav(la,lo,c.lat,c.lon); if(d<nearC)nearC=d; if(d<R){ comp+=(c.pe?1.6:1)*_revW(c.reviews,compMedRev)*_staffW(c.staffN)*(c.mult||1)*_grav(d,R); nComp++; if(c.pe){ nPE++; if(d<nearPE) nearPE=d; } } }
     const zg=zinfo?zinfo.gate:null;
-    evalSiteCell={la,lo,dem,ret,comp,nearC,nearPE,nComp,nPE,affl:_cellAffl(la,lo),ageF:_cellAgeF(la,lo),nearRoad,nearCls,aadt,aadtRoad,stepLa,stepLo,zone:zinfo?zinfo.label:null,zcity:zinfo?zinfo.city:null,forced:true,zgateRaw:zg,gateOk:(zg==='allow')||(hasRetail && nearRetail<SITE_COMM)};
+    evalSiteCell={la,lo,dem,demF,ret,comp,nearC,nearPE,nComp,nPE,affl:_cellAffl(la,lo),ageF:_cellAgeF(la,lo),nearRoad,nearCls,aadt,aadtRoad,stepLa,stepLo,zone:zinfo?zinfo.label:null,zcity:zinfo?zinfo.city:null,forced:true,zgateRaw:zg,gateOk:(zg==='allow')||(hasRetail && nearRetail<SITE_COMM)};
     grid.push(evalSiteCell);   // normalized + scored with everything else; excluded from the top-N pick below
   }
   evalCompsCache=comps;
@@ -7770,7 +7770,12 @@ function _evalComputeAndRender(){
   const maxOf=f=>Math.max(1e-6,...(_realGrid.length?_realGrid:grid).map(f));
   const maxDem=maxOf(g=>g.dem), maxRet=maxOf(g=>g.ret), maxComp=maxOf(g=>g.comp);
   for(const g of grid){
-    g.demandN = (hasResid ? 0.55*Math.min(1,g.dem/maxDem)+0.45*g.affl : g.affl) * (tractsOn ? 1 : (g.ageF||1));   // ZIP ageF only as the non-tract fallback (min: a forced site cell may top the real-cell max)
+    // Future (announced-development) demand ADDS on top of the real-rooftop normalization and is
+    // clamped at the cap — it can lift an MPC-adjacent cell to the top, but can NEVER deflate the
+    // rest of the grid. (Regression fix 2026-07-15: maxDem previously included future points, so
+    // one cell near a big footprint became the ceiling and sank every other cell's demandN —
+    // top-ranked growth ZIPs suddenly graded 'no strong site' across the board.)
+    g.demandN = (hasResid ? 0.55*Math.min(1,(g.dem+(g.demF||0))/maxDem)+0.45*g.affl : g.affl) * (tractsOn ? 1 : (g.ageF||1));   // ZIP ageF only as the non-tract fallback (min: a forced site cell may top the real-cell max)
     g.retailN = hasRetail ? Math.min(1,g.ret/maxRet) : 0.5;
     // Road VISIBILITY: traffic volume on the frontage road (AADT) when a count is
     // near, else road class as a proxy. The drive-by / new-client revenue signal —
