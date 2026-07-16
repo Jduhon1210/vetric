@@ -8494,6 +8494,41 @@ async function computeIsochrone(lat, lon, budgetSec){
   return ring;
 }
 let _evalDriveIdx=-1, _evalDriveRing=null;   // which top-site the drive polygon belongs to + its cached ring (reuse on re-show, no API call)
+// ── 10-min catchment analysis (2026-07-16, user ask): households / visits / competitors /
+// practice size inside the isochrone. Households are apportioned from ZIP geometry by area
+// sampling (a 30-point grid per intersecting ZIP → fraction of the ZIP inside the ring), then
+// the same species-split visits math as the Opportunity funnel, the site's own winnable share
+// (capped at the scoring saturation 0.85), and the roster/revenue benchmarks. Display-only.
+async function _evalCatchmentStats(ring, g){
+  try{ await ensureDogData(); }catch(e){}
+  const geo=await loadZipGeometry();
+  const poly=ring.map(p=>({lat:p[0],lng:p[1]}));
+  let rs=99,rn=-99,rw=999,re=-999; for(const p of ring){ if(p[0]<rs)rs=p[0]; if(p[0]>rn)rn=p[0]; if(p[1]<rw)rw=p[1]; if(p[1]>re)re=p[1]; }
+  let hhIn=0, dogIn=0, catIn=0;
+  for(const f of geo.features){
+    let bb; try{ bb=_evalBBox(f); }catch(e){ continue; }
+    if(bb.maxLa<rs||bb.minLa>rn||bb.maxLo<rw||bb.minLo>re) continue;
+    const dd=(typeof dogData!=='undefined')&&dogData[f.properties.zip]; if(!dd||dd.households==null) continue;
+    let inZip=0, inBoth=0;
+    for(let yi=0; yi<5; yi++) for(let xi=0; xi<6; xi++){
+      const la=bb.minLa+(yi+0.5)*(bb.maxLa-bb.minLa)/5, lo=bb.minLo+(xi+0.5)*(bb.maxLo-bb.minLo)/6;
+      if(!pointInGeoJSON(la,lo,f)) continue;
+      inZip++; if(pointInPolygon(la,lo,poly)) inBoth++;
+    }
+    if(!inZip||!inBoth) continue;
+    const frac=inBoth/inZip;
+    hhIn+=dd.households*frac; dogIn+=(dd.est||0)*frac; catIn+=(dd.catEst||0)*frac;
+  }
+  const visits=Math.round(dogIn*OPP_VISITS_PER_DOGHH+catIn*OPP_VISITS_PER_CATHH);
+  let pe=0, ind=0; for(const c of evalCompsCache){ if(pointInPolygon(c.lat,c.lon,poly)){ c.pe?pe++:ind++; } }
+  const share=Math.min(g&&g.share!=null?g.share:0.5, 0.85);
+  const captured=Math.round(visits*share);
+  const dvmFit=captured/OPP_VISITS_PER_DVM;
+  const size=dvmFit<1.4?'solo-doctor':dvmFit<2.5?'~2-doctor':dvmFit<3.5?'~3-doctor':'4+ doctor';
+  const rev=dvmFit*REV_PER_DVM;
+  return {hhIn:Math.round(hhIn), dogIn:Math.round(dogIn), catIn:Math.round(catIn), visits, pe, ind, share, captured, dvmFit, size, rev, areaMi:Math.round(_polyAreaMi(ring))};
+}
+function _fmtM(v){ return v>=1e6?('$'+(v/1e6).toFixed(1)+'M'):('$'+Math.round(v/1000)+'k'); }
 const _DRIVE_SHOW='◔ 10-min drive area', _DRIVE_HIDE='✕ Hide drive area';
 function _evalDriveResetBtns(){
   document.querySelectorAll('button[onclick^="evalDriveTime"]').forEach(b=>{ b.textContent=_DRIVE_SHOW; b.disabled=false; });
@@ -8516,11 +8551,18 @@ async function evalDriveTime(i, btn){
     _evalDriveIdx=i; _evalDriveRing=ring;
     evalDriveLayer=L.polygon(ring,{color:'#7c3aed',weight:2.5,fillColor:'#7c3aed',fillOpacity:0.12}).addTo(map);
     try{ map.fitBounds(evalDriveLayer.getBounds(),{padding:[40,40],maxZoom:14}); }catch(e){}
-    const poly=ring.map(p=>({lat:p[0],lng:p[1]}));
-    let pe=0, ind=0;
-    for(const c of evalCompsCache){ if(pointInPolygon(c.lat,c.lon,poly)){ c.pe?pe++:ind++; } }
     const el=document.getElementById('evd-'+i);
-    if(el) el.innerHTML=`<b>10-min drive:</b> ${pe+ind} clinics in range (${pe} PE · ${ind} indep) · ~${Math.round(_polyAreaMi(ring))} mi² catchment`;
+    if(el) el.innerHTML=`<span style="color:#94a3b8">Analyzing catchment…</span>`;
+    const cs=await _evalCatchmentStats(ring, g);
+    if(el) el.innerHTML=`<div style="background:#f8f6ff;border:1px solid #ddd0f7;border-radius:9px;padding:8px 11px;line-height:1.7">
+      <div style="font-size:9.5px;font-weight:800;letter-spacing:.06em;color:#7c3aed">10-MIN CATCHMENT · ~${cs.areaMi} mi²</div>
+      <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:#64748b">Households you'd serve</span><b>${cs.hhIn.toLocaleString()}</b></div>
+      <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:#64748b">Pet households</span><b>${cs.dogIn.toLocaleString()} dog · ${cs.catIn.toLocaleString()} cat</b></div>
+      <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:#64748b">Est. vet visits in catchment</span><b>~${cs.visits.toLocaleString()}/yr</b></div>
+      <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:#64748b">Competing clinics inside</span><b>${cs.pe+cs.ind} (${cs.pe} PE · ${cs.ind} indep)</b></div>
+      <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:#64748b">Winnable at ${(cs.share*100).toFixed(0)}% share</span><b>~${cs.captured.toLocaleString()} visits/yr</b></div>
+      <div style="margin-top:4px;font-size:11px;font-weight:700;color:#5b21b6">Supports a ${cs.size} practice · est. revenue ${_fmtM(cs.rev)} <span style="font-weight:500;color:#94a3b8">(modeled)</span></div>
+    </div>`;
     if(btn){ btn.disabled=false; btn.textContent=_DRIVE_HIDE; }
   }catch(e){
     vfToast('Drive-time unavailable — is the Routes API set up?');
