@@ -6,7 +6,19 @@
 //   1. Google Cloud → enable "Street View Static API" and allow your API key to call it.
 //   2. Cloudflare Pages → Settings → Environment variables → add GOOGLE_PLACES_KEY (Production).
 // Until both are done the image just won't render (the popup degrades gracefully).
+async function _rateOK(env, key, limit, ttl) {
+  try {
+    const n = parseInt(await env.VETRIC_KV.get(key) || '0', 10);
+    if (n >= limit) return false;
+    await env.VETRIC_KV.put(key, String(n + 1), { expirationTtl: ttl });
+  } catch (e) {}
+  return true;
+}
 export async function onRequestGet({ request, env }) {
+  // 200 images / 10 min per IP — generous for human browsing (popups load 1-2 each, and the
+  // edge cache absorbs repeats), a wall for anyone scripting against the paid Google key.
+  const _ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+  if (!(await _rateOK(env, 'rl:sv:' + _ip, 200, 600))) return new Response('rate limited', { status: 429 });
   const url = new URL(request.url);
   const lat = parseFloat(url.searchParams.get('lat'));
   const lon = parseFloat(url.searchParams.get('lon'));

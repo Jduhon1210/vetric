@@ -12,8 +12,22 @@
 // _middleware.js, exports disabled client-side) | "full". NO record = full access — every
 // pre-existing account keeps working untouched. The matched acct snapshot is embedded in the
 // session record so the middleware and /api/auth/me don't need extra KV reads per request.
+// Per-IP rate limit: 25 login attempts / 10 min, counted on EVERY request (success or fail)
+// so neither code brute-forcing nor email enumeration can run unmetered. KV is eventually
+// consistent — coarse but sufficient; fails OPEN on KV errors (availability over strictness).
+async function _rateOK(env, key, limit, ttl) {
+  try {
+    const n = parseInt(await env.VETRIC_KV.get(key) || '0', 10);
+    if (n >= limit) return false;
+    await env.VETRIC_KV.put(key, String(n + 1), { expirationTtl: ttl });
+  } catch (e) {}
+  return true;
+}
 export async function onRequestPost({ request, env }) {
   try {
+    const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+    if (!(await _rateOK(env, 'rl:login:' + ip, 25, 600)))
+      return json({ error: 'Too many attempts from this connection — try again in a few minutes.' }, 429);
     let body;
     try { body = await request.json(); } catch (e) { return json({ error: 'bad json' }, 400); }
     const email = String((body && body.email) || '').trim().toLowerCase();

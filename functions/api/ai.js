@@ -8,8 +8,21 @@
 // variable name "AI" (Production and Preview). Until then this returns a friendly 503.
 const MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';   // free-tier model with function calling
 
+async function _rateOK(env, key, limit, ttl) {
+  try {
+    const n = parseInt(await env.VETRIC_KV.get(key) || '0', 10);
+    if (n >= limit) return false;
+    await env.VETRIC_KV.put(key, String(n + 1), { expirationTtl: ttl });
+  } catch (e) {}
+  return true;
+}
 export async function onRequestPost({ request, env }) {
   try {
+    // 30 AI calls / 10 min per IP — a chat turn is 1-5 calls (agentic rounds); protects the
+    // shared Workers AI free-tier quota from a runaway or scripted client.
+    const _ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+    if (!(await _rateOK(env, 'rl:ai:' + _ip, 30, 600)))
+      return json({ error: 'Vetric AI is cooling down — try again in a few minutes.' }, 429);
     if (!env.AI) return json({ error: 'Vetric AI isn’t configured yet — add the Workers AI binding "AI" to the Pages project (Settings → Bindings), then redeploy.' }, 503);
     let body;
     try { body = await request.json(); } catch (e) { return json({ error: 'bad json' }, 400); }

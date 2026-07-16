@@ -70,7 +70,7 @@ data) is driven by optional `acct:<email>` KV records next to the `allow:` entri
 WITHOUT a record are full-access — nothing changes for existing users. To unlock the admin
 panel for yourself, add ONE record in the dashboard (KV → your namespace → Add entry):
 
-- **Key**: `acct:jondduhon@gmail.com`
+- **Key**: `acct:you@example.com`
 - **Value**: `{"tier":"admin","firm":"Vetric","regions":["tx"],"started":"2026-07-12"}`
 
 Then sign out and back in (the tier is stamped into the session at login). Your Settings modal
