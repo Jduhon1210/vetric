@@ -7096,7 +7096,10 @@ const EVAL_TOP_N=3;
 // ~0.40-0.45 (demandN 0.9 x share 0.45-0.5 x access ~0.85 x retail ~1.05) — the old 0.50 bar was
 // only reachable where share≈1, i.e. it graded EMPTINESS, not site quality. STRONG=0.40 is the
 // honest ceiling; the retail-mass guard below keeps the 76226 field-validated demotion intact.
-const EVAL_STRONG=0.40, EVAL_FLOOR=0.22;
+// Re-derived 2026-07-15 after rooftop-only ZIP demand: ceiling = demandN 1.0 x share cap 0.45-0.5
+// x access ~0.85 ~= 0.38-0.42. STRONG=0.35 is ~85-90% of that ceiling (same proportion as the
+// prior 0.40-vs-0.47 calibration); the demand>=0.45 + retail-mass guards carry the honesty.
+const EVAL_STRONG=0.35, EVAL_FLOOR=0.20;
 // 'Strong' additionally requires REAL commercial fabric at the site: g.ret is the ABSOLUTE
 // grav-weighted retail mass within 1mi (audit separation: field-bad 76226 sites 0-1.0 vs real
 // corners 3.8-9.5 — clean gap, threshold 2.0). Without it, a 45-score empty-pasture cell and a
@@ -7118,6 +7121,12 @@ function _evalDisp(sc){
 let evalTopMode=null, evalShowWeak=false;   // 'good' | 'fair' | 'none' ; reveal-weak-sites toggle
 let evalSpeciesIgnored=false, evalSpeciesPrompted=false;   // unverified-species popup state (per analysis)
 const _grav=(d,R)=>d<R?1-d/R:0;
+// Demand-ONLY gravity: SQUARED decay (2026-07-15, user: grade close proximity + high volume,
+// not just rooftops-in-radius). A rooftop at half the radius counts 25% (was 50%), at 0.8R only
+// 4% (was 20%) — demand mass now PULLS sites toward it instead of merely counting toward them.
+// Competition/retail/access keep the linear _grav: A_OWN=2.5 was calibrated against linear comp
+// sums, and steepening comp decay would silently re-break that calibration.
+const _gravD=(d,R)=>{ const x=1-d/R; return x>0?x*x:0; };
 // Review count NO LONGER weights competition (2026-07-08, user decision): a brand-new PE clinic
 // with 1 Google review is still a real, well-capitalized competitor, so down-weighting it by
 // review volume under-counted new PE sites. Every clinic now competes at full strength; size is
@@ -7747,7 +7756,7 @@ function _evalComputeAndRender(){
       // neighborhood demand — the rooftops within ~2.5mi this site can draw from, each WEIGHTED
       // by its census tract's modeled pet rate (tractsOn) so sites gravitate toward high-pet
       // neighborhoods and away from senior/renter pockets, sub-ZIP (user ask, Phase 2).
-      let dem=0, demF=0; for(const r of evalData.resid){ if(Math.abs(r.lat-la)>bDem) continue; const d=hav(la,lo,r.lat,r.lon); if(d<DEM_R){ const v=(r.w||1)*(tractsOn?(r._pw||1):1)*_grav(d,DEM_R); if(r._fut) demF+=v; else dem+=v; } }
+      let dem=0, demF=0; for(const r of evalData.resid){ if(Math.abs(r.lat-la)>bDem) continue; const d=hav(la,lo,r.lat,r.lon); if(d<DEM_R){ const v=(r.w||1)*(tractsOn?(r._pw||1):1)*_gravD(d,DEM_R); if(r._fut) demF+=v; else dem+=v; } }
       // retail access (co-tenancy / visibility)
       let ret=0; for(const r of evalData.retail){ if(Math.abs(r.lat-la)>bRet) continue; const d=hav(la,lo,r.lat,r.lon); if(d<RET_R) ret+=(r.area?0.6:1)*_grav(d,RET_R); }
       // competition (border-aware gravity); scan all comps for the true nearest readout
@@ -7767,7 +7776,7 @@ function _evalComputeAndRender(){
     let nearRetail=Infinity; for(const r of evalData.retail){ if(Math.abs(r.lat-la)>bRet) continue; const d=hav(la,lo,r.lat,r.lon); if(d<nearRetail){ nearRetail=d; if(d<40) break; } }
     const zinfo=evalZoning?_zoneClassAt(la,lo):null;
     let aadt=0, aadtRoad=null; for(const a2 of evalData.aadt){ if(Math.abs(a2.lat-la)>bVis) continue; const d=hav(la,lo,a2.lat,a2.lon); if(d<VIS_R && a2.v>aadt){ aadt=a2.v; aadtRoad=a2.road; } }
-    let dem=0, demF=0; for(const r of evalData.resid){ if(Math.abs(r.lat-la)>bDem) continue; const d=hav(la,lo,r.lat,r.lon); if(d<DEM_R){ const v=(r.w||1)*(tractsOn?(r._pw||1):1)*_grav(d,DEM_R); if(r._fut) demF+=v; else dem+=v; } }
+    let dem=0, demF=0; for(const r of evalData.resid){ if(Math.abs(r.lat-la)>bDem) continue; const d=hav(la,lo,r.lat,r.lon); if(d<DEM_R){ const v=(r.w||1)*(tractsOn?(r._pw||1):1)*_gravD(d,DEM_R); if(r._fut) demF+=v; else dem+=v; } }
     let ret=0; for(const r of evalData.retail){ if(Math.abs(r.lat-la)>bRet) continue; const d=hav(la,lo,r.lat,r.lon); if(d<RET_R) ret+=(r.area?0.6:1)*_grav(d,RET_R); }
     let comp=0, nearC=Infinity, nearPE=Infinity, nComp=0, nPE=0; for(const c of comps){ const d=hav(la,lo,c.lat,c.lon); if(d<nearC)nearC=d; if(d<R){ comp+=(c.pe?1.6:1)*_revW(c.reviews,compMedRev)*_staffW(c.staffN)*(c.mult||1)*_grav(d,R); nComp++; if(c.pe){ nPE++; if(d<nearPE) nearPE=d; } } }
     const zg=zinfo?zinfo.gate:null;
@@ -7785,10 +7794,13 @@ function _evalComputeAndRender(){
   for(const g of grid){
     // Future (announced-development) demand ADDS on top of the real-rooftop normalization and is
     // clamped at the cap — it can lift an MPC-adjacent cell to the top, but can NEVER deflate the
-    // rest of the grid. (Regression fix 2026-07-15: maxDem previously included future points, so
-    // one cell near a big footprint became the ceiling and sank every other cell's demandN —
-    // top-ranked growth ZIPs suddenly graded 'no strong site' across the board.)
-    g.demandN = (hasResid ? 0.55*Math.min(1,(g.dem+(g.demF||0))/maxDem)+0.45*g.affl : g.affl) * (tractsOn ? 1 : (g.ageF||1));   // ZIP ageF only as the non-tract fallback (min: a forced site cell may top the real-cell max)
+    // rest of the grid. (Regression fix 2026-07-15: maxDem previously included future points.)
+    // ZIP-mode (2026-07-15, user: 'demand 48 in the middle of nowhere'): the demand bar is PURE
+    // rooftop gravity — the affluence percentile is one CONSTANT across a single ZIP, so blending
+    // it added no cell-vs-cell discrimination, just a ~0.4 floor that inflated empty pasture.
+    // Income still shows in the community line and still differentiates cells in AREA mode.
+    const _roofN = Math.min(1,(g.dem+(g.demF||0))/maxDem);
+    g.demandN = (hasResid ? (evalAreaMode ? 0.55*_roofN+0.45*g.affl : _roofN) : g.affl) * (tractsOn ? 1 : (g.ageF||1));   // ZIP ageF only as the non-tract fallback (min: a forced site cell may top the real-cell max)
     g.retailN = hasRetail ? Math.min(1,g.ret/maxRet) : 0.5;
     // Road VISIBILITY: traffic volume on the frontage road (AADT) when a count is
     // near, else road class as a proxy. The drive-by / new-client revenue signal —
@@ -7822,7 +7834,8 @@ function _evalComputeAndRender(){
   evalLandPlays=[];
   if(landGrid.length){
     for(const g of landGrid){
-      g.demandN = (hasResid ? 0.55*Math.min(1,(g.dem+(g.demF||0))/maxDem)+0.45*g.affl : g.affl) * (tractsOn ? 1 : (g.ageF||1));
+      const _roofN=Math.min(1,(g.dem+(g.demF||0))/maxDem);
+      g.demandN = (hasResid ? (evalAreaMode ? 0.55*_roofN+0.45*g.affl : _roofN) : g.affl) * (tractsOn ? 1 : (g.ageF||1));
       const av = g.aadt>0 ? _aadtVis(g.aadt) : null;
       g.accessN = av!=null ? av : ((hasRoads||hasAADT) ? _clsVis(g.nearCls) : 0.5);
       g.share = A_OWN/(A_OWN + g.comp);
@@ -7845,9 +7858,9 @@ function _evalComputeAndRender(){
   const medShare=_med(grid.map(g=>g.share));
   const peInRange=evalCompsCache.filter(c=>c.pe).length, indInRange=evalCompsCache.length-peInRange;
   const pctInCatch=Math.round(100*grid.filter(g=>g.share<0.25).length/grid.length);
-  const grade = capCeil>=0.40?{l:'A',t:'Open — strong winnable demand',c:'#15803d'}
-              : capCeil>=0.32?{l:'B',t:'Competitive — viable pockets',c:'#4d7c0f'}
-              : capCeil>=0.22?{l:'C',t:'Contested — thin margins',c:'#b45309'}
+  const grade = capCeil>=0.35?{l:'A',t:'Open — strong winnable demand',c:'#15803d'}
+              : capCeil>=0.28?{l:'B',t:'Competitive — viable pockets',c:'#4d7c0f'}
+              : capCeil>=0.20?{l:'C',t:'Contested — thin margins',c:'#b45309'}
               : {l:'F',t:'Saturated — PE-ringed, avoid',c:'#dc2626'};
   evalSat={capCeil,medShare,peInRange,indInRange,pctInCatch,grade};
   // relative colour scale so the heatmap has clear contrast within this ZIP
