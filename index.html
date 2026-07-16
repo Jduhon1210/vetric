@@ -6208,6 +6208,11 @@ function oppToggleDetail(i,zip){
   const d=document.getElementById('oppd-'+i); if(!d) return;
   const open=d.style.display!=='none'; d.style.display=open?'none':'block';
   _oppOpenZip=open?null:(zip||null);
+  // Re-render the detail FRESH on expand — the list pre-builds every row's detail at build time,
+  // when dogData may still be wiped (openOpportunity's choropleth teardown), so the pre-built
+  // HTML can carry a degraded funnel / "cat —" forever. Rendering at open reads live data and
+  // arms the self-heal for whatever is still missing.
+  if(!open){ try{ const r=oppScored[i]; if(r&&r.zip===(zip||r.zip)) d.innerHTML=renderOppDetail(r,i); }catch(e){} }
   const row=d.closest('.opp-row'); if(row) row.classList.toggle('expanded',!open);
   const car=row&&row.querySelector('.opp-caret'); if(car) car.classList.toggle('open',!open);
 }
