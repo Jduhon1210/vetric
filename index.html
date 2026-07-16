@@ -6121,6 +6121,11 @@ const OPP_VISITS_PER_CATHH = 1.2;
 // internally consistent. Cross-check: US actuals run ~2,500-3,000 visits/vet-yr. Display-only.
 const OPP_VISITS_PER_DVM = 2000;
 function renderOppDetail(r,i){
+  // Self-heal: the pets-layer toggle-off wipes dogData, which this card reads live (households /
+  // cat split / funnel). Refetch in the background and re-render the open row when it lands.
+  if(typeof dogData==='undefined' || !dogData[r.zip] || dogData[r.zip].households==null){
+    try{ ensureDogData().then(()=>{ if(_oppOpenZip===r.zip && typeof renderOppList==='function') renderOppList(); }).catch(()=>{}); }catch(e){}
+  }
   const u=_oppUnder(r);
   const line=(label,val,sub)=>`<div style="display:flex;justify-content:space-between;padding:2.5px 0;font-size:12px"><span style="color:#64748b">${label}</span><span style="font-weight:700;color:#1f2933">${val}${sub?` <span style='color:#94a3b8;font-weight:500'>${sub}</span>`:''}</span></div>`;
   const sec=t=>`<div style="font-size:9.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:#94a3b8;margin:8px 0 2px">${t}</div>`;
@@ -6142,15 +6147,15 @@ function renderOppDetail(r,i){
   </div>`;
   // ── demand funnel, always visible ──
   let funnel='';
-  if(hh!=null&&petHH!=null&&visits!=null&&sustain!=null){
+  {
     const fb=(bg,tc,stc,v,l,flex)=>`<div style="flex:${flex};background:${bg};border-radius:7px;padding:6px 6px;text-align:center;min-width:0"><div style="font-size:11.5px;font-weight:800;color:${tc}">${v}</div><div style="font-size:8.5px;color:${stc}">${l}</div></div>`;
-    funnel=`<div style="font-size:9.5px;font-weight:800;letter-spacing:.06em;color:#94a3b8;margin:9px 0 5px">DEMAND FUNNEL</div>
-      <div style="display:flex;align-items:center;gap:3px">
-        ${fb('#eef2fb','#0f172a','#64748b',Math.round(hh).toLocaleString(),'households',2.4)}<span style="color:#cbd5e1">›</span>
-        ${fb('#dbe7fb','#0f172a','#64748b',petHH.toLocaleString(),'pet HH',2)}<span style="color:#cbd5e1">›</span>
-        ${fb('#bfd4f7','#0f172a','#475569','~'+(visits>=1000?(visits/1000).toFixed(1)+'k':visits),'visits/yr',1.8)}<span style="color:#cbd5e1">›</span>
-        ${fb('#1e3a8a','#fff','#bfd0f0','~'+sustain,'vets fit',1.5)}
-      </div>`;
+    const stages=[];
+    if(hh!=null) stages.push(fb('#eef2fb','#0f172a','#64748b',Math.round(hh).toLocaleString(),'households',2.4));
+    if(petHH!=null) stages.push(fb('#dbe7fb','#0f172a','#64748b',petHH.toLocaleString(),catHH!=null?'pet HH':'dog HH',2));
+    if(visits!=null) stages.push(fb('#bfd4f7','#0f172a','#475569','~'+(visits>=1000?(visits/1000).toFixed(1)+'k':visits),'visits/yr',1.8));
+    if(sustain!=null) stages.push(fb('#1e3a8a','#fff','#bfd0f0','~'+sustain,'vets fit',1.5));
+    if(stages.length>=2) funnel=`<div style="font-size:9.5px;font-weight:800;letter-spacing:.06em;color:#94a3b8;margin:9px 0 5px">DEMAND FUNNEL</div>
+      <div style="display:flex;align-items:center;gap:3px">${stages.join('<span style="color:#cbd5e1">›</span>')}</div>`;
   }
   // ── one-line verdict ──
   let verdictLine='';
