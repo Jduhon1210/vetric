@@ -7230,8 +7230,12 @@ const EVAL_STRONG=0.35, EVAL_FLOOR=0.20;
 // 45-score retail-corner cell are indistinguishable. Skipped when retail data didn't load.
 const EVAL_RET_MIN=2.0;
 // 'Recommended' also requires REAL demand (demandN>=0.45) — emptiness + a gas-station strip
-// can pass the score bar and the fabric guard, but a green badge needs rooftops to serve.
-function _evalStrongOK(g){ return g.score>=EVAL_STRONG && g.demandN>=0.45 && (!evalDataOk.retail || g.ret>=EVAL_RET_MIN); }
+// can pass the score bar and the fabric guard, but a green badge needs rooftops to serve —
+// AND a winnable market (share>=0.40, added 2026-07-16): maxed demand was dragging heavily
+// contested corners over the bar (Prosper site at 36% share touching three incumbents read
+// 'Recommended' while the same ZIP's KPIs read saturated/hub). Below the floor a site can
+// still top the list — as 'Best available', with the memo steering to acquisition/dirt.
+function _evalStrongOK(g){ return g.score>=EVAL_STRONG && g.demandN>=0.45 && g.share>=0.40 && (!evalDataOk.retail || g.ret>=EVAL_RET_MIN); }
 // DISPLAY scale for site scores (2026-07-15, user: top-ranked ZIPs read as sub-50 failing grades).
 // The multiplicative capture score is honest but its raw ceiling in a CONTESTED market is ~0.45,
 // so raw*100 shows "45/100" on a genuinely strong site — same misread the List composite solved
