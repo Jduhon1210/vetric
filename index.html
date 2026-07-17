@@ -4879,7 +4879,7 @@ const clamp01 = v => v<0?0:(v>1?1:v);
 // Constants — MIRROR Evaluate exactly (do NOT invent new values; see CLAUDE.md A_OWN gotcha)
 const HEX_RADIUS_MI = 3;
 const HEX_R    = HEX_RADIUS_MI * 1609.344;             // metres
-const HEX_AOWN = 2.5 * Math.pow(HEX_RADIUS_MI/3, 2);   // 2.5 @3mi, radius-invariant
+const HEX_AOWN = 1.0 * Math.pow(HEX_RADIUS_MI/3, 2);   // fair-fight entrant (=1 typical clinic) since 2026-07-16, radius-invariant
 const PE_NEAR_HARD = 700;        // m — within this of a PE clinic, share is hard-capped
 const HEX_PE_W = 1.0;            // PE competitor weight — REMOVED 2026-07-16 (user: PE and independent compete at equal per-DVM strength; roster size + analyst mult carry the differences)
 const HEX_MI = 1.0;              // column pitch, miles (~3,500 cells over DFW)
@@ -5099,7 +5099,7 @@ function rescoreHexes(){
     const trajIdx =(h.grow!=null&&h.cons!=null)?0.6*popIdx+0.4*consIdx:(h.grow!=null?popIdx:(h.cons!=null?consIdx:0.5));
     const demand=Math.pow(Math.max(spendIdx,1e-3),aInc)*Math.pow(Math.max(volIdx,1e-3),aDog)*Math.pow(Math.max(trajIdx,1e-3),aGro);
     let share=HEX_AOWN/(HEX_AOWN+h.comp);                          // ABSOLUTE Huff (never min-max)
-    if(h.nearPE<PE_NEAR_HARD) share=Math.min(share,0.20);
+    if(h.nearPE<PE_NEAR_HARD) share=Math.min(share,0.10);
     let capTerm=Math.pow(share,shareExp);
     if(h.nearPE<PE_NEAR_HARD) capTerm=Math.min(capTerm,0.20);      // hard-cap the contribution too — de-weighting competition can't revive a PE-adjacent site
     const score=clamp01(demand*capTerm);                          // expected captured demand 0..1
@@ -7223,7 +7223,7 @@ const EVAL_TOP_N=3;
 // Re-derived 2026-07-15 after rooftop-only ZIP demand: ceiling = demandN 1.0 x share cap 0.45-0.5
 // x access ~0.85 ~= 0.38-0.42. STRONG=0.35 is ~85-90% of that ceiling (same proportion as the
 // prior 0.40-vs-0.47 calibration); the demand>=0.45 + retail-mass guards carry the honesty.
-const EVAL_STRONG=0.35, EVAL_FLOOR=0.20;
+const EVAL_STRONG=0.22, EVAL_FLOOR=0.12;   // fair-fight scale (A_OWN=1.0): contested-market ceiling ~0.25-0.30, open-market ~0.6+
 // 'Strong' additionally requires REAL commercial fabric at the site: g.ret is the ABSOLUTE
 // grav-weighted retail mass within 1mi (audit separation: field-bad 76226 sites 0-1.0 vs real
 // corners 3.8-9.5 — clean gap, threshold 2.0). Without it, a 45-score empty-pasture cell and a
@@ -7235,14 +7235,14 @@ const EVAL_RET_MIN=2.0;
 // contested corners over the bar (Prosper site at 36% share touching three incumbents read
 // 'Recommended' while the same ZIP's KPIs read saturated/hub). Below the floor a site can
 // still top the list — as 'Best available', with the memo steering to acquisition/dirt.
-function _evalStrongOK(g){ return g.score>=EVAL_STRONG && g.demandN>=0.45 && g.share>=0.40 && (!evalDataOk.retail || g.ret>=EVAL_RET_MIN); }
+function _evalStrongOK(g){ return g.score>=EVAL_STRONG && g.demandN>=0.45 && g.share>=0.24 && (!evalDataOk.retail || g.ret>=EVAL_RET_MIN); }   // share floor 0.24 ≡ old 0.40 (fair-fight mapping)
 // DISPLAY scale for site scores (2026-07-15, user: top-ranked ZIPs read as sub-50 failing grades).
 // The multiplicative capture score is honest but its raw ceiling in a CONTESTED market is ~0.45,
 // so raw*100 shows "45/100" on a genuinely strong site — same misread the List composite solved
 // with a monotonic 0-100 stretch. Piecewise anchors: FLOOR(0.22)->55, STRONG(0.40)->85, 0.55->95,
 // 1.0->100. PRESENTATION ONLY: g.score stays raw internally; ranking, tiers, verdicts unchanged.
 function _evalDisp(sc){
-  const a=[[0,0],[EVAL_FLOOR,55],[EVAL_STRONG,85],[0.55,95],[1,100]];
+  const a=[[0,0],[EVAL_FLOOR,55],[EVAL_STRONG,85],[0.40,95],[1,100]];
   for(let i=1;i<a.length;i++){ if(sc<=a[i][0]){ const x0=a[i-1][0],y0=a[i-1][1],x1=a[i][0],y1=a[i][1]; return Math.round(y0+(sc-x0)/(x1-x0)*(y1-y0)); } }
   return 100;
 }
@@ -7252,7 +7252,7 @@ const _grav=(d,R)=>d<R?1-d/R:0;
 // Demand-ONLY gravity: SQUARED decay (2026-07-15, user: grade close proximity + high volume,
 // not just rooftops-in-radius). A rooftop at half the radius counts 25% (was 50%), at 0.8R only
 // 4% (was 20%) — demand mass now PULLS sites toward it instead of merely counting toward them.
-// Competition/retail/access keep the linear _grav: A_OWN=2.5 was calibrated against linear comp
+// Competition/retail/access keep the linear _grav: A_OWN was calibrated against linear comp
 // sums, and steepening comp decay would silently re-break that calibration.
 const _gravD=(d,R)=>{ const x=1-d/R; return x>0?x*x:0; };
 // Review count NO LONGER weights competition (2026-07-08, user decision): a brand-new PE clinic
@@ -7810,7 +7810,12 @@ function _evalComputeAndRender(){
   // fair fight (~0.46) and dense suburbs honestly hard (~0.22), empty land still = 1.0.
   // ×(radius/3)² makes it radius-INVARIANT: comp grows with catchment AREA (∝R²), so A_OWN
   // scales the same way — fixes the long-standing 6mi over-penalty (was a known limitation).
-  const A_OWN=2.5*Math.pow(evalRadiusMi/3,2), GAMMA=1.0, PE_NEAR_HARD=700;
+  // ENTRANT PULL = 1.0 (2026-07-16, user: '36% next to three incumbents isn't real — fix it').
+  // Orthodox Huff: a de novo is ONE MORE typical 2-3 DVM clinic, not a 2.5x gravity well — the
+  // old 2.5 was a display-era crutch (pre-_evalDisp) that inflated shares everywhere and peaked
+  // exactly where the user kept catching it: contested corners. All downstream bars re-derived
+  // on the new scale (STRONG 0.22 / FLOOR 0.12 / share floor 0.24 / PE cap 0.10 / sat cuts).
+  const A_OWN=1.0*Math.pow(evalRadiusMi/3,2), GAMMA=1.0, PE_NEAR_HARD=700;
   const comps=_evalCompetitors(feat, evalRadiusMi);
   // Tract-grain rooftop weights (Phase 2): tag each residential point once per context-fetch.
   // When tracts are loaded, the rooftops carry the FULL pet model (housing+age+income) at tract
@@ -7944,10 +7949,10 @@ function _evalComputeAndRender(){
     // ABSOLUTE Huff capture share — the fraction of local demand this site could WIN given the
     // distance-decayed competitor pressure already summed in g.comp (PE weight removed 2026-07-16).
     // NO maxComp: a uniformly saturated ZIP scores uniformly low and means the same in 75077 as
-    // in an empty exurb. With A_OWN=2.5 @3mi: comp=0 -> 1.0, comp=2.5 -> 0.5, comp=8.7 (a dense
+    // in an empty exurb. Fair-fight A_OWN=1.0 @3mi: comp=0 -> 1.0, comp=1 -> 0.5, comp=8.7 (a dense
     // suburb median) -> 0.22, comp=15 (PE-ringed) -> 0.14.
     g.share = A_OWN/(A_OWN + g.comp);
-    if(g.nearPE < PE_NEAR_HARD) g.share = Math.min(g.share, 0.20); // unwinnable sitting on top of a PE incumbent
+    if(g.nearPE < PE_NEAR_HARD) g.share = Math.min(g.share, 0.10); // unwinnable sitting on top of a PE incumbent (0.10 ≡ old 0.20 on the fair-fight scale)
     g.lowComp = g.share; // alias: the "Low competition" bar now shows absolute winnable share
     // Core is MULTIPLICATIVE captured demand — what the site actually WINS. Demand can no longer
     // additively buy back a competition-taken site (the 75077 bug).
@@ -7973,7 +7978,7 @@ function _evalComputeAndRender(){
       const av = g.aadt>0 ? _aadtVis(g.aadt) : null;
       g.accessN = av!=null ? av : ((hasRoads||hasAADT) ? _clsVis(g.nearCls) : 0.5);
       g.share = A_OWN/(A_OWN + g.comp);
-      if(g.nearPE < PE_NEAR_HARD) g.share = Math.min(g.share, 0.20);
+      if(g.nearPE < PE_NEAR_HARD) g.share = Math.min(g.share, 0.10);
       const accessMult = (hasRoads||hasAADT) ? 0.65+0.40*g.accessN : 1;
       g.score = Math.max(0, Math.min(1, g.demandN * Math.pow(Math.min(g.share,0.85), GAMMA) * accessMult));
     }
@@ -8000,9 +8005,9 @@ function _evalComputeAndRender(){
   const medShare=_med(grid.map(g=>g.share));
   const peInRange=evalCompsCache.filter(c=>c.pe).length, indInRange=evalCompsCache.length-peInRange;
   const pctInCatch=Math.round(100*grid.filter(g=>g.share<0.25).length/grid.length);
-  const grade = capCeil>=0.35?{l:'A',t:'Open — strong winnable demand',c:'#15803d'}
-              : capCeil>=0.28?{l:'B',t:'Competitive — viable pockets',c:'#4d7c0f'}
-              : capCeil>=0.20?{l:'C',t:'Contested — thin margins',c:'#b45309'}
+  const grade = capCeil>=0.22?{l:'A',t:'Open — strong winnable demand',c:'#15803d'}
+              : capCeil>=0.17?{l:'B',t:'Competitive — viable pockets',c:'#4d7c0f'}
+              : capCeil>=0.12?{l:'C',t:'Contested — thin margins',c:'#b45309'}
               : {l:'F',t:'Saturated — PE-ringed, avoid',c:'#dc2626'};
   evalSat={capCeil,medShare,peInRange,indInRange,pctInCatch,grade};
   // relative colour scale so the heatmap has clear contrast within this ZIP
@@ -8036,11 +8041,11 @@ function _evalWeakWhy(best){
   // "scores 85, below the 85 bar" (a rounding tie) or a generic catch-all reads as a bug.
   const r=[];
   if(best && best.score>=EVAL_STRONG){
-    if(best.share<0.40) r.push(`only ${(best.share*100).toFixed(0)}% winnable share against ${best.nComp||'the'} clinics in range (40% floor)${isFinite(best.nearC)&&best.nearC<400?` — one just ${(best.nearC/1609.344).toFixed(1)} mi away`:''}`);
+    if(best.share<0.24) r.push(`only ${(best.share*100).toFixed(0)}% winnable share against ${best.nComp||'the'} clinics in range (24% floor)${isFinite(best.nearC)&&best.nearC<400?` — one just ${(best.nearC/1609.344).toFixed(1)} mi away`:''}`);
     if(best.demandN<0.45) r.push('the buildable land sits away from today\'s rooftops');
     if(evalDataOk.retail && best.ret<EVAL_RET_MIN) r.push('there is almost no commercial fabric within a mile');
   } else {
-    if(evalSat && evalSat.medShare<0.30) r.push(`existing clinics already capture most of the buildable land (${evalSat.peInRange} PE + ${evalSat.indInRange} independent in range)`);
+    if(evalSat && evalSat.medShare<0.15) r.push(`existing clinics already capture most of the buildable land (${evalSat.peInRange} PE + ${evalSat.indInRange} independent in range)`);
     if(best && best.demandN<0.45) r.push('the buildable land sits away from today\'s rooftops');
     if(evalDataOk.retail && best && best.retailN<0.35) r.push('there is very little commercial fabric to site in');
   }
@@ -8392,7 +8397,7 @@ function _evalRenderSidebar(){
   const _acqCands=evalCompsCache.map((c,ci)=>({c,ci})).filter(x=>!x.c.pe)
     .sort((a,b)=>((b.c.staffN||2)*Math.log(2+(b.c.reviews||0)))-((a.c.staffN||2)*Math.log(2+(a.c.reviews||0))));
   const _acqTop=_acqCands[0]||null;
-  const _acqPlay=_acqCands.length>0 && (evalTopMode!=='good' || (evalSat&&evalSat.medShare<=0.32));
+  const _acqPlay=_acqCands.length>0 && (evalTopMode!=='good' || (evalSat&&evalSat.medShare<=0.16));
   const _acqDesc=_acqTop?`${_ceEsc(_acqTop.c.name||'an independent clinic')}${_acqTop.c.rating?` (★${_acqTop.c.rating}`+(_acqTop.c.reviews?` · ${_acqTop.c.reviews.toLocaleString()} reviews`:'')+(_acqTop.c.staffN?` · ${_acqTop.c.staffN} DVMs`:'')+')':''}`:'';
   let _memoTxt='';
   if(evalSat) _memoTxt+=`This market grades <b style="color:${evalSat.grade.c}">${evalSat.grade.l} — ${evalSat.grade.t.toLowerCase()}</b>. `;
@@ -8508,7 +8513,7 @@ function _evalRenderSidebar(){
     </div>
     <div class="eval-toggle-row">${chip('heat','Heatmap')}${chip('hoods','Neighborhoods')}${chip('retail','Retail')}${chip('comp','Competitor range')}${chip('zoning','Zoning map')}<span class="eval-chip ${evalZoning?'on':''}" onclick="evalToggleZoning()">Zoning filter</span><span class="eval-chip ${evalFuture?'on':''}" onclick="evalToggleFuture()">⚡ Announced homes</span></div>
     ${zoneLine}`)}
-    ${_pane('data', `${evalSat?`<div class="eval-grade" style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="font-weight:800;font-size:18px;color:${evalSat.grade.c};border:2px solid ${evalSat.grade.c};border-radius:8px;padding:2px 10px">${evalSat.grade.l}</span><span style="font-weight:700;color:${evalSat.grade.c}">${evalSat.grade.t}</span></div><div class="eval-verdict">${evalSat.capCeil<0.30?'<span class="eval-strong">No strong placement in this ZIP — market is saturated.</span> ':''}Best winnable score ${_evalDisp(evalSat.capCeil)}/100 · median share ${evalSat.medShare.toFixed(2)} · ${evalSat.peInRange} PE + ${evalSat.indInRange} independent in range · ${evalSat.pctInCatch}% of buildable land inside a competitor catchment.${evalHiddenWeak?` ${evalHiddenWeak} weak spot${evalHiddenWeak!==1?'s':''} scored under ${_evalDisp(EVAL_FLOOR)}/100 and ${evalHiddenWeak!==1?'are':'is'} hidden.`:''}${warn}</div>`:`<div class="eval-verdict"><span class="eval-strong">${strongN} recommended site${strongN!==1?'s':''}${strongN<evalTop.length?` · ${evalTop.length-strongN} below the bar`:''}${evalHiddenWeak?` · ${evalHiddenWeak} weak spot${evalHiddenWeak!==1?'s':''} hidden`:''}.</span> ${evalCells.length} commercially-siteable cells scored; subdivision interiors &amp; rural land excluded.${warn}</div>`}
+    ${_pane('data', `${evalSat?`<div class="eval-grade" style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="font-weight:800;font-size:18px;color:${evalSat.grade.c};border:2px solid ${evalSat.grade.c};border-radius:8px;padding:2px 10px">${evalSat.grade.l}</span><span style="font-weight:700;color:${evalSat.grade.c}">${evalSat.grade.t}</span></div><div class="eval-verdict">${evalSat.capCeil<0.15?'<span class="eval-strong">No strong placement in this ZIP — market is saturated.</span> ':''}Best winnable score ${_evalDisp(evalSat.capCeil)}/100 · median share ${evalSat.medShare.toFixed(2)} · ${evalSat.peInRange} PE + ${evalSat.indInRange} independent in range · ${evalSat.pctInCatch}% of buildable land inside a competitor catchment.${evalHiddenWeak?` ${evalHiddenWeak} weak spot${evalHiddenWeak!==1?'s':''} scored under ${_evalDisp(EVAL_FLOOR)}/100 and ${evalHiddenWeak!==1?'are':'is'} hidden.`:''}${warn}</div>`:`<div class="eval-verdict"><span class="eval-strong">${strongN} recommended site${strongN!==1?'s':''}${strongN<evalTop.length?` · ${evalTop.length-strongN} below the bar`:''}${evalHiddenWeak?` · ${evalHiddenWeak} weak spot${evalHiddenWeak!==1?'s':''} hidden`:''}.</span> ${evalCells.length} commercially-siteable cells scored; subdivision interiors &amp; rural land excluded.${warn}</div>`}
     <div class="eval-note">Neighborhood demand is weighted at census-tract grain — rooftops in higher pet-ownership communities pull sites harder than senior or renter-heavy pockets. Sites are limited to commercial land — either zoned/parceled commercial, or (where that's unavailable) within a real retail/commercial area; residential, civic and rural parcels are excluded, and arterial frontage alone is not enough. Coverage is layered: municipal zoning in the 16 mapped cities, county appraisal-district parcels (Collin / Denton / Dallas) for the exurbs, and OpenStreetMap land-use elsewhere. Road visibility is weighted by TxDOT traffic counts (AADT), so a busier frontage scores higher${hasAADT?'':' (traffic data unavailable here — using road class)'}. Competition counts every clinic within range, including ones just over the ZIP border. A recommended site can sit just past the boundary (within ~0.5&nbsp;mi) where the market actually peaks — catchments don't stop at the line.</div>`)}
     </div>
     <div class="status-bar" id="status"></div>`;
