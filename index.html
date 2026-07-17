@@ -1521,13 +1521,15 @@ function _revEstLine(c){
 }
 function _staffPopupHTML(c){
   const s=_vetStaffAt(c.lat,c.lon); if(!s||!s.n) return '';
-  const list=(s.vets||[]).slice(0,6).join(', ');
-  const extra=(s.vets&&s.vets.length>6)?` +${s.vets.length-6} more`:'';
+  const names=(s.vets||[]);
   // Est.-revenue line HIDDEN from the pin popup (2026-07-13, user pref) — the modeled figure
   // still shows on Acquisitions cards, the Screener, and CSV exports where the deal context is.
+  // Roster names live in a dropdown (2026-07-16, user ask — no emoji, names on demand).
   return `<div style="margin-top:9px;padding-top:9px;border-top:1px solid #eef2f7">`
-    +`<div style="font-size:11px;font-weight:700;color:#0f172a">🩺 ${s.n} veterinarian${s.n!==1?'s':''} on staff</div>`
-    +(list?`<div style="font-size:11px;color:#475569;margin-top:2px;line-height:1.5">${list}${extra}</div>`:'')
+    +(names.length
+      ?`<details><summary style="font-size:11px;font-weight:700;color:#0f172a;cursor:pointer;list-style-position:inside">${s.n} veterinarian${s.n!==1?'s':''} on staff</summary>`
+        +`<div style="font-size:11px;color:#475569;margin-top:3px;line-height:1.6">${names.map(v=>'Dr. '+_ceEsc(v)).join('<br>')}</div></details>`
+      :`<div style="font-size:11px;font-weight:700;color:#0f172a">${s.n} veterinarian${s.n!==1?'s':''} on staff</div>`)
     +`</div>`;
 }
 const MIN_ZOOM=10;
