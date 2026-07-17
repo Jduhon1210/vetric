@@ -8551,6 +8551,8 @@ const DRIVE_BUDGET_SEC=600;         // 10 minutes
 // the clinics whose catchments reach it — the road network supplies the geometry, Huff supplies
 // the split). Clinic catchments never change → cached permanently in localStorage (vf_iso_*),
 // building toward the Phase-2 statewide precompute. Costs ~1 Routes call per uncached clinic.
+let evalOverlapLayer=null;
+function _evalClearOverlap(){ if(evalOverlapLayer){ try{ map.removeLayer(evalOverlapLayer); }catch(e){} evalOverlapLayer=null; } }
 function _isoCacheGet(k){ try{ const v=localStorage.getItem('vf_iso_'+k); return v?JSON.parse(v):null; }catch(e){ return null; } }
 function _isoCachePut(k,ring){ try{ localStorage.setItem('vf_iso_'+k, JSON.stringify(ring.map(p=>[+p[0].toFixed(4),+p[1].toFixed(4)]))); }catch(e){} }
 async function evalOverlap(i, btn){
@@ -8589,14 +8591,27 @@ async function evalOverlap(i, btn){
     const netShare=shareAcc/totW, freePct=Math.round(100*freeW/totW);
     const gravShare=Math.min(g.share,0.85);
     const diff=netShare-gravShare;
-    const rows=rings.map((r,ri)=>({name:r.x.c.name||'Clinic', pe:r.x.c.pe, staff:r.x.c.staffN, pct:Math.round(100*ovW[ri]/totW), d:r.x.d})).sort((a,b)=>b.pct-a.pct);
+    // ── draw every catchment on the map (user ask: SEE the overlap) — site in solid purple,
+    // each clinic in its own hue (dashed), color-keyed to the rows below; sticky tooltips.
+    const PAL=['#dc2626','#2563eb','#d97706','#0d9488','#7c3aed','#db2777'];
+    _evalClearOverlap();
+    const fg=L.featureGroup();
+    fg.addLayer(L.polygon(siteRing,{color:'#6d28d9',weight:3,fillColor:'#6d28d9',fillOpacity:0.10}).bindTooltip('Your site — 10-min catchment',{sticky:true}));
+    rings.forEach((r,ri)=>{
+      fg.addLayer(L.polygon(r.poly.map(p=>[p.lat,p.lng]),{color:PAL[ri%PAL.length],weight:2,dashArray:'6,4',fillColor:PAL[ri%PAL.length],fillOpacity:0.06})
+        .bindTooltip(`${_ceEsc(r.x.c.name||'Clinic')} — ${Math.round(100*ovW[ri]/totW)}% of your catchment`,{sticky:true}));
+    });
+    evalOverlapLayer=fg.addTo(map);
+    try{ map.fitBounds(fg.getBounds(),{padding:[40,40],maxZoom:13}); }catch(e){}
+    const rows=rings.map((r,ri)=>({name:r.x.c.name||'Clinic', pe:r.x.c.pe, staff:r.x.c.staffN, pct:Math.round(100*ovW[ri]/totW), d:r.x.d, col:PAL[ri%PAL.length]})).sort((a,b)=>b.pct-a.pct);
     if(out) out.innerHTML=`<div style="background:#f8f6ff;border:1px solid #ddd0f7;border-radius:9px;padding:9px 11px;line-height:1.7;margin-top:6px">
       <div style="font-size:9.5px;font-weight:800;letter-spacing:.06em;color:#7c3aed">CATCHMENT OVERLAP · road-network based</div>
       <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:#64748b">Uncontested share of your catchment</span><b style="color:${freePct>=40?'#15803d':freePct>=15?'#b45309':'#be123c'}">${freePct}%</b></div>
-      ${rows.map(r=>`<div style="display:flex;justify-content:space-between;font-size:10.5px"><span style="color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:64%">${_ceEsc(r.name)}${r.pe?' <span style="color:#dc2626">PE</span>':''}${r.staff?' · '+r.staff+' DVM':''}</span><b>${r.pct}% overlap</b></div>`).join('')}
+      ${rows.map(r=>`<div style="display:flex;justify-content:space-between;align-items:center;font-size:10.5px;gap:6px"><span style="color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${r.col};margin-right:5px;vertical-align:0"></span>${_ceEsc(r.name)}${r.pe?' <span style="color:#dc2626">PE</span>':''}${r.staff?' · '+r.staff+' DVM':''}</span><b style="flex-shrink:0">${r.pct}% overlap</b></div>`).join('')}
       <div style="border-top:1px dashed #ddd0f7;margin-top:5px;padding-top:5px;display:flex;justify-content:space-between;font-size:11px"><span style="color:#64748b">Network-adjusted winnable share</span><b style="color:#5b21b6">${(netShare*100).toFixed(0)}%</b></div>
       <div style="display:flex;justify-content:space-between;font-size:10.5px"><span style="color:#94a3b8">Gravity model says</span><span style="color:#94a3b8">${(gravShare*100).toFixed(0)}%</span></div>
       <div style="font-size:10px;color:${Math.abs(diff)>0.08?'#b45309':'#94a3b8'};margin-top:2px">${Math.abs(diff)<=0.05?'The two methods agree — high confidence in the share estimate.':diff>0?'Network says BETTER than gravity — a road barrier likely shields this site from a competitor the crow-flies model counts.':'Network says WORSE than gravity — the road grid funnels more competitors into this catchment than straight-line distance suggests.'}</div>
+      <div style="font-size:10.5px;font-weight:700;color:var(--navy);cursor:pointer;margin-top:5px" onclick="_evalClearOverlap();this.style.display='none'">✕ Hide catchments on map</div>
     </div>`;
     if(btn){ btn.disabled=false; btn.textContent='◐ Overlap analysis'; }
   }catch(e){
@@ -8686,7 +8701,7 @@ function _evalDriveResetBtns(){
 // Remove the drive polygon (leaves the cached ring so re-showing the SAME site is free); resets buttons + readouts.
 function _evalHideDrive(){ if(evalDriveLayer){ map.removeLayer(evalDriveLayer); evalDriveLayer=null; } _evalDriveResetBtns(); }
 // Full reset — drop the polygon AND the cache (used on recompute / clear).
-function _evalClearDrive(){ _evalHideDrive(); _evalDriveIdx=-1; _evalDriveRing=null; }
+function _evalClearDrive(){ _evalHideDrive(); _evalDriveIdx=-1; _evalDriveRing=null; _evalClearOverlap(); }
 async function evalDriveTime(i, btn){
   const g=evalTop[i]; if(!g) return;
   // TOGGLE OFF: this site's drive area is currently on screen → hide it.
