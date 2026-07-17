@@ -8576,6 +8576,7 @@ async function evalOverlap(i, btn){
     let rs=99,rn=-99,rw=999,re=-999; for(const p of siteRing){ if(p[0]<rs)rs=p[0]; if(p[0]>rn)rn=p[0]; if(p[1]<rw)rw=p[1]; if(p[1]>re)re=p[1]; }
     const N=42, bandR=1200, bBand=bandR/111000;
     let totW=0, freeW=0; const ovW=new Array(rings.length).fill(0); let shareAcc=0;
+    const depthW=[0,0,0,0];   // households contested by 0 / 1 / 2 / 3+ other clinics
     for(let yi=0; yi<N; yi++) for(let xi=0; xi<N; xi++){
       const la=rs+(yi+0.5)*(rn-rs)/N, lo=rw+(xi+0.5)*(re-rw)/N;
       if(!pointInPolygon(la,lo,sp)) continue;
@@ -8585,9 +8586,16 @@ async function evalOverlap(i, btn){
       let pulls=0, covered=0;
       for(let ri=0; ri<rings.length; ri++){ if(pointInPolygon(la,lo,rings[ri].poly)){ ovW[ri]+=hw; pulls+=_staffW(rings[ri].x.c.staffN); covered++; } }
       if(!covered) freeW+=hw;
+      depthW[Math.min(covered,3)]+=hw;
       shareAcc+=hw*(1/(1+pulls));
     }
     if(!totW) throw new Error('empty catchment');
+    // Anchor the relative sample weights to REAL households (same ZIP-apportionment engine as
+    // the catchment strip) so the breakdown speaks in absolute HH, not just percentages.
+    let hhTotal=null;
+    try{ const _cs0=_siteCatch[g.la.toFixed(4)+','+g.lo.toFixed(4)]; hhTotal=(_cs0&&_cs0.src==='drive')?_cs0.hhIn:(await _evalCatchmentStats(siteRing,g)).hhIn; }catch(e){}
+    const hhOf=w=> hhTotal!=null?Math.round(hhTotal*w/totW):null;
+    const hhFmt=v=> v==null?'':(v>=10000?Math.round(v/1000)+'k':v.toLocaleString());
     const netShare=shareAcc/totW, freePct=Math.round(100*freeW/totW);
     const gravShare=Math.min(g.share,0.85);
     const diff=netShare-gravShare;
@@ -8603,11 +8611,19 @@ async function evalOverlap(i, btn){
     });
     evalOverlapLayer=fg.addTo(map);
     try{ map.fitBounds(fg.getBounds(),{padding:[40,40],maxZoom:13}); }catch(e){}
-    const rows=rings.map((r,ri)=>({name:r.x.c.name||'Clinic', pe:r.x.c.pe, staff:r.x.c.staffN, pct:Math.round(100*ovW[ri]/totW), d:r.x.d, col:PAL[ri%PAL.length]})).sort((a,b)=>b.pct-a.pct);
+    const rows=rings.map((r,ri)=>({name:r.x.c.name||'Clinic', pe:r.x.c.pe, staff:r.x.c.staffN, pct:Math.round(100*ovW[ri]/totW), hh:hhOf(ovW[ri]), d:r.x.d, col:PAL[ri%PAL.length]})).sort((a,b)=>b.pct-a.pct);
     if(out) out.innerHTML=`<div style="background:#f8f6ff;border:1px solid #ddd0f7;border-radius:9px;padding:9px 11px;line-height:1.7;margin-top:6px">
       <div style="font-size:9.5px;font-weight:800;letter-spacing:.06em;color:#7c3aed">CATCHMENT OVERLAP · road-network based</div>
       <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:#64748b">Uncontested share of your catchment</span><b style="color:${freePct>=40?'#15803d':freePct>=15?'#b45309':'#be123c'}">${freePct}%</b></div>
-      ${rows.map(r=>`<div style="display:flex;justify-content:space-between;align-items:center;font-size:10.5px;gap:6px"><span style="color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${r.col};margin-right:5px;vertical-align:0"></span>${_ceEsc(r.name)}${r.pe?' <span style="color:#dc2626">PE</span>':''}${r.staff?' · '+r.staff+' DVM':''}</span><b style="flex-shrink:0">${r.pct}% overlap</b></div>`).join('')}
+      ${rows.map(r=>`<div style="display:flex;justify-content:space-between;align-items:center;font-size:10.5px;gap:6px"><span style="color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${r.col};margin-right:5px;vertical-align:0"></span>${_ceEsc(r.name)}${r.pe?' <span style="color:#dc2626">PE</span>':''}${r.staff?' · '+r.staff+' DVM':''}</span><b style="flex-shrink:0">${r.pct}%${r.hh!=null?' · ~'+hhFmt(r.hh)+' HH':''}</b></div>`).join('')}
+      ${hhTotal!=null?`<details style="margin-top:5px"><summary style="font-size:10.5px;font-weight:700;color:#5b21b6;cursor:pointer">Household breakdown · ~${hhFmt(hhTotal)} HH in your catchment</summary>
+        <div style="font-size:10.5px;line-height:1.8;color:#334155;padding:4px 0 0 2px">
+        <div style="display:flex;justify-content:space-between"><span style="color:#15803d;font-weight:700">Uncontested — only you</span><b>~${hhFmt(hhOf(depthW[0]))} HH (${Math.round(100*depthW[0]/totW)}%)</b></div>
+        <div style="display:flex;justify-content:space-between"><span style="color:#64748b">Contested by 1 other clinic</span><b>~${hhFmt(hhOf(depthW[1]))} HH (${Math.round(100*depthW[1]/totW)}%)</b></div>
+        <div style="display:flex;justify-content:space-between"><span style="color:#64748b">Contested by 2 other clinics</span><b>~${hhFmt(hhOf(depthW[2]))} HH (${Math.round(100*depthW[2]/totW)}%)</b></div>
+        <div style="display:flex;justify-content:space-between"><span style="color:#b45309">Contested by 3+ clinics</span><b>~${hhFmt(hhOf(depthW[3]))} HH (${Math.round(100*depthW[3]/totW)}%)</b></div>
+        <div style="font-size:9.5px;color:#94a3b8;margin-top:2px">Household-weighted by rooftop density; per-clinic rows show the households inside each overlap.</div>
+        </div></details>`:''}
       <div style="border-top:1px dashed #ddd0f7;margin-top:5px;padding-top:5px;display:flex;justify-content:space-between;font-size:11px"><span style="color:#64748b">Network-adjusted winnable share</span><b style="color:#5b21b6">${(netShare*100).toFixed(0)}%</b></div>
       <div style="display:flex;justify-content:space-between;font-size:10.5px"><span style="color:#94a3b8">Gravity model says</span><span style="color:#94a3b8">${(gravShare*100).toFixed(0)}%</span></div>
       <div style="font-size:10px;color:${Math.abs(diff)>0.08?'#b45309':'#94a3b8'};margin-top:2px">${Math.abs(diff)<=0.05?'The two methods agree — high confidence in the share estimate.':diff>0?'Network says BETTER than gravity — a road barrier likely shields this site from a competitor the crow-flies model counts.':'Network says WORSE than gravity — the road grid funnels more competitors into this catchment than straight-line distance suggests.'}</div>
