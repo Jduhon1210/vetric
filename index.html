@@ -8325,7 +8325,11 @@ function _evalRenderSidebar(){
         <div style="font-size:9.5px;color:#94a3b8;margin-top:2px">${cs.src==='drive'?'True 10-min drive-time catchment':'~3.5 mi radius estimate — refine with the drive area'}</div>
       </div>`:`<div style="font-size:11px;color:#94a3b8;padding:6px 0">Computing catchment…</div>`;
       body+=`<div id="evd-${i}" style="font-size:10.5px;margin-top:6px"></div>
-      <button class="vm-export-btn" style="margin-top:6px;color:#6d28d9;background:#f3effd;border-color:#ddd0f7" onclick="event.stopPropagation();evalDriveTime(${i},this)">◔ 10-min drive area</button>`;
+      <div style="display:flex;gap:6px;margin-top:6px" onclick="event.stopPropagation()">
+        <button class="vm-export-btn" style="color:#6d28d9;background:#f3effd;border-color:#ddd0f7" onclick="evalDriveTime(${i},this)">◔ 10-min drive area</button>
+        <button class="vm-export-btn" style="color:#6d28d9;background:#f3effd;border-color:#ddd0f7" onclick="evalOverlap(${i},this)">◐ Overlap analysis</button>
+      </div>
+      <div id="evov-${i}"></div>`;
     } else if(tab==='co'){
       const sw=_mpcSweetNear(g.la,g.lo);
       body=`${_communityHTML(g.la,g.lo,{small:true})||'<div style="font-size:11px;color:#94a3b8;padding:4px 0">No tract profile here.</div>'}
@@ -8541,6 +8545,66 @@ function evalFlyTo(i){ const g=evalTop[i]; if(g) map.setView([g.la,g.lo], Math.m
 // ── Drive-time trade areas (Routes API via /api/route) — refines the top Evaluate sites ──
 let evalDriveLayer=null;            // the drawn isochrone polygon
 const DRIVE_BUDGET_SEC=600;         // 10 minutes
+// ── Catchment-overlap analysis (2026-07-16, user idea): compute the site's 10-min catchment
+// AND each nearby clinic's, measure household-weighted overlap, and derive a NETWORK-adjusted
+// winnable share (within each covered zone the entrant splits demand 1:staffW against exactly
+// the clinics whose catchments reach it — the road network supplies the geometry, Huff supplies
+// the split). Clinic catchments never change → cached permanently in localStorage (vf_iso_*),
+// building toward the Phase-2 statewide precompute. Costs ~1 Routes call per uncached clinic.
+function _isoCacheGet(k){ try{ const v=localStorage.getItem('vf_iso_'+k); return v?JSON.parse(v):null; }catch(e){ return null; } }
+function _isoCachePut(k,ring){ try{ localStorage.setItem('vf_iso_'+k, JSON.stringify(ring.map(p=>[+p[0].toFixed(4),+p[1].toFixed(4)]))); }catch(e){} }
+async function evalOverlap(i, btn){
+  const g=evalTop[i]; if(!g) return;
+  const orig=btn?btn.textContent:'';
+  if(btn){ btn.disabled=true; btn.textContent='Computing catchments…'; }
+  const out=document.getElementById('evov-'+i);
+  try{
+    const siteRing=(_evalDriveIdx===i&&_evalDriveRing)?_evalDriveRing:await computeIsochrone(g.la,g.lo,DRIVE_BUDGET_SEC);
+    _evalDriveIdx=i; _evalDriveRing=siteRing;
+    const near=evalCompsCache.map((c,ci)=>({c,ci,d:hav(g.la,g.lo,c.lat,c.lon)})).filter(x=>x.d<6500).sort((a,b)=>a.d-b.d).slice(0,6);
+    const rings=[];
+    for(const x of near){
+      const k=Math.round(x.c.lat*1000)+'_'+Math.round(x.c.lon*1000);
+      let r=_isoCacheGet(k);
+      if(!r){ if(btn) btn.textContent=`Mapping ${_ceEsc((x.c.name||'clinic')).slice(0,18)}…`; r=await computeIsochrone(x.c.lat,x.c.lon,DRIVE_BUDGET_SEC); _isoCachePut(k,r); }
+      rings.push({x, poly:r.map(p=>({lat:p[0],lng:p[1]}))});
+    }
+    // household-weighted sampling over the SITE catchment
+    const sp=siteRing.map(p=>({lat:p[0],lng:p[1]}));
+    let rs=99,rn=-99,rw=999,re=-999; for(const p of siteRing){ if(p[0]<rs)rs=p[0]; if(p[0]>rn)rn=p[0]; if(p[1]<rw)rw=p[1]; if(p[1]>re)re=p[1]; }
+    const N=42, bandR=1200, bBand=bandR/111000;
+    let totW=0, freeW=0; const ovW=new Array(rings.length).fill(0); let shareAcc=0;
+    for(let yi=0; yi<N; yi++) for(let xi=0; xi<N; xi++){
+      const la=rs+(yi+0.5)*(rn-rs)/N, lo=rw+(xi+0.5)*(re-rw)/N;
+      if(!pointInPolygon(la,lo,sp)) continue;
+      let hw=0.05; // floor so empty cells still count a little area
+      for(const r of evalData.resid){ if(r._fut) continue; if(Math.abs(r.lat-la)>bBand) continue; const d=hav(la,lo,r.lat,r.lon); if(d<bandR) hw+=(r.w||1)*(1-d/bandR); }
+      totW+=hw;
+      let pulls=0, covered=0;
+      for(let ri=0; ri<rings.length; ri++){ if(pointInPolygon(la,lo,rings[ri].poly)){ ovW[ri]+=hw; pulls+=_staffW(rings[ri].x.c.staffN); covered++; } }
+      if(!covered) freeW+=hw;
+      shareAcc+=hw*(1/(1+pulls));
+    }
+    if(!totW) throw new Error('empty catchment');
+    const netShare=shareAcc/totW, freePct=Math.round(100*freeW/totW);
+    const gravShare=Math.min(g.share,0.85);
+    const diff=netShare-gravShare;
+    const rows=rings.map((r,ri)=>({name:r.x.c.name||'Clinic', pe:r.x.c.pe, staff:r.x.c.staffN, pct:Math.round(100*ovW[ri]/totW), d:r.x.d})).sort((a,b)=>b.pct-a.pct);
+    if(out) out.innerHTML=`<div style="background:#f8f6ff;border:1px solid #ddd0f7;border-radius:9px;padding:9px 11px;line-height:1.7;margin-top:6px">
+      <div style="font-size:9.5px;font-weight:800;letter-spacing:.06em;color:#7c3aed">CATCHMENT OVERLAP · road-network based</div>
+      <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:#64748b">Uncontested share of your catchment</span><b style="color:${freePct>=40?'#15803d':freePct>=15?'#b45309':'#be123c'}">${freePct}%</b></div>
+      ${rows.map(r=>`<div style="display:flex;justify-content:space-between;font-size:10.5px"><span style="color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:64%">${_ceEsc(r.name)}${r.pe?' <span style="color:#dc2626">PE</span>':''}${r.staff?' · '+r.staff+' DVM':''}</span><b>${r.pct}% overlap</b></div>`).join('')}
+      <div style="border-top:1px dashed #ddd0f7;margin-top:5px;padding-top:5px;display:flex;justify-content:space-between;font-size:11px"><span style="color:#64748b">Network-adjusted winnable share</span><b style="color:#5b21b6">${(netShare*100).toFixed(0)}%</b></div>
+      <div style="display:flex;justify-content:space-between;font-size:10.5px"><span style="color:#94a3b8">Gravity model says</span><span style="color:#94a3b8">${(gravShare*100).toFixed(0)}%</span></div>
+      <div style="font-size:10px;color:${Math.abs(diff)>0.08?'#b45309':'#94a3b8'};margin-top:2px">${Math.abs(diff)<=0.05?'The two methods agree — high confidence in the share estimate.':diff>0?'Network says BETTER than gravity — a road barrier likely shields this site from a competitor the crow-flies model counts.':'Network says WORSE than gravity — the road grid funnels more competitors into this catchment than straight-line distance suggests.'}</div>
+    </div>`;
+    if(btn){ btn.disabled=false; btn.textContent='◐ Overlap analysis'; }
+  }catch(e){
+    vfToast('Overlap analysis unavailable — is the Routes API set up?');
+    if(out) out.innerHTML='';
+    if(btn){ btn.disabled=false; btn.textContent=orig||'◐ Overlap analysis'; }
+  }
+}
 async function _routeMatrix(origin, destinations){
   const r=await fetch('/api/route',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({origin,destinations})});
   if(!r.ok) throw new Error('route '+r.status);
