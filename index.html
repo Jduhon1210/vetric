@@ -4881,7 +4881,7 @@ const HEX_RADIUS_MI = 3;
 const HEX_R    = HEX_RADIUS_MI * 1609.344;             // metres
 const HEX_AOWN = 2.5 * Math.pow(HEX_RADIUS_MI/3, 2);   // 2.5 @3mi, radius-invariant
 const PE_NEAR_HARD = 700;        // m — within this of a PE clinic, share is hard-capped
-const HEX_PE_W = 1.6;            // PE competitor weight (calibrated; FIXED — not the w-pe slider)
+const HEX_PE_W = 1.0;            // PE competitor weight — REMOVED 2026-07-16 (user: PE and independent compete at equal per-DVM strength; roster size + analyst mult carry the differences)
 const HEX_MI = 1.0;              // column pitch, miles (~3,500 cells over DFW)
 const HEX_MI_PER_DEG_LAT = 69.0;
 const HEX_BUCKET = 0.02;         // spatial-index bucket size, degrees
@@ -7107,7 +7107,7 @@ function updateLayerKpis(){
      • neighborhood demand — gravity to residential areas + named places,
        blended with the ZIP's income & dog-ownership
      • low competition     — border-aware gravity over EVERY clinic within the
-       catchment radius (incl. ones just over the ZIP line), PE weighted 1.6x
+       catchment radius (incl. ones just over the ZIP line)
      • retail access       — gravity to shops + commercial land use
      • road visibility     — TxDOT traffic volume (AADT) on the frontage road
        (falls back to road class) — the drive-by / new-client signal
@@ -7890,7 +7890,7 @@ function _evalComputeAndRender(){
       // retail access (co-tenancy / visibility)
       let ret=0; for(const r of evalData.retail){ if(Math.abs(r.lat-la)>bRet) continue; const d=hav(la,lo,r.lat,r.lon); if(d<RET_R) ret+=(r.area?0.6:1)*_grav(d,RET_R); }
       // competition (border-aware gravity); scan all comps for the true nearest readout
-      let comp=0, nearC=Infinity, nearPE=Infinity, nComp=0, nPE=0; for(const c of comps){ const d=hav(la,lo,c.lat,c.lon); if(d<nearC)nearC=d; if(d<R){ comp+=(c.pe?1.6:1)*_revW(c.reviews,compMedRev)*_staffW(c.staffN)*(c.mult||1)*_grav(d,R); nComp++; if(c.pe){ nPE++; if(d<nearPE) nearPE=d; } } }
+      let comp=0, nearC=Infinity, nearPE=Infinity, nComp=0, nPE=0; for(const c of comps){ const d=hav(la,lo,c.lat,c.lon); if(d<nearC)nearC=d; if(d<R){ comp+=_revW(c.reviews,compMedRev)*_staffW(c.staffN)*(c.mult||1)*_grav(d,R); nComp++; if(c.pe){ nPE++; if(d<nearPE) nearPE=d; } } }
       const affl=_cellAffl(la,lo); // per-cell ZIP demographics in area mode; constant in ZIP mode
       const ageF=_cellAgeF(la,lo); // senior-skew demand damp for the containing ZIP
       const _cell={la,lo,dem,demF,ret,comp,nearC,nearPE,nComp,nPE,affl,ageF,nearRoad,nearCls,aadt,aadtRoad,stepLa,stepLo,nearRetail,zone:zinfo?zinfo.label:null,zcity:zinfo?zinfo.city:null};
@@ -7908,7 +7908,7 @@ function _evalComputeAndRender(){
     let aadt=0, aadtRoad=null; for(const a2 of evalData.aadt){ if(Math.abs(a2.lat-la)>bVis) continue; const d=hav(la,lo,a2.lat,a2.lon); if(d<VIS_R && a2.v>aadt){ aadt=a2.v; aadtRoad=a2.road; } }
     let dem=0, demF=0; for(const r of evalData.resid){ if(Math.abs(r.lat-la)>bDem) continue; const d=hav(la,lo,r.lat,r.lon); if(d<DEM_R){ const v=(r.w||1)*(tractsOn?(r._pw||1):1)*_gravD(d,DEM_R); if(r._fut) demF+=v; else dem+=v; } }
     let ret=0; for(const r of evalData.retail){ if(Math.abs(r.lat-la)>bRet) continue; const d=hav(la,lo,r.lat,r.lon); if(d<RET_R) ret+=(r.area?0.6:1)*_grav(d,RET_R); }
-    let comp=0, nearC=Infinity, nearPE=Infinity, nComp=0, nPE=0; for(const c of comps){ const d=hav(la,lo,c.lat,c.lon); if(d<nearC)nearC=d; if(d<R){ comp+=(c.pe?1.6:1)*_revW(c.reviews,compMedRev)*_staffW(c.staffN)*(c.mult||1)*_grav(d,R); nComp++; if(c.pe){ nPE++; if(d<nearPE) nearPE=d; } } }
+    let comp=0, nearC=Infinity, nearPE=Infinity, nComp=0, nPE=0; for(const c of comps){ const d=hav(la,lo,c.lat,c.lon); if(d<nearC)nearC=d; if(d<R){ comp+=_revW(c.reviews,compMedRev)*_staffW(c.staffN)*(c.mult||1)*_grav(d,R); nComp++; if(c.pe){ nPE++; if(d<nearPE) nearPE=d; } } }
     const zg=zinfo?zinfo.gate:null;
     evalSiteCell={la,lo,dem,demF,ret,comp,nearC,nearPE,nComp,nPE,affl:_cellAffl(la,lo),ageF:_cellAgeF(la,lo),nearRoad,nearCls,aadt,aadtRoad,stepLa,stepLo,zone:zinfo?zinfo.label:null,zcity:zinfo?zinfo.city:null,forced:true,zgateRaw:zg,gateOk:(zg==='allow')||(hasRetail && nearRetail<SITE_COMM)};
     grid.push(evalSiteCell);   // normalized + scored with everything else; excluded from the top-N pick below
@@ -7938,7 +7938,7 @@ function _evalComputeAndRender(){
     const av = g.aadt>0 ? _aadtVis(g.aadt) : null;
     g.accessN = av!=null ? av : ((hasRoads||hasAADT) ? _clsVis(g.nearCls) : 0.5);
     // ABSOLUTE Huff capture share — the fraction of local demand this site could WIN given the
-    // distance-decayed, PE-weighted (1.6x) competitor pressure already summed in g.comp.
+    // distance-decayed competitor pressure already summed in g.comp (PE weight removed 2026-07-16).
     // NO maxComp: a uniformly saturated ZIP scores uniformly low and means the same in 75077 as
     // in an empty exurb. With A_OWN=2.5 @3mi: comp=0 -> 1.0, comp=2.5 -> 0.5, comp=8.7 (a dense
     // suburb median) -> 0.22, comp=15 (PE-ringed) -> 0.14.
