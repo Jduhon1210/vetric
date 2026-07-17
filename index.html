@@ -7130,6 +7130,47 @@ let evalZoning=true;        // zoning FILTER on by default — drop residential/
 let evalFuture=true, _evalFutInfo=null, evalLandPlays=[], evalHiddenWeak=0;
 let evalTab='sites';
 function evalSetTab(t){ evalTab=t; _evalRenderSidebar(); }
+// Per-site card state (mockup-2 redesign): active pill per card + cached catchment stats keyed
+// by site coords ("la,lo" 4dp). The strip auto-fills from a ~3.5mi radius estimate (free, no
+// API); the paid isochrone (Drive area) upgrades the same cache with src:'drive'.
+let _siteCardTabs={}; const _siteCatch={};
+function siteCardTab(i,t){ _siteCardTabs[i]=t; _evalRenderSidebar(); }
+async function _evalFillStrips(){
+  for(let i=0;i<evalTop.length;i++){
+    const g=evalTop[i]; if(!g) continue;
+    const sid=g.la.toFixed(4)+','+g.lo.toFixed(4);
+    if(_siteCatch[sid]) continue;
+    const R=3.5/69, lonF=Math.cos(g.la*Math.PI/180), ring=[];
+    for(let k=0;k<=32;k++){ const a2=k*Math.PI/16; ring.push([g.la+R*Math.sin(a2), g.lo+R*Math.cos(a2)/lonF]); }
+    try{ const cs=await _evalCatchmentStats(ring,g); cs.src='radius'; _siteCatch[sid]=cs; }catch(e){ continue; }
+    const el=document.getElementById('evst-'+i);
+    if(el){ _evalRenderSidebar(); }   // cheapest correct refresh: re-render with the cache warm (returns instantly for done sites)
+  }
+}
+function siteReport(i){
+  const g=evalTop[i]; if(!g) return;
+  const sid=g.la.toFixed(4)+','+g.lo.toFixed(4), cs=_siteCatch[sid];
+  const w=window.open('','_blank'); if(!w) return vfToast('Pop-up blocked — allow pop-ups for the report.');
+  const esc=_ceEsc, disp=_evalDisp(g.score);
+  const tierL=g.tier==='strong'?'Recommended':g.tier==='fair'?'Best available — below the recommendation bar':'Weak';
+  const rows=(l,v)=>`<tr><td style="padding:5px 0;color:#64748b">${l}</td><td style="padding:5px 0;text-align:right;font-weight:700">${v}</td></tr>`;
+  const comps=evalCompsCache.map(c=>({c,d:hav(g.la,g.lo,c.lat,c.lon)})).sort((a,b)=>a.d-b.d).slice(0,6);
+  w.document.write(`<!doctype html><html><head><title>Vetric site report — ${sid}</title><meta charset="utf-8">
+  <style>body{font-family:Inter,system-ui,sans-serif;color:#0f172a;max-width:680px;margin:28px auto;padding:0 20px;font-size:13px;line-height:1.55}h1{font-size:19px;margin:0}h2{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8;margin:20px 0 6px}table{width:100%;border-collapse:collapse;font-size:12.5px}td{border-bottom:1px solid #f1f5f9}@media print{.np{display:none}}</style></head><body>
+  <div style="display:flex;justify-content:space-between;align-items:center"><div><h1>Site report · ${evalZip?('ZIP '+evalZip):'drawn area'}</h1><div style="color:#64748b;font-size:12px">${sid} · generated ${new Date().toLocaleDateString()} · Vetric</div></div><div style="font-size:30px;font-weight:800;color:${g.tier==='strong'?'#15803d':'#64748b'}">${disp}<span style="font-size:12px;color:#94a3b8">/100</span></div></div>
+  <div style="margin-top:6px;font-weight:700">${tierL}</div>
+  <h2>Site factors</h2><table>
+  ${rows('Neighborhood demand',Math.round(g.demandN*100))}${rows('Winnable capture share',(g.share*100).toFixed(0)+'%')}${rows('Retail co-tenancy',Math.round(g.retailN*100))}${rows('Road visibility',Math.round(g.accessN*100)+(g.aadt>0?' · ~'+Math.round(g.aadt/1000)+'k cars/day':''))}${rows('Nearest clinic',isFinite(g.nearC)?(g.nearC/1609.344).toFixed(1)+' mi':'—')}${rows('Competitors in '+evalRadiusMi+' mi',g.nComp+' ('+g.nPE+' PE)')}
+  </table>
+  ${cs?`<h2>Catchment (${cs.src==='drive'?'10-min drive-time':'~3.5 mi radius est.'})</h2><table>
+  ${rows('Households',cs.hhIn.toLocaleString())}${rows('Pet households',cs.dogIn.toLocaleString()+' dog · '+cs.catIn.toLocaleString()+' cat')}${rows('Est. annual vet visits','~'+cs.visits.toLocaleString())}${rows('Competing clinics inside',(cs.pe+cs.ind)+' ('+cs.pe+' PE · '+cs.ind+' indep)')}${rows('Winnable at '+(cs.share*100).toFixed(0)+'% share','~'+cs.captured.toLocaleString()+' visits/yr')}${rows('Practice size supported',cs.size)}${rows('Est. revenue (modeled)',_fmtM(cs.rev))}
+  </table>`:''}
+  <h2>Nearest competitors</h2><table>${comps.map(x=>rows(esc(x.c.name||'Clinic')+(x.c.pe?' <span style="color:#dc2626">(PE'+(x.c.owner?' · '+esc(x.c.owner):'')+')</span>':' (independent)'),(x.d/1609.344).toFixed(1)+' mi'+(x.c.staffN?' · '+x.c.staffN+' DVMs':''))).join('')}</table>
+  <div style="margin-top:18px;font-size:10.5px;color:#94a3b8">Modeled from Census ACS 2024, OpenStreetMap, TxDOT AADT, Google Places and Vetric's capture model. Estimates, not projections — verify zoning, availability and pricing before pursuing. vetric.co</div>
+  <div class="np" style="margin-top:14px"><button onclick="window.print()" style="font-size:13px;padding:8px 18px;border-radius:8px;border:1px solid #cbd5e1;background:#1e3a8a;color:#fff;cursor:pointer">Print / save as PDF</button></div>
+  </body></html>`);
+  w.document.close();
+}
 function _evalAcqFocus(i){
   const c=evalCompsCache[i]; if(!c) return;
   map.setView([c.lat,c.lon],15,{animate:false});
@@ -8225,6 +8266,7 @@ function _leaseBlock(g){
 }
 function _evalRenderSidebar(){
   const sb=document.querySelector('.sidebar'); if(!sb) return;
+  setTimeout(()=>{ try{ _evalFillStrips(); }catch(e){} }, 30);
   if(!sb.classList.contains('eval-wide')){ sb.classList.add('eval-wide'); setTimeout(()=>map.invalidateSize(),200); }
   const hasRetail=evalDataOk.retail, hasRoads=evalDataOk.roads, hasResid=evalDataOk.resid, hasAADT=evalDataOk.aadt;
   const bar=(label,v,on)=>{ const pct=on?Math.round(Math.max(0,Math.min(1,v))*100):null;
@@ -8239,27 +8281,53 @@ function _evalRenderSidebar(){
     const chipT = g.tier==='strong' ? `<span style="font-size:9px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:#15803d;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:1.5px 7px">Recommended</span>`
                 : g.tier==='fair' ? `<span style="font-size:9px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:#be123c;background:#fff1f2;border:1px solid #fecdd3;border-radius:8px;padding:1.5px 7px">Best available</span>`
                 : `<span style="font-size:9px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:#64748b;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:8px;padding:1.5px 7px">Weak</span>`;
-    return `<div class="eval-card" onclick="evalFlyTo(${i})"${g.tier!=='strong'?' style="opacity:.88"':''}>
-      <div class="eval-card-head"><span class="eval-rank"${g.tier!=='strong'?' style="background:#94a3b8"':''}>${i+1}</span><span class="eval-card-title">Site ${i+1}</span>${chipT}<span class="eval-score"${g.tier!=='strong'?' style="color:#64748b"':''}>${headline}</span></div>
-      <div class="eval-why">${nearStr}${roadStr?' · '+roadStr:''}</div>
-      ${bar('Neighborhood demand', g.demandN, true)}
+    const tab=_siteCardTabs[i]||'ov';
+    const pill=(id,l)=>`<span onclick="event.stopPropagation();siteCardTab(${i},'${id}')" style="font-size:10.5px;font-weight:700;cursor:pointer;border-radius:12px;padding:3px 11px;${tab===id?'background:var(--navy);color:#fff':'color:#64748b;border:1px solid #dde4ef'}">${l}</span>`;
+    const cs=_siteCatch[sid];
+    const stat=(v,l,c)=>`<div style="flex:1;text-align:center;padding:7px 3px;min-width:0"><div style="font-size:12.5px;font-weight:800;color:${c||'#0f172a'};letter-spacing:-.01em;white-space:nowrap">${v}</div><div style="font-size:7.5px;font-weight:700;color:#94a3b8;letter-spacing:.04em">${l}</div></div>`;
+    const sep='<div style="width:1px;background:#eef2f7;margin:7px 0"></div>';
+    const strip=`<div id="evst-${i}" style="display:flex;background:#f8fafc;border:1px solid #eef2f7;border-radius:9px;margin:8px 0">${
+      cs?stat(cs.hhIn.toLocaleString(),'HOUSEHOLDS')+sep+stat('~'+kfmt(cs.visits),'VISITS/YR')+sep+stat(String(cs.pe+cs.ind),'COMPETING',(cs.pe+cs.ind)>8?'#be123c':undefined)+sep+stat(_fmtM(cs.rev),'EST. REV','#5b21b6')
+        :stat('…','HOUSEHOLDS')+sep+stat('…','VISITS/YR')+sep+stat('…','COMPETING')+sep+stat('…','EST. REV')
+    }</div>`;
+    let body='';
+    if(tab==='ov'){
+      body=`${bar('Neighborhood demand', g.demandN, true)}
       ${bar('Low competition', g.lowComp, true)}
       <div style="font-size:10px;color:#94a3b8;margin:-1px 0 4px">${g.nComp?`${g.nComp} competitor${g.nComp!==1?'s':''} within ${evalRadiusMi} mi (${g.nPE} PE · ${g.nComp-g.nPE} indep)`:`No clinics within ${evalRadiusMi} mi`}</div>
       ${bar('Retail access', g.retailN, hasRetail)}
       ${bar('Road visibility', g.accessN, hasRoads||hasAADT)}
-      ${cn?`<div style="font-size:10.5px;color:#be123c;font-weight:600;margin-top:5px">${cn}</div>`:''}
-      <div style="display:flex;gap:10px;align-items:center;margin-top:6px;font-size:10.5px" onclick="event.stopPropagation()">
-        <a href="https://www.google.com/maps/search/?api=1&query=${g.la},${g.lo}" target="_blank" rel="noopener" style="color:var(--navy);font-weight:700;text-decoration:none">Maps ↗</a>
-        <span style="color:#94a3b8;font-family:'JetBrains Mono',monospace">${sid}</span>
-        <span class="vm-star ${_inWatch('site',sid)?'on':''}" style="margin-left:auto" title="Save site to watchlist" onclick="toggleWatchSite(${g.la},${g.lo},${headline},this)">★</span>
-      </div>
-      ${_communityHTML(g.la,g.lo,{small:true})}
-      ${(()=>{ const sw=_mpcSweetNear(g.la,g.lo); if(!sw) return '';
-        return `<div style="margin-top:5px;font-size:10.5px;color:#334155;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:5px 9px"><span style="font-weight:800;color:#0f766e">⚡ ${_ceEsc(sw.m.n)}</span> is ${sw.mi.toFixed(1)} mi away, in its pad-engagement window (${_ceEsc(sw.ph.why)}). Chains typically sign 12–24 months before opening.</div>`; })()}
-      ${_leaseBlock(g)}
-      <div style="margin-top:7px" onclick="event.stopPropagation()">
-        <button class="vm-export-btn" style="color:#6d28d9;background:#f3effd;border-color:#ddd0f7" onclick="evalDriveTime(${i},this)">◔ 10-min drive area</button>
-        <div id="evd-${i}" style="font-size:11px;color:#6d28d9;margin-top:5px;line-height:1.4"></div>
+      ${cn?`<div style="font-size:10.5px;color:#be123c;font-weight:600;margin-top:5px">${cn}</div>`:''}`;
+    } else if(tab==='ca'){
+      body=cs?`<div style="font-size:11px;line-height:1.9;color:#334155">
+        <div style="display:flex;justify-content:space-between"><span style="color:#64748b">Pet households</span><b>${cs.dogIn.toLocaleString()} dog · ${cs.catIn.toLocaleString()} cat</b></div>
+        <div style="display:flex;justify-content:space-between"><span style="color:#64748b">Est. vet visits</span><b>~${cs.visits.toLocaleString()}/yr</b></div>
+        <div style="display:flex;justify-content:space-between"><span style="color:#64748b">Winnable at ${(cs.share*100).toFixed(0)}% share</span><b>~${cs.captured.toLocaleString()}/yr</b></div>
+        <div style="display:flex;justify-content:space-between"><span style="color:#64748b">Competing inside</span><b>${cs.pe+cs.ind} (${cs.pe} PE · ${cs.ind} indep)</b></div>
+        <div style="margin-top:3px;font-size:11px;font-weight:700;color:#5b21b6">Supports a ${cs.size} practice · est. revenue ${_fmtM(cs.rev)} <span style="font-weight:500;color:#94a3b8">(modeled)</span></div>
+        <div style="font-size:9.5px;color:#94a3b8;margin-top:2px">${cs.src==='drive'?'True 10-min drive-time catchment':'~3.5 mi radius estimate — refine with the drive area'}</div>
+      </div>`:`<div style="font-size:11px;color:#94a3b8;padding:6px 0">Computing catchment…</div>`;
+      body+=`<div id="evd-${i}" style="font-size:10.5px;margin-top:6px"></div>
+      <button class="vm-export-btn" style="margin-top:6px;color:#6d28d9;background:#f3effd;border-color:#ddd0f7" onclick="event.stopPropagation();evalDriveTime(${i},this)">◔ 10-min drive area</button>`;
+    } else if(tab==='co'){
+      const sw=_mpcSweetNear(g.la,g.lo);
+      body=`${_communityHTML(g.la,g.lo,{small:true})||'<div style="font-size:11px;color:#94a3b8;padding:4px 0">No tract profile here.</div>'}
+      ${sw?`<div style="margin-top:6px;font-size:10.5px;color:#334155;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:6px 9px"><span style="font-weight:800;color:#0f766e">⚡ ${_ceEsc(sw.m.n)}</span> is ${sw.mi.toFixed(1)} mi away, in its pad-engagement window.</div>`:''}`;
+    } else {
+      body=`<div style="font-size:11px;line-height:2;color:#334155" onclick="event.stopPropagation()">
+        <div><a href="https://www.google.com/maps/search/?api=1&query=${g.la},${g.lo}" target="_blank" rel="noopener" style="color:var(--navy);font-weight:700;text-decoration:none">Google Maps ↗</a> <span style="color:#94a3b8;font-family:'JetBrains Mono',monospace;font-size:9.5px;margin-left:6px">${sid}</span></div>
+        ${_leaseBlock(g)}
+      </div>`;
+    }
+    return `<div class="eval-card" onclick="evalFlyTo(${i})"${g.tier!=='strong'?' style="opacity:.92"':''}>
+      <div class="eval-card-head"><span class="eval-rank"${g.tier!=='strong'?' style="background:#94a3b8"':''}>${i+1}</span><span class="eval-card-title">Site ${i+1}</span>${chipT}<span class="eval-score"${g.tier!=='strong'?' style="color:#64748b"':''}>${headline}</span></div>
+      <div class="eval-why">${nearStr}${roadStr?' · '+roadStr:''}</div>
+      ${strip}
+      <div style="display:flex;gap:5px;margin-bottom:8px" onclick="event.stopPropagation()">${pill('ov','Overview')}${pill('ca','Catchment')}${pill('co','Community')}${pill('lk','Links')}</div>
+      <div id="evcb-${i}">${body}</div>
+      <div style="display:flex;gap:7px;margin-top:9px;align-items:center" onclick="event.stopPropagation()">
+        <button class="vm-export-btn" style="flex:1;justify-content:center;background:var(--navy);color:#fff;border-color:var(--navy)" onclick="siteReport(${i})">↓ Site report</button>
+        <span class="vm-star ${_inWatch('site',sid)?'on':''}" style="font-size:16px;padding:0 4px" title="Save site to watchlist" onclick="toggleWatchSite(${g.la},${g.lo},${headline},this)">★</span>
       </div>
     </div>`;
   }).join('') || '<div class="empty">No developed, buildable spots in this ZIP — it may be largely rural.</div>';
@@ -8554,6 +8622,7 @@ async function evalDriveTime(i, btn){
     const el=document.getElementById('evd-'+i);
     if(el) el.innerHTML=`<span style="color:#94a3b8">Analyzing catchment…</span>`;
     const cs=await _evalCatchmentStats(ring, g);
+    cs.src='drive'; _siteCatch[g.la.toFixed(4)+','+g.lo.toFixed(4)]=cs; _siteCardTabs[i]='ca'; _evalRenderSidebar();
     if(el) el.innerHTML=`<div style="background:#f8f6ff;border:1px solid #ddd0f7;border-radius:9px;padding:8px 11px;line-height:1.7">
       <div style="font-size:9.5px;font-weight:800;letter-spacing:.06em;color:#7c3aed">10-MIN CATCHMENT · ~${cs.areaMi} mi²</div>
       <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:#64748b">Households you'd serve</span><b>${cs.hhIn.toLocaleString()}</b></div>
@@ -8870,7 +8939,7 @@ function _evalResetState(){
   evalTopMode=null; evalShowWeak=false; evalSpeciesIgnored=false; evalSpeciesPrompted=false; _speciesModalClose();
   _evalClearLayers(); _evalHideLegend(); _evalClearDrive();
   evalData={vets:[], retail:[], resid:[], roads:[], aadt:[], zoning:[], osmLU:[], parcels:[]}; evalDataOk={retail:false,roads:false,resid:false,aadt:false,zoning:false,parcels:false};
-  evalCells=[]; evalTop=[]; evalCompsCache=[]; evalLandPlays=[]; _evalFutInfo=null; evalHiddenWeak=0; evalTab='sites';
+  evalCells=[]; evalTop=[]; evalCompsCache=[]; evalLandPlays=[]; _evalFutInfo=null; evalHiddenWeak=0; evalTab='sites'; _siteCardTabs={};
   if(typeof _siteClear==='function') _siteClear();
 }
 function clearEvaluate(){
