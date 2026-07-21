@@ -4905,6 +4905,27 @@ async function _loadHexWater(){
   })();
   return _hexWaterP;
 }
+// ── Barrier-aware distance (2026-07-21, Freiburg-study hybrid insight) ───────────────────
+// Crow-flies gravity counts a competitor 2mi across Lewisville Lake at full strength; the real
+// drive is a 9-minute detour. This samples the straight line between two points and inflates
+// the effective distance by how much of it crosses water. Deliberately NORMALISED so the
+// no-barrier case returns exactly the straight-line distance — a uniform circuity factor would
+// scale every distance equally, cancel out in the share ratio, and silently break the
+// fair-fight A_OWN calibration. Only barrier-crossing pairs are de-weighted, which is the
+// actual signal. Free, no API, runs on every cell. Water absent → returns plain distance.
+function _barrierDist(la1,lo1,la2,lo2,d){
+  if(d==null) d=hav(la1,lo1,la2,lo2);
+  if(!_hexWater||!_hexWater.length||d<400) return d;
+  const sLa=Math.min(la1,la2), nLa=Math.max(la1,la2), wLo=Math.min(lo1,lo2), eLo=Math.max(lo1,lo2);
+  let any=false;
+  for(const wp of _hexWater){ if(wp.n<sLa||wp.s>nLa||wp.e<wLo||wp.w>eLo) continue; any=true; break; }
+  if(!any) return d;                                  // common case: nothing to test
+  const N=6; let wet=0;
+  for(let i=1;i<=N;i++){ const t=i/(N+1);
+    if(_hexInWater(la1+(la2-la1)*t, lo1+(lo2-lo1)*t)) wet++; }
+  if(!wet) return d;
+  return d*(1+2.2*(wet/N));                           // ~30% wet → 1.66x; fully across → 3.2x
+}
 function _hexInWater(lat,lon){
   if(!_hexWater) return false;
   for(const wp of _hexWater){ if(lat<wp.s||lat>wp.n||lon<wp.w||lon>wp.e) continue; if(_pointInRing(lat,lon,wp.ring)) return true; }
@@ -5079,7 +5100,7 @@ async function buildHexBaseInputs(){
     for(let di=-winB;di<=winB;di++) for(let dj=-winB;dj<=winB;dj++){
       const arr=_hexClinicIndex.get((bi+di)+'_'+(bj+dj)); if(!arr) continue;
       for(const c of arr){ const d=hav(h.cLat,h.cLon,c.lat,c.lon); if(d>=HEX_R) continue;
-        comp += (c.pe?HEX_PE_W:1)*_revW(c.reviews,_hexCompMedRev)*_staffW(c.staffN)*(c.mult||1)*_grav(d,HEX_R);
+        comp += (c.pe?HEX_PE_W:1)*_revW(c.reviews,_hexCompMedRev)*_staffW(c.staffN)*(c.mult||1)*_grav(_barrierDist(h.cLat,h.cLon,c.lat,c.lon,d),HEX_R);
         if(c.pe && d<nearPE) nearPE=d; }
     }
     h.comp=comp; h.nearPE=nearPE;
@@ -7903,7 +7924,7 @@ function _evalComputeAndRender(){
       // retail access (co-tenancy / visibility)
       let ret=0; for(const r of evalData.retail){ if(Math.abs(r.lat-la)>bRet) continue; const d=hav(la,lo,r.lat,r.lon); if(d<RET_R) ret+=(r.area?0.6:1)*_grav(d,RET_R); }
       // competition (border-aware gravity); scan all comps for the true nearest readout
-      let comp=0, nearC=Infinity, nearPE=Infinity, nComp=0, nPE=0; for(const c of comps){ const d=hav(la,lo,c.lat,c.lon); if(d<nearC)nearC=d; if(d<R){ comp+=_revW(c.reviews,compMedRev)*_staffW(c.staffN)*(c.mult||1)*_grav(d,R); nComp++; if(c.pe){ nPE++; if(d<nearPE) nearPE=d; } } }
+      let comp=0, nearC=Infinity, nearPE=Infinity, nComp=0, nPE=0; for(const c of comps){ const draw=hav(la,lo,c.lat,c.lon); if(draw<nearC)nearC=draw; const d=_barrierDist(la,lo,c.lat,c.lon,draw); if(d<R){ comp+=_revW(c.reviews,compMedRev)*_staffW(c.staffN)*(c.mult||1)*_grav(d,R); nComp++; if(c.pe){ nPE++; if(draw<nearPE) nearPE=draw; } } }
       const affl=_cellAffl(la,lo); // per-cell ZIP demographics in area mode; constant in ZIP mode
       const ageF=_cellAgeF(la,lo); // senior-skew demand damp for the containing ZIP
       const _cell={la,lo,dem,demF,ret,comp,nearC,nearPE,nComp,nPE,affl,ageF,nearRoad,nearCls,aadt,aadtRoad,stepLa,stepLo,nearRetail,zone:zinfo?zinfo.label:null,zcity:zinfo?zinfo.city:null};
@@ -7921,7 +7942,7 @@ function _evalComputeAndRender(){
     let aadt=0, aadtRoad=null; for(const a2 of evalData.aadt){ if(Math.abs(a2.lat-la)>bVis) continue; const d=hav(la,lo,a2.lat,a2.lon); if(d<VIS_R && a2.v>aadt){ aadt=a2.v; aadtRoad=a2.road; } }
     let dem=0, demF=0; for(const r of evalData.resid){ if(Math.abs(r.lat-la)>bDem) continue; const d=hav(la,lo,r.lat,r.lon); if(d<DEM_R){ const v=(r.w||1)*(tractsOn?(r._pw||1):1)*_gravD(d,DEM_R); if(r._fut) demF+=v; else dem+=v; } }
     let ret=0; for(const r of evalData.retail){ if(Math.abs(r.lat-la)>bRet) continue; const d=hav(la,lo,r.lat,r.lon); if(d<RET_R) ret+=(r.area?0.6:1)*_grav(d,RET_R); }
-    let comp=0, nearC=Infinity, nearPE=Infinity, nComp=0, nPE=0; for(const c of comps){ const d=hav(la,lo,c.lat,c.lon); if(d<nearC)nearC=d; if(d<R){ comp+=_revW(c.reviews,compMedRev)*_staffW(c.staffN)*(c.mult||1)*_grav(d,R); nComp++; if(c.pe){ nPE++; if(d<nearPE) nearPE=d; } } }
+    let comp=0, nearC=Infinity, nearPE=Infinity, nComp=0, nPE=0; for(const c of comps){ const draw=hav(la,lo,c.lat,c.lon); if(draw<nearC)nearC=draw; const d=_barrierDist(la,lo,c.lat,c.lon,draw); if(d<R){ comp+=_revW(c.reviews,compMedRev)*_staffW(c.staffN)*(c.mult||1)*_grav(d,R); nComp++; if(c.pe){ nPE++; if(draw<nearPE) nearPE=draw; } } }
     const zg=zinfo?zinfo.gate:null;
     evalSiteCell={la,lo,dem,demF,ret,comp,nearC,nearPE,nComp,nPE,affl:_cellAffl(la,lo),ageF:_cellAgeF(la,lo),nearRoad,nearCls,aadt,aadtRoad,stepLa,stepLo,zone:zinfo?zinfo.label:null,zcity:zinfo?zinfo.city:null,forced:true,zgateRaw:zg,gateOk:(zg==='allow')||(hasRetail && nearRetail<SITE_COMM)};
     grid.push(evalSiteCell);   // normalized + scored with everything else; excluded from the top-N pick below
@@ -8317,6 +8338,7 @@ function _leaseBlock(g){
 function _evalRenderSidebar(){
   const sb=document.querySelector('.sidebar'); if(!sb) return;
   setTimeout(()=>{ try{ _evalFillStrips(); }catch(e){} }, 30);
+  setTimeout(()=>{ try{ _evalAutoBlend(); }catch(e){} }, 400);   // network refinement of the headline capture, background
   if(!sb.classList.contains('eval-wide')){ sb.classList.add('eval-wide'); setTimeout(()=>map.invalidateSize(),200); }
   const hasRetail=evalDataOk.retail, hasRoads=evalDataOk.roads, hasResid=evalDataOk.resid, hasAADT=evalDataOk.aadt;
   const bar=(label,v,on)=>{ const pct=on?Math.round(Math.max(0,Math.min(1,v))*100):null;
@@ -8355,7 +8377,7 @@ function _evalRenderSidebar(){
         <div style="display:flex;justify-content:space-between"><span style="color:#64748b">Winnable at ${(cs.share*100).toFixed(0)}% share</span><b>~${cs.captured.toLocaleString()}/yr</b></div>
         <div style="display:flex;justify-content:space-between"><span style="color:#64748b">Competing inside</span><b>${cs.pe+cs.ind} (${cs.pe} PE · ${cs.ind} indep)</b></div>
         <div style="margin-top:3px;font-size:11px;font-weight:700;color:#5b21b6">Supports a ${cs.size} practice · est. revenue ${_fmtM(cs.rev)} <span style="font-weight:500;color:#64748b">(modeled)</span></div>
-        <div style="font-size:10.5px;color:#64748b;margin-top:2px">${cs.src==='drive'?'True 10-min drive-time catchment':'~3.5 mi radius estimate — refine with the drive area'}</div>
+        <div style="font-size:10.5px;color:#64748b;margin-top:2px">${cs.src==='drive'?'True 10-min drive-time catchment':'~3.5 mi radius estimate — refine with the drive area'}${cs.basis==='blend'?' · share is the gravity/road-network average':' · gravity share'}</div>
       </div>`:`<div style="font-size:11px;color:#64748b;padding:6px 0">Computing catchment…</div>`;
       body+=`<div id="evd-${i}" style="font-size:10.5px;margin-top:6px"></div>
       <div style="display:flex;gap:6px;margin-top:6px" onclick="event.stopPropagation()">
@@ -8590,6 +8612,67 @@ function _evalClearOverlap(){
   _evalHeatTipHide(); if(evalOverlapLayer){ try{ map.removeLayer(evalOverlapLayer); }catch(e){} evalOverlapLayer=null; } }
 function _isoCacheGet(k){ try{ const v=localStorage.getItem('vf_iso_'+k); return v?JSON.parse(v):null; }catch(e){ return null; } }
 function _isoCachePut(k,ring){ try{ localStorage.setItem('vf_iso_'+k, JSON.stringify(ring.map(p=>[+p[0].toFixed(4),+p[1].toFixed(4)]))); }catch(e){} }
+// Headless network-share computation (shared by the auto-blend and the visual panel).
+// Returns {netShare, freePct, rows, depthW, totW, rings} or null. Clinic isochrones cache
+// permanently (vf_iso_*), so the marginal cost after the first analysis in a market is ONE
+// Routes call for the site itself.
+async function _evalNetShare(g, opts){
+  opts=opts||{};
+  const siteRing = opts.siteRing || await computeIsochrone(g.la,g.lo,DRIVE_BUDGET_SEC);
+  const near=evalCompsCache.map((c,ci)=>({c,ci,d:hav(g.la,g.lo,c.lat,c.lon)})).filter(x=>x.d<12000).sort((a,b)=>a.d-b.d).slice(0,12);
+  const rings=[];
+  for(const x of near){
+    const k=Math.round(x.c.lat*1000)+'_'+Math.round(x.c.lon*1000);
+    let r=_isoCacheGet(k);
+    if(!r){
+      if(opts.cachedOnly) continue;                 // auto-blend: don't fire calls for uncached clinics beyond the budget
+      if(opts.onProgress) opts.onProgress(x.c.name);
+      r=await computeIsochrone(x.c.lat,x.c.lon,DRIVE_BUDGET_SEC); _isoCachePut(k,r);
+    }
+    rings.push({x, poly:r.map(p=>({lat:p[0],lng:p[1]}))});
+  }
+  if(!rings.length) return null;
+  const sp=siteRing.map(p=>({lat:p[0],lng:p[1]}));
+  let rs=99,rn=-99,rw=999,re=-999; for(const p of siteRing){ if(p[0]<rs)rs=p[0]; if(p[0]>rn)rn=p[0]; if(p[1]<rw)rw=p[1]; if(p[1]>re)re=p[1]; }
+  const N=42, bandR=1200, bBand=bandR/111000;
+  let totW=0, freeW=0; const ovW=new Array(rings.length).fill(0); let shareAcc=0;
+  const depthW=[0,0,0,0];
+  for(let yi=0; yi<N; yi++) for(let xi=0; xi<N; xi++){
+    const la=rs+(yi+0.5)*(rn-rs)/N, lo=rw+(xi+0.5)*(re-rw)/N;
+    if(!pointInPolygon(la,lo,sp)) continue;
+    let hw=0.05;
+    for(const r of evalData.resid){ if(r._fut) continue; if(Math.abs(r.lat-la)>bBand) continue; const d=hav(la,lo,r.lat,r.lon); if(d<bandR) hw+=(r.w||1)*(1-d/bandR); }
+    totW+=hw;
+    let pulls=0, covered=0;
+    for(let ri=0; ri<rings.length; ri++){ if(pointInPolygon(la,lo,rings[ri].poly)){ ovW[ri]+=hw; pulls+=_staffW(rings[ri].x.c.staffN); covered++; } }
+    if(!covered) freeW+=hw;
+    depthW[Math.min(covered,3)]+=hw;
+    shareAcc+=hw*(1/(1+pulls));
+  }
+  if(!totW) return null;
+  return {netShare:shareAcc/totW, freeW, totW, ovW, depthW, rings, siteRing, freePct:Math.round(100*freeW/totW)};
+}
+// Auto-blend: after an analysis settles, compute the network share for the TOP site and blend
+// it 50/50 with gravity (Freiburg: the average of straight-line and network beats either alone).
+// The blended figure becomes the headline capture used by the catchment card, practice size and
+// revenue. Runs once per site, silently, and degrades to pure gravity if Routes is unavailable.
+const _netShareCache={};
+async function _evalAutoBlend(){
+  if(!evalActive || !evalTop.length) return;
+  const g=evalTop[0]; if(!g) return;
+  const sid=g.la.toFixed(4)+','+g.lo.toFixed(4);
+  if(_netShareCache[sid]!==undefined) return;
+  _netShareCache[sid]=null;                       // claim it so we only try once
+  try{
+    const res=await _evalNetShare(g,{});
+    if(!res) return;
+    _netShareCache[sid]={net:res.netShare, grav:Math.min(g.share,0.85)};
+    g.netShare=res.netShare;
+    g.blendShare=(res.netShare+Math.min(g.share,0.85))/2;
+    delete _siteCatch[sid];                        // force the catchment strip to recompute on the blend
+    if(evalActive) _evalRenderSidebar();
+  }catch(e){ /* Routes unavailable → stay on gravity, no user-facing failure */ }
+}
 async function evalOverlap(i, btn){
   const g=evalTop[i]; if(!g) return;
   const orig=btn?btn.textContent:'';
@@ -8598,44 +8681,17 @@ async function evalOverlap(i, btn){
   try{
     const siteRing=(_evalDriveIdx===i&&_evalDriveRing)?_evalDriveRing:await computeIsochrone(g.la,g.lo,DRIVE_BUDGET_SEC);
     _evalDriveIdx=i; _evalDriveRing=siteRing;
-    // Catchment reach, not straight-line proximity: a 10-min drive covers ~6-8 mi on highways,
-    // so a clinic 7 mi out can still overlap this site's catchment. Capped at 12 by COST (one
-    // Routes call per uncached clinic, cached permanently after), not by relevance — under-
-    // counting competitors biases the network share UPWARD, so err toward including them.
-    const near=evalCompsCache.map((c,ci)=>({c,ci,d:hav(g.la,g.lo,c.lat,c.lon)})).filter(x=>x.d<12000).sort((a,b)=>a.d-b.d).slice(0,12);
-    const rings=[];
-    for(const x of near){
-      const k=Math.round(x.c.lat*1000)+'_'+Math.round(x.c.lon*1000);
-      let r=_isoCacheGet(k);
-      if(!r){ if(btn) btn.textContent=`Mapping ${_ceEsc((x.c.name||'clinic')).slice(0,18)}…`; r=await computeIsochrone(x.c.lat,x.c.lon,DRIVE_BUDGET_SEC); _isoCachePut(k,r); }
-      rings.push({x, poly:r.map(p=>({lat:p[0],lng:p[1]}))});
-    }
-    // household-weighted sampling over the SITE catchment
-    const sp=siteRing.map(p=>({lat:p[0],lng:p[1]}));
-    let rs=99,rn=-99,rw=999,re=-999; for(const p of siteRing){ if(p[0]<rs)rs=p[0]; if(p[0]>rn)rn=p[0]; if(p[1]<rw)rw=p[1]; if(p[1]>re)re=p[1]; }
-    const N=42, bandR=1200, bBand=bandR/111000;
-    let totW=0, freeW=0; const ovW=new Array(rings.length).fill(0); let shareAcc=0;
-    const depthW=[0,0,0,0];   // households contested by 0 / 1 / 2 / 3+ other clinics
-    for(let yi=0; yi<N; yi++) for(let xi=0; xi<N; xi++){
-      const la=rs+(yi+0.5)*(rn-rs)/N, lo=rw+(xi+0.5)*(re-rw)/N;
-      if(!pointInPolygon(la,lo,sp)) continue;
-      let hw=0.05; // floor so empty cells still count a little area
-      for(const r of evalData.resid){ if(r._fut) continue; if(Math.abs(r.lat-la)>bBand) continue; const d=hav(la,lo,r.lat,r.lon); if(d<bandR) hw+=(r.w||1)*(1-d/bandR); }
-      totW+=hw;
-      let pulls=0, covered=0;
-      for(let ri=0; ri<rings.length; ri++){ if(pointInPolygon(la,lo,rings[ri].poly)){ ovW[ri]+=hw; pulls+=_staffW(rings[ri].x.c.staffN); covered++; } }
-      if(!covered) freeW+=hw;
-      depthW[Math.min(covered,3)]+=hw;
-      shareAcc+=hw*(1/(1+pulls));
-    }
+    const R0=await _evalNetShare(g,{siteRing, onProgress:n=>{ if(btn) btn.textContent=`Mapping ${_ceEsc(String(n||'clinic')).slice(0,18)}…`; }});
+    if(!R0) throw new Error('empty catchment');
+    const {rings, ovW, depthW, totW, freeW}=R0;
     if(!totW) throw new Error('empty catchment');
+    const netShare=R0.netShare, freePct=R0.freePct;
     // Anchor the relative sample weights to REAL households (same ZIP-apportionment engine as
     // the catchment strip) so the breakdown speaks in absolute HH, not just percentages.
     let hhTotal=null;
     try{ const _cs0=_siteCatch[g.la.toFixed(4)+','+g.lo.toFixed(4)]; hhTotal=(_cs0&&_cs0.src==='drive')?_cs0.hhIn:(await _evalCatchmentStats(siteRing,g)).hhIn; }catch(e){}
     const hhOf=w=> hhTotal!=null?Math.round(hhTotal*w/totW):null;
     const hhFmt=v=> v==null?'':(v>=10000?Math.round(v/1000)+'k':v.toLocaleString());
-    const netShare=shareAcc/totW, freePct=Math.round(100*freeW/totW);
     const gravShare=Math.min(g.share,0.85);
     const diff=netShare-gravShare;
     // ── draw every catchment on the map (user ask: SEE the overlap) — site in solid purple,
@@ -8740,12 +8796,13 @@ async function _evalCatchmentStats(ring, g){
   }
   const visits=Math.round(dogIn*OPP_VISITS_PER_DOGHH+catIn*OPP_VISITS_PER_CATHH);
   let pe=0, ind=0; for(const c of evalCompsCache){ if(pointInPolygon(c.lat,c.lon,poly)){ c.pe?pe++:ind++; } }
-  const share=Math.min(g&&g.share!=null?g.share:0.5, 0.85);
+  // blended (gravity+network) share when the auto-blend has landed; else pure gravity
+  const share=(g&&g.blendShare!=null)?g.blendShare:Math.min(g&&g.share!=null?g.share:0.5, 0.85);
   const captured=Math.round(visits*share);
   const dvmFit=captured/OPP_VISITS_PER_DVM;
   const size=dvmFit<1.4?'solo-doctor':dvmFit<2.5?'~2-doctor':dvmFit<3.5?'~3-doctor':'4+ doctor';
   const rev=dvmFit*REV_PER_DVM;
-  return {hhIn:Math.round(hhIn), dogIn:Math.round(dogIn), catIn:Math.round(catIn), visits, pe, ind, share, captured, dvmFit, size, rev, areaMi:Math.round(_polyAreaMi(ring))};
+  return {hhIn:Math.round(hhIn), dogIn:Math.round(dogIn), catIn:Math.round(catIn), visits, pe, ind, share, basis:(g&&g.blendShare!=null)?'blend':'gravity', captured, dvmFit, size, rev, areaMi:Math.round(_polyAreaMi(ring))};
 }
 function _fmtM(v){ return v>=1e6?('$'+(v/1e6).toFixed(1)+'M'):('$'+Math.round(v/1000)+'k'); }
 const _DRIVE_SHOW='◔ 10-min drive area', _DRIVE_HIDE='✕ Hide drive area';
@@ -9091,6 +9148,7 @@ function _evalResetState(){
   _evalClearLayers(); _evalHideLegend(); _evalClearDrive();
   evalData={vets:[], retail:[], resid:[], roads:[], aadt:[], zoning:[], osmLU:[], parcels:[]}; evalDataOk={retail:false,roads:false,resid:false,aadt:false,zoning:false,parcels:false};
   evalCells=[]; evalTop=[]; evalCompsCache=[]; evalLandPlays=[]; _evalFutInfo=null; evalHiddenWeak=0; evalTab='sites'; _siteCardTabs={};
+  for(const k in _netShareCache) delete _netShareCache[k];
   if(typeof _siteClear==='function') _siteClear();
 }
 function clearEvaluate(){
