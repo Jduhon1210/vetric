@@ -1599,6 +1599,13 @@ function checkPE(name, lat, lon, key, overrides) {
 // gotchas). 1.0 = the SVG is ~3× the viewport per axis; bigger smooths fast pans
 // but renders more off-screen choropleth polygons, so this balances the two.
 const map = L.map('map',{minZoom:4, boxZoom:false, attributionControl:false, renderer: L.svg({padding:1})}).setView([31.0,-99.0],7);
+// PERF (2026-07-21): choropleth fills render to CANVAS, not the shared SVG pane. With the
+// statewide ZIP layer on, SVG meant ~1,939 individual <path> DOM nodes for the browser to
+// transform and composite on every zoom frame (measured ~9.9ms/frame — 60% of the budget
+// before markers or tiles). Canvas is ONE element to transform, so zoom stays smooth.
+// Interactivity (click-to-select, setStyle) works identically on canvas in Leaflet.
+// Keep the SVG renderer as the map default — ZIP borders / drawn areas rely on padding:1.
+const _fillCanvas = L.canvas({padding:0.6});
 // Standard OSM basemap (user preference 2026-07-14 — reverted from Carto Voyager "for now";
 // Voyager rollback URL: https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png subdomains abcd).
 const baseTiles=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map);
@@ -3015,6 +3022,7 @@ async function toggleIncomeLayer(on){
     // Step 4: build/refresh choropleth layer
     if(incomeLayer) map.removeLayer(incomeLayer);
     incomeLayer = L.geoJSON(incomeGeoData, {
+      renderer:_fillCanvas,
       style: feat => ({
         fillColor: incomeColor(incomeData[feat.properties.zip]),
         fillOpacity: 0.5,
@@ -3172,6 +3180,7 @@ async function toggleDogLayer(on){
     // Step 5: build/refresh choropleth
     if(dogLayer) map.removeLayer(dogLayer);
     dogLayer = L.geoJSON(dogGeoData, {
+      renderer:_fillCanvas,
       style: feat => {
         const d = dogData[feat.properties.zip];
         return { fillColor: dogColor(d?d.rate:null), fillOpacity:0.5, color:'rgba(0,0,0,0.35)', weight:0.7 };
@@ -3301,6 +3310,7 @@ async function toggleGrowthLayer(on){
 
     if(growthLayer) map.removeLayer(growthLayer);
     growthLayer = L.geoJSON(growthGeoData, {
+      renderer:_fillCanvas,
       style: feat => {
         const p = growthData[feat.properties.zip];
         return { fillColor: growthColor(p==null?null:p), fillOpacity:0.5, color:'rgba(0,0,0,0.35)', weight:0.7 };
@@ -5263,6 +5273,7 @@ async function toggleTractLayer(on){
   if(tractLayer){ map.removeLayer(tractLayer); tractLayer=null; }
   const esc=v=>String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   tractLayer=L.geoJSON(geo,{
+    renderer:_fillCanvas,
     style:f=>({ color:'#ffffff', weight:0.7, opacity:0.7, fillColor:_communityType(f.properties).c, fillOpacity:0.42 }),
     onEachFeature:(f,layer)=>{
       const t=f.properties, ct=_communityType(t);
