@@ -8598,7 +8598,11 @@ async function evalOverlap(i, btn){
   try{
     const siteRing=(_evalDriveIdx===i&&_evalDriveRing)?_evalDriveRing:await computeIsochrone(g.la,g.lo,DRIVE_BUDGET_SEC);
     _evalDriveIdx=i; _evalDriveRing=siteRing;
-    const near=evalCompsCache.map((c,ci)=>({c,ci,d:hav(g.la,g.lo,c.lat,c.lon)})).filter(x=>x.d<6500).sort((a,b)=>a.d-b.d).slice(0,6);
+    // Catchment reach, not straight-line proximity: a 10-min drive covers ~6-8 mi on highways,
+    // so a clinic 7 mi out can still overlap this site's catchment. Capped at 12 by COST (one
+    // Routes call per uncached clinic, cached permanently after), not by relevance — under-
+    // counting competitors biases the network share UPWARD, so err toward including them.
+    const near=evalCompsCache.map((c,ci)=>({c,ci,d:hav(g.la,g.lo,c.lat,c.lon)})).filter(x=>x.d<12000).sort((a,b)=>a.d-b.d).slice(0,12);
     const rings=[];
     for(const x of near){
       const k=Math.round(x.c.lat*1000)+'_'+Math.round(x.c.lon*1000);
@@ -8657,7 +8661,7 @@ async function evalOverlap(i, btn){
         <div style="display:flex;justify-content:space-between"><span style="color:#64748b">Contested by 1 other clinic</span><b>~${hhFmt(hhOf(depthW[1]))} HH (${Math.round(100*depthW[1]/totW)}%)</b></div>
         <div style="display:flex;justify-content:space-between"><span style="color:#64748b">Contested by 2 other clinics</span><b>~${hhFmt(hhOf(depthW[2]))} HH (${Math.round(100*depthW[2]/totW)}%)</b></div>
         <div style="display:flex;justify-content:space-between"><span style="color:#b45309">Contested by 3+ clinics</span><b>~${hhFmt(hhOf(depthW[3]))} HH (${Math.round(100*depthW[3]/totW)}%)</b></div>
-        <div style="font-size:10.5px;color:#64748b;margin-top:2px">Household-weighted by rooftop density; per-clinic rows show the households inside each overlap.</div>
+        <div style="font-size:10.5px;color:#64748b;margin-top:2px">Household-weighted by rooftop density; per-clinic rows show the households inside each overlap. Analysed the ${rings.length} nearest clinic${rings.length!==1?'s':''} within 7.5 mi${evalCompsCache.length>rings.length?` — ${evalCompsCache.length} total in the competitor set`:''}.</div>
         </div></details>`:''}
       <div style="border-top:1px dashed #ddd0f7;margin-top:5px;padding-top:5px;display:flex;justify-content:space-between;font-size:11px"><span style="color:#64748b">Network-adjusted winnable share</span><b style="color:#5b21b6">${(netShare*100).toFixed(0)}%</b></div>
       <div style="display:flex;justify-content:space-between;font-size:10.5px"><span style="color:#64748b">Gravity model says</span><span style="color:#64748b">${(gravShare*100).toFixed(0)}%</span></div>
