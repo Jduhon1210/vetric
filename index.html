@@ -6613,7 +6613,7 @@ async function _admLoad(){
       return '<tr><td><b>'+_admEsc(a.firm||'—')+'</b><br><span style="color:#64748b">'+_admEsc(a.email)+'</span></td>'+
         '<td>'+tierChip+'<br><span style="color:#94a3b8;font-size:10.5px">started '+started+'</span></td>'+
         '<td>'+_admEsc(region)+'</td>'+
-        '<td style="font-family:\'JetBrains Mono\',monospace;font-size:10.5px">'+(a.code?'<span style="cursor:pointer;border-bottom:1px dashed #cbd5e1" title="Click to copy" onclick="_admCopy(this.textContent)">'+_admEsc(a.code)+'</span>':'—')+'</td>'+
+        '<td style="font-family:\'JetBrains Mono\',monospace;font-size:10.5px">'+(a.code?'<span style="cursor:pointer;border-bottom:1px dashed #cbd5e1" title="Click to copy (masked for screen sharing)" data-c="'+_admEsc(a.code)+'" onclick="_admCopy(this.dataset.c)">••••••••</span>':'—')+'</td>'+
         '<td><span style="color:#94a3b8;font-size:10.5px">seen '+seen+'</span></td>'+
         '<td style="text-align:right;white-space:nowrap"><button class="vm-export-btn" onclick="_admEdit(\''+_admEsc(a.email)+'\')">Edit</button>'+(self?'':' <button class="vm-export-btn" style="color:#dc2626;border-color:#fecaca" onclick="_admRevoke(\''+_admEsc(a.email)+'\')">Revoke</button>')+'</td></tr>';
     }).join('');
