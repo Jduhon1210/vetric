@@ -1549,10 +1549,15 @@ function onPEReady() {
   try{ if(typeof _peReadyResolve!=='undefined' && _peReadyResolve){ _peReadyResolve(); _peReadyResolve=null; } }catch(_){}
   document.getElementById('hdr-status').textContent = 'PE data: ' + Object.keys(PE_NAMES).length.toLocaleString() + ' TX clinics';
   setTimeout(() => document.getElementById('hdr-status').textContent = '', 4000);
-  // If clinics were already fetched before PE data arrived, those PE pins were
-  // skipped (Source 1 is gated on peLoaded). A full refetch adds them now.
-  // Otherwise just recolor whatever's there.
+  // If clinics were already fetched before PE data arrived, those PE pins were skipped
+  // (Source 1 is gated on peLoaded) AND — the real bug — the same clinics came in from
+  // VET_CLINICS tagged INDEPENDENT, because checkPE had no PE data to match against. A plain
+  // refetch does NOT heal that: fetchClinics MERGES into clinics[], so the stale independent
+  // entry survives and dedups away its own PE counterpart, leaving e.g. Lantana Animal Hospital
+  // (Harvest Partners) rendered as a blue independent pin forever. Everything fetched before
+  // this moment has unreliable ownership, so drop it and rebuild clean. (2026-07-21)
   if(typeof map !== 'undefined' && map.getZoom() >= MIN_ZOOM){
+    clearMarkers(); clinics=[];
     fetchClinics();
   } else {
     refreshPins();
@@ -3863,12 +3868,17 @@ async function fetchClinics(){
 
   const prevByKey=_markerByKey; _markerByKey=new Map();
   markers=clinics.map((c,i)=>{
-    const k=clinicKey(c);
+    // Marker identity ≠ override identity: clinicKey() rounds to a ~110m grid, so two distinct
+    // clinics inside one cell would share a marker slot — one leaks, the other renders at the
+    // wrong coords. Full precision + name guarantees one marker per clinic. (clinicKey stays
+    // the key for overrides/deleted/watchlist — do not change that one.)
+    const k=c.lat.toFixed(5)+'_'+c.lon.toFixed(5)+'|'+(c.name||'');
     const icKey=pinColor(c)+'|'+pinTier(c);
     let m=prevByKey.get(k);
     if(m){
       prevByKey.delete(k);
       if(m._icKey!==icKey){ m.setIcon(makeIcon(pinColor(c), pinTier(c))); m._icKey=icKey; }
+      const ll=m.getLatLng(); if(ll.lat!==c.lat||ll.lng!==c.lon) m.setLatLng([c.lat,c.lon]);   // reuse must never leave a pin at the previous clinic's coords
       m._baseVisible=true; m.setOpacity(1); if(m._icon) m._icon.style.pointerEvents='';   // fresh-marker semantics; the tail re-applies filters
     } else {
       m=L.marker([c.lat,c.lon],{icon:makeIcon(pinColor(c), pinTier(c))})
