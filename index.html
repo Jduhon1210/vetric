@@ -69,7 +69,7 @@ header{height:58px;}
 .nav-link{height:100%;display:flex;align-items:center;padding:0 14px;font-size:13.5px;font-weight:500;color:#a7b4d9;cursor:pointer;border-bottom:2px solid transparent;transition:color .15s,border-color .15s;background:none;border-top:none;border-left:none;border-right:none;font-family:inherit;}
 .nav-link:hover{color:#fff;}
 .nav-link.active{color:#fff;border-bottom-color:#93c5fd;font-weight:600;}
-.nav-link .soon{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#c7d2fe;background:rgba(255,255,255,.10);border-radius:10px;padding:1px 6px;margin-left:6px;}
+.nav-link .soon{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#c7d2fe;background:rgba(255,255,255,.10);border-radius:10px;padding:1px 6px;margin-left:6px;}
 .market-pick{display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border2);border-radius:20px;padding:6px 12px 6px 14px;font-size:12.5px;font-weight:600;color:var(--text2);cursor:pointer;white-space:nowrap;}
 .market-pick svg{width:13px;height:13px;stroke:var(--subtle);}
 .avatar{width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.12);border:1.5px solid rgba(255,255,255,.35);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;transition:background .15s;}
@@ -79,11 +79,11 @@ body.dev-mode header{background:var(--amber-light);}
 
 /* ── KPI bar ── */
 .kpibar{display:grid;grid-template-columns:repeat(5,1fr);gap:1px;background:var(--border);border-bottom:1px solid var(--border);flex-shrink:0;position:relative;}
-.kpi-filter-btn{position:absolute;top:7px;right:8px;z-index:60;width:24px;height:24px;border:1px solid var(--border);border-radius:7px;background:var(--surface);color:#94a3b8;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;}
+.kpi-filter-btn{position:absolute;top:7px;right:8px;z-index:60;width:24px;height:24px;border:1px solid var(--border);border-radius:7px;background:var(--surface);color:#64748b;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;}
 .kpi-filter-btn:hover{color:var(--navy);border-color:#c7d2ea;}
 .kpi-filter-pop{display:none;position:absolute;top:34px;right:8px;z-index:1500;background:#fff;border:1px solid var(--border);border-radius:12px;box-shadow:0 10px 34px rgba(15,23,42,.16);padding:10px 12px;min-width:200px;}
 .kpi-filter-pop.show{display:block;}
-.kpi-filter-pop .kf-title{font-size:9.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#94a3b8;margin-bottom:6px;}
+.kpi-filter-pop .kf-title{font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#64748b;margin-bottom:6px;}
 .kpi-filter-pop label{display:flex;align-items:center;gap:8px;font-size:12.5px;color:#1f2933;padding:4px 0;cursor:pointer;}
 .kpi-filter-pop input{accent-color:var(--navy);}
 .kf-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;display:inline-block;}
@@ -97,7 +97,7 @@ body.dev-mode header{background:var(--amber-light);}
 .peg-track{height:4px;background:#f1f5f9;border-radius:2px;overflow:hidden;margin:8px 0 6px;}
 .peg-track i{display:block;height:4px;border-radius:2px;background:linear-gradient(90deg,#1e3a8a,#3b5bb5);}
 .peg-sub{font-size:11px;color:#475569;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.peg-cities{font-size:10.5px;color:#94a3b8;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.peg-cities{font-size:10.5px;color:#64748b;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .peg-filter{width:100%;font:inherit;font-size:12.5px;padding:8px 12px;border:1px solid var(--border);border-radius:10px;background:#fff;margin-bottom:10px;}
 .peg-filter:focus{outline:none;border-color:#b9c6e4;box-shadow:0 0 0 3px rgba(30,58,138,.08);}
 .scr-overlay{position:fixed;inset:0;background:rgba(15,23,42,.52);backdrop-filter:blur(4px);z-index:2000;display:none;align-items:center;justify-content:center;padding:24px;}
@@ -110,8 +110,8 @@ body.dev-mode header{background:var(--amber-light);}
 .scr-right{flex:1;min-width:0;display:flex;flex-direction:column;}
 .scr-results{flex:1;overflow-y:auto;padding:10px 14px;}
 .scr-frow{background:#fff;border:1px solid var(--border);border-radius:10px;padding:8px 10px;margin-bottom:8px;}
-.scr-frow label{display:block;font-size:9.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#94a3b8;margin-bottom:4px;}
-.scr-frow .fx{position:absolute;top:6px;right:8px;cursor:pointer;color:#94a3b8;font-weight:800;font-size:11px;}
+.scr-frow label{display:block;font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#64748b;margin-bottom:4px;}
+.scr-frow .fx{position:absolute;top:6px;right:8px;cursor:pointer;color:#64748b;font-weight:800;font-size:11px;}
 .scr-frow .fx:hover{color:#dc2626;}
 .scr-frow{position:relative;}
 .scr-frow input,.scr-frow select{width:100%;font:inherit;font-size:12.5px;padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:#fff;}
@@ -119,7 +119,7 @@ body.dev-mode header{background:var(--amber-light);}
 .scr-row:hover{border-color:#c7d2ea;background:#fbfcfe;}
 .pe-group-chip{position:absolute;top:10px;left:12px;z-index:900;display:none;align-items:center;gap:8px;background:#fff;border:1px solid var(--border);border-radius:10px;box-shadow:0 4px 16px rgba(15,23,42,.14);padding:6px 11px;font-size:12px;font-weight:700;color:#0f172a;}
 .pe-group-chip.show{display:flex;}
-.pe-group-chip .x{cursor:pointer;color:#94a3b8;font-weight:800;padding:0 2px;}
+.pe-group-chip .x{cursor:pointer;color:#64748b;font-weight:800;padding:0 2px;}
 .pe-group-chip .x:hover{color:#dc2626;}
 /* Bottom-right map pin filter */
 .mapf-btn{position:absolute;right:14px;bottom:26px;z-index:1000;width:42px;height:42px;border-radius:50%;background:#fff;border:1px solid var(--border2);box-shadow:0 4px 16px rgba(15,23,42,.18);cursor:pointer;display:flex;align-items:center;justify-content:center;color:#334155;}
@@ -203,7 +203,9 @@ body.dev-mode #map{outline:2px solid var(--amber);outline-offset:-2px;}
 /* Kill the browser focus ring Chrome draws around a clicked SVG path's
    bounding box — this was the persistent blue rectangle around selected ZIPs */
 .leaflet-interactive:focus{outline:none;}
+.leaflet-interactive:focus-visible{outline:2px solid var(--navy);outline-offset:1px;}
 path.leaflet-interactive:focus,svg.leaflet-zoom-animated:focus{outline:none;}
+path.leaflet-interactive:focus-visible{outline:2px solid var(--navy);}
 body.dev-mode header{background:var(--amber-light);border-bottom-color:#fecdd3;}
 body.dev-mode .search-bar{background:var(--amber-light);border-bottom-color:#fecdd3;}
 .dev-hint{position:absolute;bottom:36px;left:50%;transform:translateX(-50%);background:rgba(217,119,6,.92);color:#1a1a1a;font-size:12px;font-weight:500;padding:6px 14px;border-radius:20px;z-index:400;pointer-events:none;white-space:nowrap;display:none;letter-spacing:.01em;}
@@ -243,7 +245,7 @@ body.dev-mode .search-bar{background:var(--amber-light);border-bottom-color:#fec
 .vf-site-pin{width:30px;height:30px;border-radius:50%;background:#7c3aed;border:2.5px solid #fff;box-shadow:0 3px 10px rgba(109,40,217,.5);color:#fff;font-size:15px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:grab;}
 .vf-site-pin:active{cursor:grabbing;}
 input[type=search]::-webkit-search-cancel-button,input[type=search]::-webkit-search-decoration{-webkit-appearance:none;}
-.si-scr{background:none;border:0;padding:0 4px;margin-left:6px;color:#94a3b8;cursor:pointer;display:flex;align-items:center;flex-shrink:0;border-left:1px solid var(--border);padding-left:10px;}
+.si-scr{background:none;border:0;padding:0 4px;margin-left:6px;color:#64748b;cursor:pointer;display:flex;align-items:center;flex-shrink:0;border-left:1px solid var(--border);padding-left:10px;min-height:26px;min-width:30px;}
 .si-scr:hover{color:var(--navy);}
 .vf-site-saved{width:26px;height:26px;font-size:12px;background:#d97706;box-shadow:0 2px 8px rgba(217,119,6,.5);cursor:pointer;}
 .tool-btn.vf-armed{background:#f3effd;border-color:#c4b5fd;color:#6d28d9;}
@@ -277,7 +279,7 @@ body.vf-surface #zoom-msg{display:none!important;}
 .opp-factors{display:flex;gap:3px;margin-top:8px;}
 .opp-fbar{flex:1;height:5px;border-radius:3px;background:var(--bg2);overflow:hidden;position:relative;}
 .opp-fbar i{position:absolute;left:0;top:0;bottom:0;border-radius:3px;}
-.opp-flabel{font-size:9px;color:var(--subtle);margin-top:3px;display:flex;justify-content:space-between;}
+.opp-flabel{font-size:10.5px;color:var(--subtle);margin-top:3px;display:flex;justify-content:space-between;}
 .opp-score{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:18px;font-weight:700;color:#fff;border-radius:9px;height:46px;display:flex;align-items:center;justify-content:center;}
 .opp-empty{padding:50px 24px;text-align:center;color:var(--muted);font-size:13.5px;line-height:1.7;}
 .opp-loading{padding:50px 24px;text-align:center;color:var(--muted);font-size:13.5px;}
@@ -306,7 +308,7 @@ body.vf-surface #zoom-msg{display:none!important;}
 .sb-grip{width:5px;flex-shrink:0;cursor:col-resize;background:transparent;transition:background .12s;z-index:20;}
 .sb-grip:hover,.sb-grip.drag{background:rgba(30,58,138,.22);}
 .sidebar.eval-wide{width:400px;}
-.eval-pct{width:24px;text-align:right;font-size:9.5px;font-family:'JetBrains Mono',monospace;color:#94a3b8;flex-shrink:0;}
+.eval-pct{width:24px;text-align:right;font-size:10.5px;font-family:'JetBrains Mono',monospace;color:#64748b;flex-shrink:0;}
 .sb-head{padding:12px 16px;border-bottom:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:space-between;}
 .zip-info-panel{padding:12px 16px;border-bottom:1px solid var(--border);flex-shrink:0;background:var(--navy-light);display:none;}
 .zip-info-panel.show{display:block;}
@@ -385,7 +387,7 @@ body.vf-surface #zoom-msg{display:none!important;}
 .traffic-legend{position:absolute;bottom:36px;left:14px;background:rgba(255,255,255,0.97);border-radius:var(--radius-lg);padding:14px 16px;box-shadow:0 4px 20px rgba(0,0,0,.12);border:1px solid var(--border);z-index:500;display:none;min-width:178px;backdrop-filter:blur(4px);}
 .traffic-legend.show{display:block;}
 .legend-title{
-  font-size:10px;font-weight:700;color:var(--muted);
+  font-size:10.5px;font-weight:700;color:var(--muted);
   margin-bottom:10px;text-transform:uppercase;
   letter-spacing:.1em;border-bottom:1px solid var(--border);
   padding-bottom:8px;
@@ -519,17 +521,17 @@ body.vf-surface #zoom-msg{display:none!important;}
 .popup-addr{font-size:11.5px;color:#64748b;margin-top:4px;line-height:1.35;}
 .popup-contact{font-size:12px;margin-top:4px;}
 .popup-contact a{color:var(--navy);text-decoration:none;font-weight:600;}
-.vm-export-btn{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;color:var(--navy);background:#eef2fb;border:1px solid #dbe3f4;border-radius:7px;padding:4px 10px;cursor:pointer;letter-spacing:.01em;transition:background .15s;}
+.vm-export-btn{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;color:var(--navy);background:#eef2fb;border:1px solid #dbe3f4;border-radius:7px;padding:4px 10px;cursor:pointer;letter-spacing:.01em;transition:background .15s;min-height:28px;}
 .vm-export-btn:hover{background:#e0e7f7;}
 .vm-method-note{font-size:11px;color:#64748b;line-height:1.45;margin-top:8px;padding:8px 10px;background:#f8fafc;border:1px solid var(--border);border-radius:8px;}
 .vm-method-note summary{cursor:pointer;font-weight:700;color:#475569;}
 /* DEMO MODE (temporary) — hide data-source + methodology disclosures for the demo video. Delete this one line to restore. */
 .vm-method-note,.popup-disclaimer,.layer-desc,.eval-note{display:none !important;}
-.vm-star{cursor:pointer;color:#cbd5e1;font-size:15px;line-height:1;user-select:none;transition:color .15s;}
+.vm-star{cursor:pointer;color:#7f8fa6;font-size:15px;line-height:1;user-select:none;transition:color .15s;}
 .vm-star.on{color:#f59e0b;}
 .vm-star:hover{color:#f59e0b;}
 .vm-cmp{width:100%;border-collapse:collapse;font-size:11.5px;margin-top:4px;}
-.vm-cmp th{font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;color:#94a3b8;font-weight:700;text-align:center;padding:4px 5px;border-bottom:1px solid var(--border);}
+.vm-cmp th{font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:#64748b;font-weight:700;text-align:center;padding:4px 5px;border-bottom:1px solid var(--border);}
 .vm-cmp th:first-child{text-align:left;}
 .vm-cmp td{padding:6px 5px;border-bottom:1px solid #f1f5f9;color:#334155;}
 .vm-rm{cursor:pointer;color:#cbd5e1;font-weight:700;font-size:13px;}
@@ -666,11 +668,11 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
 .rp-mk:hover .rp-dot,.rp-mk.active .rp-dot{fill:var(--navy);}
 .rp-label{font-size:13px;font-weight:700;fill:#1f2933;font-family:inherit;paint-order:stroke;stroke:#fff;stroke-width:3.5px;stroke-linejoin:round;letter-spacing:-.01em;}
 .rp-mk:hover .rp-label,.rp-mk.active .rp-label{fill:var(--navy);}
-.rp-check{font-size:9.5px;font-weight:800;fill:#fff;pointer-events:none;}
+.rp-check{font-size:10.5px;font-weight:800;fill:#fff;pointer-events:none;}
 .hdr-icon-btn{background:none;border:none;color:#c7d2fe;cursor:pointer;padding:6px;border-radius:9px;display:flex;align-items:center;justify-content:center;}
 .hdr-icon-btn:hover{background:rgba(255,255,255,.12);color:#fff;}
-.vf-demo-pill{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#be123c;background:#fff1f2;border:1px solid #fecdd3;border-radius:9px;padding:3px 9px;margin-right:10px;white-space:nowrap;}
-.vf-stg-pill{display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:9px;padding:3px 9px;margin-right:10px;white-space:nowrap;}
+.vf-demo-pill{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#be123c;background:#fff1f2;border:1px solid #fecdd3;border-radius:9px;padding:3px 9px;margin-right:10px;white-space:nowrap;}
+.vf-stg-pill{display:inline-flex;align-items:center;gap:6px;font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:9px;padding:3px 9px;margin-right:10px;white-space:nowrap;}
 .vf-stg-pill::before{content:'';width:7px;height:7px;border-radius:50%;background:#f59e0b;}
 .vf-sig{width:13px;height:13px;transform:rotate(45deg);border:2px solid #fff;border-radius:3px;box-shadow:0 1px 5px rgba(15,23,42,.35);}
 /* Land-play pin (design F, 2026-07-15): teal teardrop with a white SPROUT — growth that isn't
@@ -678,22 +680,22 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
    position the badge over it. */
 .vf-lp{position:relative;width:34px;height:46px;}
 .vf-lp svg{display:block;filter:drop-shadow(0 3px 6px rgba(13,148,136,.4));}
-.vf-lp-n{position:absolute;top:-5px;right:-6px;width:16px;height:16px;border-radius:50%;background:#fff;border:1.5px solid #0d9488;color:#0f766e;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;}
+.vf-lp-n{position:absolute;top:-5px;right:-6px;width:16px;height:16px;border-radius:50%;background:#fff;border:1.5px solid #0d9488;color:#0f766e;font-size:10.5px;font-weight:800;display:flex;align-items:center;justify-content:center;}
 /* Evaluate sidebar: analyst memo + tabbed console (2026-07-15 redesign) */
 .eval-memo{background:#fff;border:1px solid #dde4ef;border-radius:12px;padding:11px 13px;margin-bottom:10px;box-shadow:0 1px 4px rgba(15,23,42,.04);}
 .eval-memo p{font-size:12.5px;line-height:1.62;color:#0f172a;margin:0;}
 .eval-memo-row{display:flex;align-items:center;gap:10px;border-top:1px solid #eef1f7;padding-top:9px;margin-top:9px;cursor:pointer;}
 .eval-memo-row .t{font-size:11.5px;color:#334155;flex:1;min-width:0;line-height:1.45;}
-.eval-memo-row .t .sub{color:#94a3b8;font-size:10.5px;}
+.eval-memo-row .t .sub{color:#64748b;font-size:10.5px;}
 .eval-tabs{display:flex;border-bottom:1.5px solid #dde4ef;margin:2px 0 10px;}
 .eval-tab{flex:1;text-align:center;padding:7px 0 8px;font-size:11.5px;font-weight:700;color:#64748b;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1.5px;user-select:none;white-space:nowrap;}
 .eval-tab.on{color:var(--navy);border-bottom-color:var(--navy);}
-.eval-tab-n{font-size:9.5px;font-weight:800;background:#eef2fb;color:var(--navy);border-radius:8px;padding:0.5px 5px;margin-left:2px;}
+.eval-tab-n{font-size:10.5px;font-weight:800;background:#eef2fb;color:var(--navy);border-radius:8px;padding:0.5px 5px;margin-left:2px;}
 .eval-tab.on .eval-tab-n{background:var(--navy);color:#fff;}
 .adm-table{width:100%;border-collapse:collapse;font-size:11.5px;margin-top:8px;}
-.adm-table th{text-align:left;font-size:9.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#94a3b8;padding:4px 8px;border-bottom:1px solid var(--border);}
+.adm-table th{text-align:left;font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#64748b;padding:4px 8px;border-bottom:1px solid var(--border);}
 .adm-table td{padding:6px 8px;border-bottom:1px solid #f1f5f9;color:#1f2933;vertical-align:top;}
-.adm-tier{font-size:9px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;border-radius:7px;padding:1.5px 7px;white-space:nowrap;}
+.adm-tier{font-size:10.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;border-radius:7px;padding:1.5px 7px;white-space:nowrap;}
 .adm-tier.demo{color:#be123c;background:#fff1f2;border:1px solid #fecdd3;}
 .adm-tier.full{color:#15803d;background:#f0fdf4;border:1px solid #bbf7d0;}
 .adm-tier.admin{color:#fff;background:var(--navy,#1e3a8a);border:1px solid var(--navy,#1e3a8a);}
@@ -704,12 +706,12 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
 .adm-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:2px 0 14px;}
 .adm-stat{background:#fff;border:1px solid var(--border);border-radius:12px;padding:11px 13px;}
 .adm-stat .n{font-size:21px;font-weight:800;color:#0f172a;letter-spacing:-.02em;line-height:1.1;}
-.adm-stat .l{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8;margin-top:3px;}
+.adm-stat .l{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#64748b;margin-top:3px;}
 .adm-stat.warn .n{color:#be123c;}
 .adm-sec{background:#fff;border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:14px;box-shadow:0 1px 3px rgba(15,23,42,.04);}
 .adm-sec-h{display:flex;align-items:center;justify-content:space-between;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:#334155;margin-bottom:4px;}
 .adm-sec-sub{font-size:11.5px;color:#64748b;line-height:1.55;margin-bottom:6px;}
-.adm-pill{font-size:9.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;border-radius:8px;padding:2px 8px;white-space:nowrap;display:inline-block;}
+.adm-pill{font-size:10.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;border-radius:8px;padding:2px 8px;white-space:nowrap;display:inline-block;}
 .adm-pill.ok{color:#15803d;background:#f0fdf4;border:1px solid #bbf7d0;}
 .adm-pill.due{color:#be123c;background:#fff1f2;border:1px solid #fecdd3;}
 .adm-pill.over{color:#fff;background:#dc2626;border:1px solid #dc2626;}
@@ -722,25 +724,25 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
 .ds-kpis{display:flex;gap:8px;flex-shrink:0;}
 .ds-kpi{background:#fff;border:1px solid var(--border);border-radius:10px;padding:8px 13px;text-align:center;min-width:64px;}
 .ds-kpi .n{font-size:18px;font-weight:800;color:#0f172a;line-height:1.1;}
-.ds-kpi .l{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8;margin-top:2px;}
+.ds-kpi .l{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#64748b;margin-top:2px;}
 .ds-kpi.warn .n{color:#be123c;}
 .ds-kpi.live .n{color:#1e3a8a;}
-.ds-group{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;margin:16px 2px 7px;}
+.ds-group{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:#64748b;margin:16px 2px 7px;}
 .ds-group:first-of-type{margin-top:2px;}
 .ds-row{display:grid;grid-template-columns:minmax(150px,1.25fr) minmax(140px,1fr) 150px 108px;gap:14px;align-items:center;background:#fff;border:1px solid var(--border);border-radius:12px;padding:11px 15px;margin-bottom:7px;transition:border-color .12s, box-shadow .12s;}
 .ds-row:hover{border-color:#c3cfe0;box-shadow:0 3px 12px rgba(15,23,42,.06);}
 .ds-name{font-size:12.5px;font-weight:700;color:#0f172a;line-height:1.3;}
-.ds-file{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#94a3b8;margin-top:2px;}
+.ds-file{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#64748b;margin-top:2px;}
 .ds-src{font-size:11px;color:#475569;line-height:1.45;}
-.ds-why{font-size:10px;color:#94a3b8;line-height:1.4;margin-top:1px;}
+.ds-why{font-size:10.5px;color:#64748b;line-height:1.4;margin-top:1px;}
 .ds-dates{font-size:10.5px;color:#475569;line-height:1.6;white-space:nowrap;}
 .ds-dates b{color:#0f172a;font-weight:700;}
 .ds-track{height:4px;border-radius:2px;background:#eef1f7;margin-top:6px;overflow:hidden;}
 .ds-fill{height:100%;border-radius:2px;background:#3b5bb5;}
 .ds-fill.warn{background:#be123c;}
 .ds-right{text-align:right;}
-.ds-how{grid-column:1 / -1;margin-top:2px;padding-top:8px;border-top:1px dashed #e8edf5;font-size:10px;color:#64748b;display:flex;align-items:center;gap:6px;}
-.ds-how code{font-family:'JetBrains Mono',monospace;font-size:9.5px;background:#f4f6fb;border:1px solid #e4e9f4;border-radius:6px;padding:2px 7px;color:#334155;}
+.ds-how{grid-column:1 / -1;margin-top:2px;padding-top:8px;border-top:1px dashed #e8edf5;font-size:10.5px;color:#64748b;display:flex;align-items:center;gap:6px;}
+.ds-how code{font-family:'JetBrains Mono',monospace;font-size:10.5px;background:#f4f6fb;border:1px solid #e4e9f4;border-radius:6px;padding:2px 7px;color:#334155;}
 .settings-overlay{position:fixed;inset:0;background:rgba(15,23,42,.52);backdrop-filter:blur(4px);z-index:2000;display:none;align-items:center;justify-content:center;padding:24px;}
 .settings-overlay.show{display:flex;}
 .settings-modal{background:linear-gradient(180deg,#fff 0%,#fbfcfe 100%);border-radius:18px;box-shadow:0 24px 80px rgba(15,23,42,.38),0 2px 8px rgba(15,23,42,.12);width:780px;max-width:100%;max-height:84vh;display:flex;flex-direction:column;overflow:hidden;border:1px solid rgba(255,255,255,.6);}
@@ -763,7 +765,7 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
 .set-row:last-child{border-bottom:none;}
 .set-name{font-weight:600;color:var(--text);width:148px;flex-shrink:0;}
 .set-src{color:#64748b;line-height:1.5;}
-.set-badge{display:inline-block;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:1px 6px;border-radius:8px;margin-left:2px;vertical-align:1px;}
+.set-badge{display:inline-block;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:1px 6px;border-radius:8px;margin-left:2px;vertical-align:1px;}
 .set-badge.live{background:#dcfce7;color:#15803d;}
 .set-badge.model{background:#ffe4e6;color:#be123c;}
 .set-badge.prop{background:#e0e7ff;color:#4338ca;}
@@ -791,7 +793,7 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
 .vf-ai-head{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:linear-gradient(150deg,#1e3a8a,#172554);color:#fff;flex-shrink:0;}
 .vf-ai-title{font-size:15px;font-weight:800;letter-spacing:-.01em;}
 .vf-ai-title span{color:#93c5fd;}
-.vf-ai-title em{font-style:normal;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;background:rgba(255,255,255,.16);border-radius:8px;padding:2px 7px;margin-left:8px;vertical-align:2px;}
+.vf-ai-title em{font-style:normal;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;background:rgba(255,255,255,.16);border-radius:8px;padding:2px 7px;margin-left:8px;vertical-align:2px;}
 .vf-ai-x{background:none;border:none;color:#c7d2fe;font-size:15px;cursor:pointer;padding:4px 8px;border-radius:6px;}
 .vf-ai-x:hover{background:rgba(255,255,255,.12);color:#fff;}
 .vf-ai-msgs{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px;}
@@ -913,11 +915,11 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
         <div style="display:flex;gap:8px;margin-top:10px">
           <button class="vm-export-btn" onclick="scrReset()">Clear all filters</button>
         </div>
-        <div style="font-size:10px;color:#94a3b8;margin-top:10px;line-height:1.5">DVM counts come from scraped website rosters; revenue is modeled (roster × $555k benchmark) unless an analyst value is saved; EBITDA multiples exist only where you've entered them in a clinic's editor.</div>
+        <div style="font-size:10.5px;color:#64748b;margin-top:10px;line-height:1.5">DVM counts come from scraped website rosters; revenue is modeled (roster × $555k benchmark) unless an analyst value is saved; EBITDA multiples exist only where you've entered them in a clinic's editor.</div>
       </div>
       <div class="scr-right">
         <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border)">
-          <span style="font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#94a3b8">Results</span>
+          <span style="font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#64748b">Results</span>
           <span style="flex:1"></span>
           <button class="vm-export-btn" onclick="_scrShowOnMap()">Show on map</button>
           <button class="vm-export-btn" onclick="exportScreenCSV()">Export CSV</button>
@@ -950,7 +952,7 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
           <div class="adm-sec">
             <div class="adm-sec-h">Accounts</div>
             <div class="adm-sec-sub">Every account, its licensing phase, and the market it can see. Pilot (demo) accounts get DFW-only data served from the server — the statewide files never reach their browser — and exports are disabled.</div>
-            <div id="adm-roster"><div style="font-size:12px;color:#94a3b8;padding:14px 0">Loading accounts…</div></div>
+            <div id="adm-roster"><div style="font-size:12px;color:#64748b;padding:14px 0">Loading accounts…</div></div>
           </div>
           <div class="adm-sec">
           <div class="adm-sec-h">Add or update an account</div>
@@ -1516,8 +1518,8 @@ function _revEst(c){
 function _revEstLine(c){
   const r=_revEst(c); if(!r) return '';
   return r.analyst
-    ? `<div style="font-size:11px;color:#475569;margin-top:2px">Revenue ${String(r.txt).replace(/</g,'&lt;')} <span style="color:#94a3b8">· analyst</span></div>`
-    : `<div style="font-size:11px;color:#475569;margin-top:2px">Est. revenue <b>${r.txt}</b> <span style="color:#94a3b8">· ${r.n} DVM × $650k, modeled</span></div>`;
+    ? `<div style="font-size:11px;color:#475569;margin-top:2px">Revenue ${String(r.txt).replace(/</g,'&lt;')} <span style="color:#64748b">· analyst</span></div>`
+    : `<div style="font-size:11px;color:#475569;margin-top:2px">Est. revenue <b>${r.txt}</b> <span style="color:#64748b">· ${r.n} DVM × $650k, modeled</span></div>`;
 }
 function _staffPopupHTML(c){
   const s=_vetStaffAt(c.lat,c.lon); if(!s||!s.n) return '';
@@ -1866,7 +1868,7 @@ function buildPopup(c) {
   const _kind=_kindOf(c);
   const _ovK=_ovKindAt(key), _sp=_speciesAt(c.lat,c.lon);
   const _src=_ovK?' · analyst':(_sp?' · site-verified':'');
-  const kindHTML = `<div style="display:inline-block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:${_src?'var(--navy)':'#475569'};background:${_src?'#eef2fb':'#eef2f7'};${_src?'border:1px solid #dbe3f4;':''}border-radius:10px;padding:2px 8px;margin-top:5px" title="${_ovK?'Set by you in the clinic editor':_sp?'Read from the clinic\'s own website':'Inferred from the clinic name'}">${CLINIC_KIND_LABEL[_kind]||_kind}${_src}</div>`;
+  const kindHTML = `<div style="display:inline-block;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:${_src?'var(--navy)':'#475569'};background:${_src?'#eef2fb':'#eef2f7'};${_src?'border:1px solid #dbe3f4;':''}border-radius:10px;padding:2px 8px;margin-top:5px" title="${_ovK?'Set by you in the clinic editor':_sp?'Read from the clinic\'s own website':'Inferred from the clinic name'}">${CLINIC_KIND_LABEL[_kind]||_kind}${_src}</div>`;
 
   let peHTML;
   if (!c.peChecked) {
@@ -1881,7 +1883,7 @@ function buildPopup(c) {
   const safeName = c.name.replace(/"/g,'&quot;').replace(/'/g,'&#39;');
   const curMult = (c.mult!=null ? c.mult : 1);
   const curKind = _kindOf(c);
-  const multHTML = (curMult!=1) ? `<div style="display:inline-block;font-size:10px;font-weight:700;color:#92400e;background:#ffe4e6;border-radius:10px;padding:2px 8px;margin-top:5px;margin-left:6px">competition ×${curMult}</div>` : '';
+  const multHTML = (curMult!=1) ? `<div style="display:inline-block;font-size:10.5px;font-weight:700;color:#92400e;background:#ffe4e6;border-radius:10px;padding:2px 8px;margin-top:5px;margin-left:6px">competition ×${curMult}</div>` : '';
 
   // The wrap reserves its 118px height from the start (placeholder bg) so the popup is measured at FULL height
   // when it opens — Leaflet then auto-pans it fully into view in one shot. (onerror collapses it where there's
@@ -1994,7 +1996,7 @@ function openClinicEditor(key){
     +`<div style="font-size:11px;color:#64748b;margin-top:4px;line-height:1.5">`
     +(_staff&&_staff.n!=null?`Detected <b>${_staff.n}</b>${_staffNames?': '+_staffNames:''}. Edit if it's wrong.`:`Enter the DVM count if you know it.`)
     +(_staffOvCur!==''?` <span style="color:#7c3aed;font-weight:600">· analyst override</span>`:'')
-    +(_staffMeta?`<br><span style="color:#94a3b8">${_staffMeta}</span>`:'')
+    +(_staffMeta?`<br><span style="color:#64748b">${_staffMeta}</span>`:'')
     +`</div></div>`;
   const rating= o.ratingOv!=null?o.ratingOv:(typeof c.rating==='number'?c.rating:'');
   const reviews=o.reviewsOv!=null?o.reviewsOv:(c.reviews!=null?c.reviews:'');
@@ -2023,7 +2025,7 @@ function openClinicEditor(key){
         <div class="cedit-sec"><div class="cedit-sec-h">Ownership &amp; competition</div><div class="cedit-grid">
           <div class="cedit-f full"><label>PE firm / owner — leave blank for independent</label><input id="ce-pe" list="ce-firms" value="${esc(owner)}" placeholder="e.g. Mars, Shore Capital Partners…"></div>
           ${_ceSel('ce-kind','Clinic type',kind,['small:Small animal','mixed:Mixed (small + large)','large:Large animal / equine','specialty:Specialty / ER','mobile:Mobile / house-call'])}
-          ${(()=>{const sp=_speciesAt(c.lat,c.lon); if(!sp) return '<div class="cedit-f full" style="font-size:11px;color:#94a3b8;margin-top:-6px">Species scan: no readable website. Set the type above if you know this practice.</div>'; const l={small:'small animal',large:'large animal / equine',mixed:'mixed (small + large animal)'}[sp]; return `<div class="cedit-f full" style="font-size:11px;color:#475569;margin-top:-6px">Species scan (from the clinic's website): <b>${l}</b>. Your Clinic type selection overrides it.</div>`;})()}
+          ${(()=>{const sp=_speciesAt(c.lat,c.lon); if(!sp) return '<div class="cedit-f full" style="font-size:11px;color:#64748b;margin-top:-6px">Species scan: no readable website. Set the type above if you know this practice.</div>'; const l={small:'small animal',large:'large animal / equine',mixed:'mixed (small + large animal)'}[sp]; return `<div class="cedit-f full" style="font-size:11px;color:#475569;margin-top:-6px">Species scan (from the clinic's website): <b>${l}</b>. Your Clinic type selection overrides it.</div>`;})()}
           ${(()=>{const cur=o.pinc||'';const opts=[['','Default (by ownership)'],['#16a34a','Green'],['#f59e0b','Gold'],['#7c3aed','Purple'],['#0d9488','Teal'],['#ec4899','Pink'],['#0f172a','Black']];return `<div class="cedit-f"><label>Pin color on the map</label><select id="ce-pinc">${opts.map(([v,l])=>`<option value="${v}"${cur===v?' selected':''}>${l}</option>`).join('')}</select></div>`;})()}
           <div class="cedit-f"><label>Year acquired (by current owner)</label><input id="ce-acqyear" type="number" min="1980" max="2026" step="1" value="${o.acqYear||''}" placeholder="e.g. 2021"></div>
           <div class="cedit-f"><label>Competition weight × (0–5)</label><input id="ce-mult" type="number" min="0" max="5" step="0.1" value="${mult}"></div>
@@ -2040,7 +2042,7 @@ function openClinicEditor(key){
           <div class="cedit-f"><label>Phone</label><input id="ce-tel" value="${esc(o.tel!=null?o.tel:(c.tel||''))}"></div>
           <div class="cedit-f"><label>Website</label><input id="ce-web" value="${esc(o.web!=null?o.web:(c.website||''))}"></div>
         </div></div>
-        <div class="cedit-sec"><div class="cedit-sec-h">Building &amp; layout <span style="font-weight:600;color:#94a3b8;font-size:10px;text-transform:none;letter-spacing:0">· county appraisal records + OpenStreetMap</span></div>
+        <div class="cedit-sec"><div class="cedit-sec-h">Building &amp; layout <span style="font-weight:600;color:#64748b;font-size:10.5px;text-transform:none;letter-spacing:0">· county appraisal records + OpenStreetMap</span></div>
           <div id="ce-bldg" style="font-size:12px;color:#64748b;padding:4px 0">Looking up the parcel record…</div>
         </div>
         </div>
@@ -2119,7 +2121,7 @@ async function _ceBldgLoad(lat,lon){
     }
   }catch(e){}
   const out=document.getElementById('ce-bldg'); if(!out) return;
-  if(!parcel && !bldgRing){ out.innerHTML='<span style="color:#94a3b8">No county parcel service covers this location (building records are live for Collin, Denton and Dallas counties), and no mapped building outline was found.</span>'; return; }
+  if(!parcel && !bldgRing){ out.innerHTML='<span style="color:#64748b">No county parcel service covers this location (building records are live for Collin, Denton and Dallas counties), and no mapped building outline was found.</span>'; return; }
   const props=(parcel&&parcel.properties)||{};
   const num=v=>{ const x=parseFloat(v); return isFinite(x)&&x>0?x:null; };
   const bldg=fmap&&fmap.bldg? num(props[fmap.bldg]) : null;
@@ -2140,7 +2142,7 @@ async function _ceBldgLoad(lat,lon){
   if(bldgRing) rows.push({ring:bldgRing, cls:'bldg'});
   let mapH='';
   if(rows.length) mapH=`<div id="ce-bldg-map" style="width:100%;max-width:420px;height:220px;border:1px solid #e2e8f0;border-radius:10px;margin:6px 0"></div>
-    <div style="font-size:9.5px;color:#94a3b8;margin:-2px 0 6px">Aerial: USGS · <span style="color:#93c5fd">▢ dashed = parcel</span>${bldgRing?' · <span style="color:#7dd3fc">▮ = building (OpenStreetMap)</span>':''}</div>`;
+    <div style="font-size:10.5px;color:#64748b;margin:-2px 0 6px">Aerial: USGS · <span style="color:#93c5fd">▢ dashed = parcel</span>${bldgRing?' · <span style="color:#7dd3fc">▮ = building (OpenStreetMap)</span>':''}</div>`;
   const row=(l,v)=>`<div style="display:flex;justify-content:space-between;gap:10px;padding:2px 0"><span style="color:#64748b">${l}</span><b style="color:#1f2933;text-align:right">${v}</b></div>`;
   let rowsH='';
   const plausible=bldg!=null && bldg>=1200 && bldg<=12000;
@@ -2150,7 +2152,7 @@ async function _ceBldgLoad(lat,lon){
   if(imprv) rowsH+=row('Appraised improvement value', '$'+Math.round(imprv).toLocaleString());
   if(taxp) rowsH+=row('Taxpayer of record', String(taxp).slice(0,34));
   if(fmap&&fmap.prop&&props[fmap.prop]!=null) rowsH+=row('County property ID', String(props[fmap.prop]).trim());
-  if(plausible) rowsH+=row('Revenue capacity at $538/sq ft', '~$'+((bldg*538)/1e6).toFixed(1)+'M <span style="font-weight:500;color:#94a3b8">AVMA 2024 cross-check</span>');
+  if(plausible) rowsH+=row('Revenue capacity at $538/sq ft', '~$'+((bldg*538)/1e6).toFixed(1)+'M <span style="font-weight:500;color:#64748b">AVMA 2024 cross-check</span>');
   let warn='';
   if(bldg!=null && !plausible) warn=`<div style="font-size:10.5px;color:#9f1239;background:#fff1f2;border:1px solid #fecdd3;border-radius:8px;padding:5px 9px;margin-top:6px">${bldg>12000?'Building reads '+Math.round(bldg).toLocaleString()+' sq ft — likely a shared building / strip center, so per-sq-ft revenue math doesn\'t apply to this tenant.':'Building reads under 1,200 sq ft — record may cover only part of the structure.'}</div>`;
   if(bldg==null && county) warn=`<div style="font-size:10.5px;color:#64748b;margin-top:4px">${county==='Dallas'?'Dallas county publishes parcel land but not building square footage in its GIS layer':'The county GIS layer lists no building area for this parcel (common for commercial improvements)'} — the county record link below has the full improvement detail and building sketch.</div>`;
@@ -2158,8 +2160,8 @@ async function _ceBldgLoad(lat,lon){
   const recLink=(propId && typeof _srcHit!=='undefined' && _srcHit && _srcHit.rec)
     ? `<a href="${_srcHit.rec(propId)}" target="_blank" rel="noopener" style="color:var(--navy);font-weight:700;text-decoration:none;font-size:11px">View county record &amp; building sketch ↗</a>`
     : '';
-  out.innerHTML=`${mapH}${rowsH||'<span style="color:#94a3b8">Parcel found, but no usable size fields on this record.</span>'}${warn}
-    <div style="display:flex;align-items:center;gap:12px;margin-top:7px">${recLink}<span style="font-size:10px;color:#94a3b8">${county?county+' County parcel at this pin':'No parcel record'} · live lookup, nothing stored.</span></div>`;
+  out.innerHTML=`${mapH}${rowsH||'<span style="color:#64748b">Parcel found, but no usable size fields on this record.</span>'}${warn}
+    <div style="display:flex;align-items:center;gap:12px;margin-top:7px">${recLink}<span style="font-size:10.5px;color:#64748b">${county?county+' County parcel at this pin':'No parcel record'} · live lookup, nothing stored.</span></div>`;
   // Build the aerial map AFTER the div exists
   if(rows.length){
     _ceBldgMapKill();
@@ -2242,7 +2244,7 @@ function _analystPopupHTML(o){
   o=o||{};
   const stL={prospect:'Prospect',target:'Target',loi:'Under LOI',dd:'In diligence',acquired:'Acquired',closed:'Closed'};
   const szL={solo:'Solo (1 DVM)',small:'2–3 DVM',mid:'4–6 DVM',large:'7+ DVM',hospital:'Hospital / ER'};
-  const pill=(bg,col,t)=>`<span style="display:inline-block;font-size:10px;font-weight:700;background:${bg};color:${col};border-radius:9px;padding:2px 8px;margin:0 4px 4px 0">${t}</span>`;
+  const pill=(bg,col,t)=>`<span style="display:inline-block;font-size:10.5px;font-weight:700;background:${bg};color:${col};border-radius:9px;padding:2px 8px;margin:0 4px 4px 0">${t}</span>`;
   let bad='';
   if(stL[o.status]) bad+=pill('#1e3a8a','#fff',stL[o.status]);
   if(o.exclude) bad+=pill('#6b7280','#fff','Muted in analysis');
@@ -4265,7 +4267,7 @@ function renderWatchlist(){
     </tr>`).join('');
     mkt=`<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#64748b;margin:6px 0 4px">Markets — compare (${markets.length})</div>
       <table class="vm-cmp"><thead><tr><th>ZIP</th><th>Score</th><th>Income</th><th>Growth</th><th>PE/Ind</th><th></th></tr></thead><tbody>${cmp}</tbody></table>
-      <div style="font-size:10.5px;color:#94a3b8;margin-top:5px;line-height:1.4">Scores are as-saved (with the weights active at save time).</div>`;
+      <div style="font-size:10.5px;color:#64748b;margin-top:5px;line-height:1.4">Scores are as-saved (with the weights active at save time).</div>`;
   }
   let tgt='';
   if(targets.length){
@@ -4283,10 +4285,10 @@ function renderWatchlist(){
       const k=s.kpi||{};
       const kbits=[ k.pePct!=null?('PE '+k.pePct+'%'):null, k.growth!=null?('growth '+(k.growth>=0?'+':'')+(k.growth*100).toFixed(1)+'%'):null, k.satTag||null ].filter(Boolean).join(' · ');
       const sub = s.placement
-        ? `${s.verdict||''}${s.savedAt?' · saved '+s.savedAt:''}${kbits?'<br>'+kbits+(k.r?' <span style="color:#94a3b8">('+k.r+' mi)</span>':''):''}`
+        ? `${s.verdict||''}${s.savedAt?' · saved '+s.savedAt:''}${kbits?'<br>'+kbits+(k.r?' <span style="color:#64748b">('+k.r+' mi)</span>':''):''}`
         : `Score ${s.score}/100 · ${s.region||''}`;
       return `<div class="card" onclick="watchSiteGo('${s.id}',${s.lat},${s.lon})">
-      <div style="flex-shrink:0;align-self:flex-start;margin-top:3px;width:18px;height:18px;border-radius:50%;background:${s.placement?'#d97706':'var(--navy)'};color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px">★</div>
+      <div style="flex-shrink:0;align-self:flex-start;margin-top:3px;width:18px;height:18px;border-radius:50%;background:${s.placement?'#d97706':'var(--navy)'};color:#fff;display:flex;align-items:center;justify-content:center;font-size:10.5px">★</div>
       <div class="card-body"><div class="card-name">${s.placement?('Placement · '+s.score+'/100'):s.name}</div>
         <div style="font-size:11px;color:#475569;margin-top:3px;line-height:1.5">${sub}</div></div>
       <span class="vm-rm" style="align-self:center" onclick="event.stopPropagation();_watchRemove('site','${s.id}')" title="Remove">✕</span>
@@ -4403,9 +4405,9 @@ function renderAcquisitions(){
   window._vmAcqScope=rows; // export scope
   const cards=rows.slice(0,40).map(r=>{
     const i=clinics.indexOf(r.c);
-    const rate = (typeof r.c.rating==='number') ? `<span style="color:#b45309;font-weight:700">★ ${r.c.rating.toFixed(1)}</span> · ${(r.c.reviews||0).toLocaleString()} reviews` : '<span style="color:#94a3b8">No rating</span>';
+    const rate = (typeof r.c.rating==='number') ? `<span style="color:#b45309;font-weight:700">★ ${r.c.rating.toFixed(1)}</span> · ${(r.c.reviews||0).toLocaleString()} reviews` : '<span style="color:#64748b">No rating</span>';
     const sz=_acqSize(r.c.reviews);
-    const szBadge = sz?`<span title="estimated size" style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#475569;background:#eef2f7;border-radius:9px;padding:1px 7px;margin-left:6px">~${sz}</span>`:'';
+    const szBadge = sz?`<span title="estimated size" style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#475569;background:#eef2f7;border-radius:9px;padding:1px 7px;margin-left:6px">~${sz}</span>`:'';
     const contact = (r.c.tel||r.c.addr)?`<div style="font-size:11px;color:#64748b;margin-top:2px">${r.c.tel||''}${r.c.tel&&r.c.addr?' · ':''}${r.c.addr?r.c.addr.split(',').slice(0,2).join(','):''}</div>`:'';
     const starred=_inWatch('target',clinicKey(r.c));
     return `<div class="card" id="c${i}" onclick="focusClinic(${i})">
@@ -4472,12 +4474,12 @@ function _renderPeGroups(sb, seg){
       <div class="peg-track"><i style="width:${Math.max(4,Math.round(r.n/maxN*100))}%"></i></div>
       ${brands&&brands.toLowerCase()!==r.owner.toLowerCase()?`<div class="peg-sub">${brands}</div>`:''}
       ${cities?`<div class="peg-cities">${cities}${r.cities.size>3?' +'+(r.cities.size-3)+' more':''}</div>`:''}
-      ${active?`<div style="font-size:10px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--navy);margin-top:5px">Footprint on map ✓</div>`:''}
+      ${active?`<div style="font-size:10.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--navy);margin-top:5px">Footprint on map ✓</div>`:''}
     </div>`;
   }).join('') || '<div class="empty">PE ownership data not loaded.</div>';
   const totClin=rows.reduce((a2,r)=>a2+r.n,0);
   sb.innerHTML=`
-    <div class="area-header"><span class="area-title">PE Ownership Groups</span><span style="font-size:11.5px;color:#94a3b8;font-weight:600">${rows.length} groups · ${totClin.toLocaleString()} clinics</span></div>
+    <div class="area-header"><span class="area-title">PE Ownership Groups</span><span style="font-size:11.5px;color:#64748b;font-weight:600">${rows.length} groups · ${totClin.toLocaleString()} clinics</span></div>
     ${seg}
     <div style="padding:10px 14px 0"><input class="peg-filter" placeholder="Filter groups or brands…" value="${esc(_pegQ)}" oninput="_pegFilter(this.value)"/></div>
     ${_pegTimelineHTML()}
@@ -4543,9 +4545,9 @@ function _pegTimelineHTML(){
   const mn=Math.min(...dated)-1, mx=new Date().getFullYear();
   const cur=_pegYear!=null?_pegYear:mx;
   return `<div style="margin:0 14px 8px;background:#fff;border:1px solid #e7ecf5;border-radius:10px;padding:9px 12px">
-    <div style="display:flex;align-items:center;gap:8px;font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#94a3b8">Acquisition timeline<span id="peg-tl-year" style="margin-left:auto;color:var(--navy);text-transform:none;letter-spacing:0;font-size:11px">through ${cur}</span></div>
+    <div style="display:flex;align-items:center;gap:8px;font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#64748b">Acquisition timeline<span id="peg-tl-year" style="margin-left:auto;color:var(--navy);text-transform:none;letter-spacing:0;font-size:11px">through ${cur}</span></div>
     <input type="range" min="${mn}" max="${mx}" step="1" value="${cur}" style="width:100%;margin:6px 0 2px" oninput="pegTimeline(this.value)"/>
-    <div id="peg-tl-count" style="font-size:10px;color:#94a3b8">${dated.filter(y2=>y2<=cur).length} of ${dated.length} dated acquisitions shown · ${_peGroupPts.length-dated.length} undated (dimmed)</div>
+    <div id="peg-tl-count" style="font-size:10.5px;color:#64748b">${dated.filter(y2=>y2<=cur).length} of ${dated.length} dated acquisitions shown · ${_peGroupPts.length-dated.length} undated (dimmed)</div>
   </div>`;
 }
 function peGroupClear(rerender){
@@ -4625,7 +4627,7 @@ function _scrRenderRows(){
       inp=`<input type="number" step="${d.step||1}" value="${f.v}" oninput="scrSetVal(${i},parseFloat(this.value))">`;
     }
     return `<div class="scr-frow"><span class="fx" onclick="scrRemoveFilter(${i})">✕</span><label>${d.label}</label>${inp}</div>`;
-  }).join('') || '<div style="font-size:11.5px;color:#94a3b8;padding:6px 2px;line-height:1.6">No filters yet — pick one from the menu above.<br>Results update as you type.</div>';
+  }).join('') || '<div style="font-size:11.5px;color:#64748b;padding:6px 2px;line-height:1.6">No filters yet — pick one from the menu above.<br>Results update as you type.</div>';
 }
 function _scrUniverse(){
   const rows=[], ov=getOverrides(), seen=new Set();
@@ -4687,10 +4689,10 @@ function runScreener(){
       </div>
       <div style="text-align:right;flex-shrink:0;font-size:10.5px;color:#475569">
         ${r.staffN!=null?`<b>${r.staffN} DVM</b>`:'<span style="color:#cbd5e1">roster n/a</span>'}${r.revTxt?` · ${_ceEsc(r.revTxt)}`:''}${r.mult!=null?` · ${r.mult}×`:''}
-        <div style="color:#94a3b8">${r.rating!=null?'★ '+r.rating:''}${r.reviews!=null?' · '+r.reviews.toLocaleString()+' rev':''}</div>
+        <div style="color:#64748b">${r.rating!=null?'★ '+r.rating:''}${r.reviews!=null?' · '+r.reviews.toLocaleString()+' rev':''}</div>
       </div>
     </div>`).join('') || '<div class="empty" style="padding:40px 20px">No clinics match — loosen a filter. Note DVM/revenue filters only match clinics with scraped rosters.</div>';
-  if(rows.length>80) out.innerHTML+=`<div style="font-size:10.5px;color:#94a3b8;padding:8px 4px">Showing 80 of ${rows.length.toLocaleString()} — tighten filters or export the full list.</div>`;
+  if(rows.length>80) out.innerHTML+=`<div style="font-size:10.5px;color:#64748b;padding:8px 4px">Showing 80 of ${rows.length.toLocaleString()} — tighten filters or export the full list.</div>`;
 }
 function scrGo(i){ const r=_scrResults[i]; if(!r) return; closeScreener(); _scrShowOnMap(true); _gotoClinic(r.lat, r.lon, r.name); }
 function _scrShowOnMap(quiet){
@@ -5241,7 +5243,7 @@ async function toggleTractLayer(on){
       if(t.own!=null) bits.push(Math.round(t.own*100)+'% owner-occupied');
       if(t.cons!=null) bits.push(Math.round(t.cons*100)+'% built 2010+');
       if(t.hh!=null) bits.push('~'+t.hh.toLocaleString()+' households');
-      layer.bindTooltip(`<div style="font-size:11.5px;line-height:1.5"><b style="color:${ct.c}">${esc(ct.label)}</b><br>${bits.join(' · ')}<br><span style="color:#94a3b8;font-size:10px">tract ${esc(t.g)}</span></div>`,{sticky:true,opacity:0.95});
+      layer.bindTooltip(`<div style="font-size:11.5px;line-height:1.5"><b style="color:${ct.c}">${esc(ct.label)}</b><br>${bits.join(' · ')}<br><span style="color:#64748b;font-size:10.5px">tract ${esc(t.g)}</span></div>`,{sticky:true,opacity:0.95});
     }
   }).addTo(map);
   if(tractLayer.bringToBack) tractLayer.bringToBack();
@@ -5268,11 +5270,11 @@ async function toggleSignalsLayer(on){
     const m=L.marker([g.lat,g.lon],{icon:L.divIcon({className:'',html:`<div class="vf-sig" style="background:${col}"></div>`,iconSize:[17,17],iconAnchor:[8,8]})});
     m.bindTooltip(g.n,{direction:'top',offset:[0,-8]});
     m.bindPopup(`<div style="min-width:210px;max-width:250px">
-      <div style="display:inline-block;font-size:9.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#fff;background:${col};border-radius:8px;padding:2px 8px">${_SIG_LABEL[g.t]||g.t}</div>
+      <div style="display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#fff;background:${col};border-radius:8px;padding:2px 8px">${_SIG_LABEL[g.t]||g.t}</div>
       <div style="font-size:13px;font-weight:700;margin-top:6px;line-height:1.35">${g.n}</div>
       <div style="font-size:10.5px;color:#64748b;margin:2px 0 6px">${g.city}${g.eta&&g.eta!=='—'?' · '+g.eta:''}</div>
       <div style="font-size:11.5px;color:#334155;line-height:1.5">${g.note}</div>
-      <div style="font-size:9.5px;color:#94a3b8;margin-top:6px">${g.src}</div></div>`,{maxWidth:270});
+      <div style="font-size:10.5px;color:#64748b;margin-top:6px">${g.src}</div></div>`,{maxWidth:270});
     sigLayer.addLayer(m);
   }
   map.addLayer(sigLayer);
@@ -5376,13 +5378,13 @@ async function toggleMpcLayer(on){
     circ.bindTooltip(`${sweet?'⚡ ':''}<b>${esc(m.n)}</b> · ${m.homes.toLocaleString()} homes planned${sweet?' · engagement window':''}${mapNote}`,{sticky:true,opacity:0.95});
     const residents=Math.round(m.homes*3.0), dogHH=Math.round(m.homes*0.55);
     const kfmtM=v=>v>=1000?((v/1000).toFixed(v>=10000?0:1).replace(/\.0$/,'')+'k'):String(v);
-    const stat=(v,l)=>`<div style="flex:1;text-align:center;padding:8px 4px"><div style="font-size:17px;font-weight:800;color:#0f172a;letter-spacing:-.02em">${v}</div><div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#94a3b8;margin-top:1px">${l}</div></div>`;
+    const stat=(v,l)=>`<div style="flex:1;text-align:center;padding:8px 4px"><div style="font-size:17px;font-weight:800;color:#0f172a;letter-spacing:-.02em">${v}</div><div style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#64748b;margin-top:1px">${l}</div></div>`;
     const detailsHref = m.web || ('https://www.google.com/search?q='+encodeURIComponent(m.n+' '+m.city+' TX master planned community'));
     circ.bindPopup(`<div style="font-size:12.5px;width:262px;padding:14px 16px 13px;font-family:'Inter',system-ui,sans-serif">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
         <div><div style="font-size:14.5px;font-weight:800;color:#0f172a;letter-spacing:-.01em;line-height:1.2">${esc(m.n)}</div>
         <div style="font-size:11px;color:#64748b;margin-top:1px">${esc(m.city)}${m.dev?' · '+esc(m.dev):''}</div></div>
-        <span style="flex-shrink:0;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:${announced?'#be123c':'#0f766e'};background:${announced?'#fff1f2':'#f0fdfa'};border:1px solid ${announced?'#fecdd3':'#99f6e4'};border-radius:9px;padding:2.5px 8px;margin-top:2px">${announced?'Announced':'Selling'}</span>
+        <span style="flex-shrink:0;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:${announced?'#be123c':'#0f766e'};background:${announced?'#fff1f2':'#f0fdfa'};border:1px solid ${announced?'#fecdd3':'#99f6e4'};border-radius:9px;padding:2.5px 8px;margin-top:2px">${announced?'Announced':'Selling'}</span>
       </div>
       ${(()=>{ const yr=new Date().getFullYear();
         if(m.opened){
@@ -5402,9 +5404,9 @@ async function toggleMpcLayer(on){
       ${m.note?`<div style="font-size:11px;color:#475569;line-height:1.45;margin-bottom:7px">${esc(m.note)}</div>`:''}
       ${ph.k==='sweet'
         ? `<div style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:9px;padding:7px 10px;margin-bottom:8px"><div style="font-size:10.5px;font-weight:800;color:#0f766e">⚡ PAD-ENGAGEMENT WINDOW</div><div style="font-size:10.5px;color:#134e4a;margin-top:2px;line-height:1.45">${esc(ph.why)}. Chains typically sign MPC sites 12–24 months before opening.</div></div>`
-        : `<div style="font-size:10.5px;color:#94a3b8;margin-bottom:7px">${ph.k==='late'?'Established':'Watch list'} — ${esc(ph.why)}.</div>`}
+        : `<div style="font-size:10.5px;color:#64748b;margin-bottom:7px">${ph.k==='late'?'Established':'Watch list'} — ${esc(ph.why)}.</div>`}
       <a href="${detailsHref}" target="_blank" rel="noopener" style="display:block;text-align:center;background:var(--navy,#1e3a8a);color:#fff;font-size:12px;font-weight:700;text-decoration:none;border-radius:9px;padding:8px 0">${m.web?'Community website ↗':'Find details ↗'}</a>
-      <div style="font-size:9.5px;color:#94a3b8;margin-top:6px;line-height:1.4">Announced totals (${esc(m.src||'public sources')}) · buildout 10–20 yrs · est. 3.0 people, 0.55 dog households per home.</div>
+      <div style="font-size:10.5px;color:#64748b;margin-top:6px;line-height:1.4">Announced totals (${esc(m.src||'public sources')}) · buildout 10–20 yrs · est. 3.0 people, 0.55 dog households per home.</div>
     </div>`);
     circ.addTo(mpcLayer);
   }
@@ -5558,7 +5560,7 @@ function _fillLegend(){
   const top=best.map(h=>{ const st=h._stage||_hexStage(h.dens,h.trajIdx,h.cons); return `<div class="hex-top-row" onclick="_hexOpenDetailByCell(${h.q},${h.r})">`+
        `<span style="color:${h._color};font-weight:800;min-width:22px;text-align:right">${Math.round(h.score*100)}</span>`+
        `<span style="flex:1">${h.zip}${h.city?' · '+h.city:''}</span>`+
-       `<span style="font-size:9px;font-weight:700;color:${st.color};white-space:nowrap">${st.label}</span></div>`; }).join('');
+       `<span style="font-size:10.5px;font-weight:700;color:${st.color};white-space:nowrap">${st.label}</span></div>`; }).join('');
   const seg=`<div class="hex-strat-seg">`+
     `<button class="${hexStrategy==='all'?'on':''}" onclick="setHexStrategy('all')">All</button>`+
     `<button class="${hexStrategy==='developed'?'on b':''}" onclick="setHexStrategy('developed')">Developed</button>`+
@@ -5568,8 +5570,8 @@ function _fillLegend(){
     `<div style="font-size:10.5px;color:${hexStrategy==='emerging'?'#0d9488':'#15803d'};font-weight:600;margin:7px 0 0">${nZ} ${hexStrategy==='emerging'?'emerging':'developed'} ZIP${nZ!==1?'s':''} highlighted</div>`;
   body.innerHTML=`${seg}${note}<div style="font-size:11px;color:#475569;margin-top:9px">Captured demand (low → high)</div>`+
     `<div class="hex-legbar"></div>`+
-    `<div style="display:flex;justify-content:space-between;font-size:9.5px;color:#94a3b8;margin-top:1px"><span>low</span><span>high</span></div>`+
-    `<div class="hex-top-h">Top spots${hexStrategy==='all'?'':' · '+(hexStrategy==='emerging'?'Emerging':'Developed')}</div>${top||'<div style="font-size:11px;color:#94a3b8">No matching plays.</div>'}`;
+    `<div style="display:flex;justify-content:space-between;font-size:10.5px;color:#64748b;margin-top:1px"><span>low</span><span>high</span></div>`+
+    `<div class="hex-top-h">Top spots${hexStrategy==='all'?'':' · '+(hexStrategy==='emerging'?'Emerging':'Developed')}</div>${top||'<div style="font-size:11px;color:#64748b">No matching plays.</div>'}`;
 }
 function _hexOpenDetailByCell(q,r){ const i=_hexAxialIndex.get(q+'_'+r); if(i!=null && hexScored[i]) _hexFocus(hexScored[i], true); }
 function _hexClearSel(){ _hexSelIdx=-1; _hexRegionIdx=null; }
@@ -5678,7 +5680,7 @@ function _communityHTML(lat,lon,opts){
   if(t.inc!=null) bits.push('$'+Math.round(t.inc/1000)+'k income');
   if(t.cons!=null) bits.push(Math.round(t.cons*100)+'% built 2010+');
   if(t.own!=null) bits.push(Math.round(t.own*100)+'% owner-occupied');
-  const warn=ct.senior?`<div style="font-size:10px;color:#be123c;font-weight:600;margin-top:1px">Senior community at this spot — expect lower pet demand than the ZIP average suggests.</div>`:'';
+  const warn=ct.senior?`<div style="font-size:10.5px;color:#be123c;font-weight:600;margin-top:1px">Senior community at this spot — expect lower pet demand than the ZIP average suggests.</div>`:'';
   const small=opts&&opts.small;
   return `<div style="margin-top:${small?'5':'6'}px;font-size:10.5px;color:#64748b"><span style="font-weight:800;color:${ct.c}">${ct.label}</span> · ${bits.join(' · ')}${warn}</div>`;
 }
@@ -5698,9 +5700,9 @@ function _hexOpenDetail(h){
   const box=document.getElementById('hex-detail'); if(!box) return;
   box.style.display='block';
   const st=h._stage||_hexStage(h.dens,h.trajIdx,h.cons);
-  const bar=(lbl,v,col)=>`<div style="display:flex;align-items:center;gap:6px;margin:2px 0"><span style="width:96px;font-size:10px;color:#64748b">${lbl}</span><div style="flex:1;height:7px;background:#eef2f7;border-radius:4px;overflow:hidden"><i style="display:block;height:100%;width:${Math.round(clamp01(v)*100)}%;background:${col}"></i></div></div>`;
+  const bar=(lbl,v,col)=>`<div style="display:flex;align-items:center;gap:6px;margin:2px 0"><span style="width:96px;font-size:10.5px;color:#64748b">${lbl}</span><div style="flex:1;height:7px;background:#eef2f7;border-radius:4px;overflow:hidden"><i style="display:block;height:100%;width:${Math.round(clamp01(v)*100)}%;background:${col}"></i></div></div>`;
   box.innerHTML=`<div style="font-weight:800;font-size:13px">${h.zip}${h.city?' · '+h.city:''}
-      <span style="font-size:10px;font-weight:700;color:#fff;background:${st.color};padding:1px 7px;border-radius:10px;margin-left:4px;vertical-align:1px">${st.label}</span></div>
+      <span style="font-size:10.5px;font-weight:700;color:#fff;background:${st.color};padding:1px 7px;border-radius:10px;margin-left:4px;vertical-align:1px">${st.label}</span></div>
     <div style="font-size:10.5px;color:${st.color};font-weight:600;margin-top:3px">${st.land}${h.dens!=null?` · ~${Math.round(h.dens).toLocaleString()} homes/mi²`:''}</div>
     ${(()=>{const d=_nearRetailMi(h.cLat,h.cLon); if(d==null&&!_oppRetailPts) return ''; return `<div style="font-size:10.5px;color:#64748b;margin-top:2px">${d==null?'No retail within 4 miles; likely a land play or served from nearby':d<0.4?'Commercial corridor at this spot':'Nearest commercial corridor about '+d.toFixed(1)+' mi'}</div>`;})()}
     ${_communityHTML(h.cLat,h.cLon)}
@@ -5712,7 +5714,7 @@ function _hexOpenDetail(h){
         band = cap<1.3?'a solo practice':cap<2.5?'a ~2-doctor practice':cap<3.6?'a ~3-doctor practice':'a 4+ doctor hospital'; }
       return `<div style="font-size:11px;color:#475569;margin:0 0 6px">${h.dog!=null?Math.round(h.dog).toLocaleString():'—'} dog${cE!=null?' + '+Math.round(cE).toLocaleString()+' cat':''} households → est. <b>${v!=null?('~'+v.toLocaleString()):'—'}</b> vet visits/yr → a new clinic captures est. <b>${h.share!=null?'~'+Math.min(95,Math.round(h.share*100))+'%':'—'}</b>${band?' → enough for <b>'+band+'</b>':''}</div>`;})()}
     ${bar('Spend power',h.spendIdx||0,'#15803d')}${bar('Pet volume',h.volIdx||0,'#4338ca')}${bar('Growth trajectory',h.trajIdx||0,'#0d9488')}${bar('Market capture',h.share||0,'#b45309')}
-    <div style="margin:8px 0 6px;font-size:12px">Opportunity score <b style="color:${h._color}">${Math.round((h.score||0)*100)}</b> <span style="font-size:10px;color:#94a3b8">demand × est. market capture</span></div>
+    <div style="margin:8px 0 6px;font-size:12px">Opportunity score <b style="color:${h._color}">${Math.round((h.score||0)*100)}</b> <span style="font-size:10.5px;color:#64748b">demand × est. market capture</span></div>
     <button class="eval-btn" style="width:100%" onclick="evaluateHexSpot(${h.cLat.toFixed(5)},${h.cLon.toFixed(5)})">Evaluate this spot →</button>`;
 }
 function evaluateHexSpot(lat,lon){
@@ -6129,8 +6131,8 @@ function renderOppDetail(r,i){
     try{ ensureDogData().then(()=>{ if(_oppOpenZip===r.zip && typeof renderOppList==='function') renderOppList(); }).catch(()=>{}); }catch(e){}
   }
   const u=_oppUnder(r);
-  const line=(label,val,sub)=>`<div style="display:flex;justify-content:space-between;padding:2.5px 0;font-size:12px"><span style="color:#64748b">${label}</span><span style="font-weight:700;color:#1f2933">${val}${sub?` <span style='color:#94a3b8;font-weight:500'>${sub}</span>`:''}</span></div>`;
-  const sec=t=>`<div style="font-size:9.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:#94a3b8;margin:8px 0 2px">${t}</div>`;
+  const line=(label,val,sub)=>`<div style="display:flex;justify-content:space-between;padding:2.5px 0;font-size:12px"><span style="color:#64748b">${label}</span><span style="font-weight:700;color:#1f2933">${val}${sub?` <span style='color:#64748b;font-weight:500'>${sub}</span>`:''}</span></div>`;
+  const sec=t=>`<div style="font-size:10.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:#64748b;margin:8px 0 2px">${t}</div>`;
   const pill=(bg,bd,tc,title,body)=>`<div style="background:${bg};border:1px solid ${bd};border-radius:8px;padding:7px 10px;margin:5px 0 3px"><div style="font-size:11.5px;font-weight:700;color:${tc}">${title}</div><div style="font-size:11px;color:#475569;margin-top:2px;line-height:1.45">${body}</div></div>`;
   const hh=(typeof dogData!=='undefined'&&dogData[r.zip]&&dogData[r.zip].households)?dogData[r.zip].households:null;
   const catHH=(typeof dogData!=='undefined'&&dogData[r.zip]&&dogData[r.zip].catEst!=null)?dogData[r.zip].catEst:null;
@@ -6140,7 +6142,7 @@ function renderOppDetail(r,i){
   const head=(sustain!=null&&r.dvm!=null)?sustain-r.dvm:null;
   const petHH=(r.dog!=null)?Math.round(r.dog+(catHH||0)):null;
   // ── KPI strip (mockup 1): income / growth / pipeline / clinics ──
-  const tile=(v,l,c)=>`<div style="text-align:center;min-width:0"><div style="font-size:13px;font-weight:800;color:${c||'#0f172a'};letter-spacing:-.01em;white-space:nowrap">${v}</div><div style="font-size:8.5px;font-weight:700;color:#94a3b8;letter-spacing:.05em">${l}</div></div>`;
+  const tile=(v,l,c)=>`<div style="text-align:center;min-width:0"><div style="font-size:13px;font-weight:800;color:${c||'#0f172a'};letter-spacing:-.01em;white-space:nowrap">${v}</div><div style="font-size:10.5px;font-weight:700;color:#64748b;letter-spacing:.05em">${l}</div></div>`;
   const kpiStrip=`<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;background:#f8fafc;border:1px solid #eef2f7;border-radius:10px;padding:8px 10px">
     ${tile(r.inc!=null?_fmtMoney(r.inc):'—','INCOME')}
     ${tile(r.grow!=null?_fmtPct(r.grow):'—','GROWTH', r.grow!=null&&r.grow>0?'#15803d':undefined)}
@@ -6151,7 +6153,7 @@ function renderOppDetail(r,i){
   let funnel='';
   {
     const kf=v=>v>=1000?(v/1000).toFixed(1)+'k':String(Math.round(v));
-    const fb=(bg,tc,stc,v,l,flex,extra)=>`<div style="flex:${flex};background:${bg};border-radius:7px;padding:6px 6px;text-align:center;min-width:0${extra||''}"><div style="font-size:11.5px;font-weight:800;color:${tc}">${v}</div><div style="font-size:8.5px;color:${stc}">${l}</div></div>`;
+    const fb=(bg,tc,stc,v,l,flex,extra)=>`<div style="flex:${flex};background:${bg};border-radius:7px;padding:6px 6px;text-align:center;min-width:0${extra||''}"><div style="font-size:11.5px;font-weight:800;color:${tc}">${v}</div><div style="font-size:10.5px;color:${stc}">${l}</div></div>`;
     const stages=[];
     if(hh!=null) stages.push(fb('#eef2fb','#0f172a','#64748b',Math.round(hh).toLocaleString(),'households',2.2));
     // Projected household growth: the past-3yr trend carried forward (natural construction)
@@ -6166,15 +6168,15 @@ function renderOppDetail(r,i){
     // math consumes each separately; dual-owner homes legitimately appear in both).
     if(r.dog!=null){
       const sp=`<div style="flex:2.1;background:#dbe7fb;border-radius:7px;padding:4px 6px;min-width:0;display:flex;align-items:center;justify-content:center;gap:8px">
-        <span style="text-align:center"><span style="display:block;font-size:11px;font-weight:800;color:#0f172a">${Math.round(r.dog).toLocaleString()}</span><span style="display:block;font-size:8px;color:#64748b">dog HH</span></span>
+        <span style="text-align:center"><span style="display:block;font-size:11px;font-weight:800;color:#0f172a">${Math.round(r.dog).toLocaleString()}</span><span style="display:block;font-size:10.5px;color:#64748b">dog HH</span></span>
         <span style="width:1px;align-self:stretch;background:#b6cbf0;margin:2px 0"></span>
-        <span style="text-align:center"><span style="display:block;font-size:11px;font-weight:800;color:#0f172a">${catHH!=null?Math.round(catHH).toLocaleString():'—'}</span><span style="display:block;font-size:8px;color:#64748b">cat HH</span></span>
+        <span style="text-align:center"><span style="display:block;font-size:11px;font-weight:800;color:#0f172a">${catHH!=null?Math.round(catHH).toLocaleString():'—'}</span><span style="display:block;font-size:10.5px;color:#64748b">cat HH</span></span>
       </div>`;
       stages.push(sp);
     }
     if(visits!=null) stages.push(fb('#bfd4f7','#0f172a','#475569','~'+kf(visits),'visits/yr',1.6));
     if(sustain!=null) stages.push(fb('#1e3a8a','#fff','#bfd0f0','~'+sustain,'vets fit',1.4));
-    if(stages.length>=2) funnel=`<div style="font-size:9.5px;font-weight:800;letter-spacing:.06em;color:#94a3b8;margin:9px 0 5px">DEMAND FUNNEL</div>
+    if(stages.length>=2) funnel=`<div style="font-size:10.5px;font-weight:800;letter-spacing:.06em;color:#64748b;margin:9px 0 5px">DEMAND FUNNEL</div>
       <div style="display:flex;align-items:center;gap:3px">${stages.join('<span style="color:#cbd5e1">›</span>')}</div>`;
   }
   // ── one-line verdict ──
@@ -6196,7 +6198,7 @@ function renderOppDetail(r,i){
     ${line('Clinics', (r.peCount+r.indCount), `${r.peCount} PE / ${r.indCount} indep`)}
     ${_oppFabricLine(r)}
     ${line('Income · Demand · Competition · Growth', `${r.fIncome.toFixed(0)} · ${r.fDemand.toFixed(0)} · ${r.fComp.toFixed(0)} · ${(r.fGrowth||0).toFixed(0)}`)}
-    <div style="font-size:10.5px;color:#94a3b8;margin-top:6px;line-height:1.4">Sub-scores are ranked <b>within ${oppRegion.name}</b> and do not compare across regions.</div>
+    <div style="font-size:10.5px;color:#64748b;margin-top:6px;line-height:1.4">Sub-scores are ranked <b>within ${oppRegion.name}</b> and do not compare across regions.</div>
   </div>`;
   return `<div class="opp-detail-inner">
     ${rank>0?`<div style="font-size:11px;font-weight:800;color:#1e3a8a;margin-bottom:7px">Ranks #${rank} of ${oppScored.length} ZIPs in ${oppRegion.name}</div>`:''}
@@ -6274,10 +6276,10 @@ function _renderMpcList(wrap, seg){
   const esc=v=>String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const yrNow=new Date().getFullYear();
   const phBadge=ph=> ph.k==='sweet'
-    ? `<span style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#0f766e;background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;padding:1.5px 7px">⚡ engage now</span>`
+    ? `<span style="font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#0f766e;background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;padding:1.5px 7px">⚡ engage now</span>`
     : ph.k==='late'
-      ? `<span style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#64748b;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:1.5px 7px">pads likely committed</span>`
-      : `<span style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#be123c;background:#fff1f2;border:1px solid #fecdd3;border-radius:8px;padding:1.5px 7px">watch</span>`;
+      ? `<span style="font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#64748b;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:1.5px 7px">pads likely committed</span>`
+      : `<span style="font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#be123c;background:#fff1f2;border:1px solid #fecdd3;border-radius:8px;padding:1.5px 7px">watch</span>`;
   const openTxt=r=>{
     const o=r.m.opened;
     if(!o) return r.m.status==='announced'?'first homes TBD':'buildout stage unverified';
@@ -6304,14 +6306,14 @@ function _renderMpcList(wrap, seg){
     </div>`;
   }).join('');
   const methodNote=`<details class="vm-method-note" style="margin-top:14px"><summary>How communities are scored</summary><div style="margin-top:6px">Same four weights as the ZIP list, applied at the community grain: <b>demand</b> is the announced buildout (homes × 0.55 dog households, log-scaled), <b>competition</b> is future dog households per veterinarian already within 3 miles (log-scaled), <b>income</b> is estimated from the community's builder price range where published (typical sale ÷ 3.7, the new-build affordability ratio; ZIP fallback otherwise), <b>growth</b> from the surrounding ZIP (Census ACS 2024). The engagement badge is timing, not score — chains typically sign community pad sites 12–24 months before opening. Announced totals are developer figures; verify before diligence.</div></details>`;
-  wrap.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">${seg}<div style="flex:1;text-align:right;margin-right:10px;font-size:10.5px;color:#94a3b8;font-weight:600">Click a community to see it on the map</div>${_exportBtn('exportMpcCSV()','Export')}</div>${rows}${methodNote}`;
+  wrap.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">${seg}<div style="flex:1;text-align:right;margin-right:10px;font-size:10.5px;color:#64748b;font-weight:600">Click a community to see it on the map</div>${_exportBtn('exportMpcCSV()','Export')}</div>${rows}${methodNote}`;
 }
 function renderOppList(){
   const wrap=document.getElementById('opp-list-wrap');
   const tEl=document.getElementById('opp-title'); if(tEl) tEl.textContent='Opportunity Scores · '+oppRegion.name;
   // Two funnel stages, captioned the way PE runs them: market screen → site scoring
   const seg=`<div><div class="opp-view-seg"><button class="${oppView==='list'?'on':''}" onclick="setOppView('list')">List</button><button class="${oppView==='surface'?'on':''}" onclick="setOppView('surface')">Surface</button><button class="${oppView==='mpc'?'on':''}" onclick="setOppView('mpc')">Communities</button></div>`+
-    `<div style="font-size:9.5px;color:#94a3b8;font-weight:600;margin-top:3px;letter-spacing:.02em">${oppView==='surface'?'Site scoring · one-mile hexes':(oppView==='mpc'?'Future demand · master-planned buildouts':'Market screen · ranked ZIPs')}</div></div>`;
+    `<div style="font-size:10.5px;color:#64748b;font-weight:600;margin-top:3px;letter-spacing:.02em">${oppView==='surface'?'Site scoring · one-mile hexes':(oppView==='mpc'?'Future demand · master-planned buildouts':'Market screen · ranked ZIPs')}</div></div>`;
   if(oppView==='mpc'){ _renderMpcList(wrap, seg); return; }
   if(oppView==='surface'){
     document.getElementById('opp-sub').textContent=`${oppScored.length} ZIPs scored across ${oppRegion.name} · opportunity surface showing the best buildable spots`;
@@ -6344,7 +6346,7 @@ function renderOppList(){
     </div>`;
   }).join('');
   const methodNote=`<details class="vm-method-note" style="margin-top:14px"><summary>How these scores are computed</summary><div style="margin-top:6px">Four factors — income (Census ACS 2024), pet demand (<b>modeled</b> from ACS 2024 housing), low competition (pet households per PE-weighted clinic), and growth (ACS 2021→2024 population + new construction + announced master-planned buildout still to come) — each scaled 0–100 across this region's ZIPs and blended by your weights. Sub-scores are <b>region-relative percentiles</b>, not absolute. Competition is radius-based, not drive-time. A screening signal — verify before diligence.</div></details>`;
-  wrap.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">${seg}<div style="flex:1;text-align:right;margin-right:10px;font-size:10.5px;color:#94a3b8;font-weight:600">Scores are relative to this region · click a ZIP to expand</div>${oppScored.length?_exportBtn('exportOppCSV()','Export'):''}</div>${rows}${methodNote}`;
+  wrap.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">${seg}<div style="flex:1;text-align:right;margin-right:10px;font-size:10.5px;color:#64748b;font-weight:600">Scores are relative to this region · click a ZIP to expand</div>${oppScored.length?_exportBtn('exportOppCSV()','Export'):''}</div>${rows}${methodNote}`;
   _oppKpiTop();
 }
 // Reflect the current #1 ranked ZIP in the KPI bar (shared by list + surface views)
@@ -6603,7 +6605,7 @@ async function _admLoad(){
     const r=await fetch('/api/admin/accounts'); const d=await r.json();
     if(!r.ok){ el.innerHTML='<div style="font-size:12px;color:#dc2626;padding:10px 0">'+_admEsc(d.error||'Could not load accounts')+'</div>'; return; }
     _admCache=d.accounts||[];
-    if(!_admCache.length){ el.innerHTML='<div style="font-size:12px;color:#94a3b8;padding:10px 0">No accounts yet.</div>'; return; }
+    if(!_admCache.length){ el.innerHTML='<div style="font-size:12px;color:#64748b;padding:10px 0">No accounts yet.</div>'; return; }
     const rows=_admCache.map(a=>{
       const tierChip='<span class="adm-tier '+_admEsc(a.tier)+'">'+(a.tier==='demo'?'Demo':a.tier==='admin'?'Admin':'Licensed')+'</span>';
       const region=(a.regions||[]).includes('tx')?'All Texas':((a.regions&&a.regions[0])||'dfw').toUpperCase()+' only';
@@ -6611,10 +6613,10 @@ async function _admLoad(){
       const seen=a.lastSeen?new Date(a.lastSeen).toLocaleDateString(undefined,{month:'short',day:'numeric'}):'never';
       const self=window.VF_ME && VF_ME.email===a.email;
       return '<tr><td><b>'+_admEsc(a.firm||'—')+'</b><br><span style="color:#64748b">'+_admEsc(a.email)+'</span></td>'+
-        '<td>'+tierChip+'<br><span style="color:#94a3b8;font-size:10.5px">started '+started+'</span></td>'+
+        '<td>'+tierChip+'<br><span style="color:#64748b;font-size:10.5px">started '+started+'</span></td>'+
         '<td>'+_admEsc(region)+'</td>'+
         '<td style="font-family:\'JetBrains Mono\',monospace;font-size:10.5px">'+(a.code?'<span style="cursor:pointer;border-bottom:1px dashed #cbd5e1" title="Click to copy (masked for screen sharing)" data-c="'+_admEsc(a.code)+'" onclick="_admCopy(this.dataset.c)">••••••••</span>':'—')+'</td>'+
-        '<td><span style="color:#94a3b8;font-size:10.5px">seen '+seen+'</span></td>'+
+        '<td><span style="color:#64748b;font-size:10.5px">seen '+seen+'</span></td>'+
         '<td style="text-align:right;white-space:nowrap"><button class="vm-export-btn" onclick="_admEdit(\''+_admEsc(a.email)+'\')">Edit</button>'+(self?'':' <button class="vm-export-btn" style="color:#dc2626;border-color:#fecaca" onclick="_admRevoke(\''+_admEsc(a.email)+'\')">Revoke</button>')+'</td></tr>';
     }).join('');
     el.innerHTML='<table class="adm-table"><thead><tr><th>Firm / email</th><th>Phase</th><th>Market</th><th>Access code</th><th>Last login</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>';
@@ -7158,8 +7160,8 @@ function siteReport(i){
   const rows=(l,v)=>`<tr><td style="padding:5px 0;color:#64748b">${l}</td><td style="padding:5px 0;text-align:right;font-weight:700">${v}</td></tr>`;
   const comps=evalCompsCache.map(c=>({c,d:hav(g.la,g.lo,c.lat,c.lon)})).sort((a,b)=>a.d-b.d).slice(0,6);
   w.document.write(`<!doctype html><html><head><title>Vetric site report — ${sid}</title><meta charset="utf-8">
-  <style>body{font-family:Inter,system-ui,sans-serif;color:#0f172a;max-width:680px;margin:28px auto;padding:0 20px;font-size:13px;line-height:1.55}h1{font-size:19px;margin:0}h2{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8;margin:20px 0 6px}table{width:100%;border-collapse:collapse;font-size:12.5px}td{border-bottom:1px solid #f1f5f9}@media print{.np{display:none}}</style></head><body>
-  <div style="display:flex;justify-content:space-between;align-items:center"><div><h1>Site report · ${evalZip?('ZIP '+evalZip):'drawn area'}</h1><div style="color:#64748b;font-size:12px">${sid} · generated ${new Date().toLocaleDateString()} · Vetric</div></div><div style="font-size:30px;font-weight:800;color:${g.tier==='strong'?'#15803d':'#64748b'}">${disp}<span style="font-size:12px;color:#94a3b8">/100</span></div></div>
+  <style>body{font-family:Inter,system-ui,sans-serif;color:#0f172a;max-width:680px;margin:28px auto;padding:0 20px;font-size:13px;line-height:1.55}h1{font-size:19px;margin:0}h2{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:#64748b;margin:20px 0 6px}table{width:100%;border-collapse:collapse;font-size:12.5px}td{border-bottom:1px solid #f1f5f9}@media print{.np{display:none}}</style></head><body>
+  <div style="display:flex;justify-content:space-between;align-items:center"><div><h1>Site report · ${evalZip?('ZIP '+evalZip):'drawn area'}</h1><div style="color:#64748b;font-size:12px">${sid} · generated ${new Date().toLocaleDateString()} · Vetric</div></div><div style="font-size:30px;font-weight:800;color:${g.tier==='strong'?'#15803d':'#64748b'}">${disp}<span style="font-size:12px;color:#64748b">/100</span></div></div>
   <div style="margin-top:6px;font-weight:700">${tierL}</div>
   <h2>Site factors</h2><table>
   ${rows('Neighborhood demand',Math.round(g.demandN*100))}${rows('Winnable capture share',(g.share*100).toFixed(0)+'%')}${rows('Retail co-tenancy',Math.round(g.retailN*100))}${rows('Road visibility',Math.round(g.accessN*100)+(g.aadt>0?' · ~'+Math.round(g.aadt/1000)+'k cars/day':''))}${rows('Nearest clinic',isFinite(g.nearC)?(g.nearC/1609.344).toFixed(1)+' mi':'—')}${rows('Competitors in '+evalRadiusMi+' mi',g.nComp+' ('+g.nPE+' PE)')}
@@ -7168,7 +7170,7 @@ function siteReport(i){
   ${rows('Households',cs.hhIn.toLocaleString())}${rows('Pet households',cs.dogIn.toLocaleString()+' dog · '+cs.catIn.toLocaleString()+' cat')}${rows('Est. annual vet visits','~'+cs.visits.toLocaleString())}${rows('Competing clinics inside',(cs.pe+cs.ind)+' ('+cs.pe+' PE · '+cs.ind+' indep)')}${rows('Winnable at '+(cs.share*100).toFixed(0)+'% share','~'+cs.captured.toLocaleString()+' visits/yr')}${rows('Practice size supported',cs.size)}${rows('Est. revenue (modeled)',_fmtM(cs.rev))}
   </table>`:''}
   <h2>Nearest competitors</h2><table>${comps.map(x=>rows(esc(x.c.name||'Clinic')+(x.c.pe?' <span style="color:#dc2626">(PE'+(x.c.owner?' · '+esc(x.c.owner):'')+')</span>':' (independent)'),(x.d/1609.344).toFixed(1)+' mi'+(x.c.staffN?' · '+x.c.staffN+' DVMs':''))).join('')}</table>
-  <div style="margin-top:18px;font-size:10.5px;color:#94a3b8">Modeled from Census ACS 2024, OpenStreetMap, TxDOT AADT, Google Places and Vetric's capture model. Estimates, not projections — verify zoning, availability and pricing before pursuing. vetric.co</div>
+  <div style="margin-top:18px;font-size:10.5px;color:#64748b">Modeled from Census ACS 2024, OpenStreetMap, TxDOT AADT, Google Places and Vetric's capture model. Estimates, not projections — verify zoning, availability and pricing before pursuing. vetric.co</div>
   <div class="np" style="margin-top:14px"><button onclick="window.print()" style="font-size:13px;padding:8px 18px;border-radius:8px;border:1px solid #cbd5e1;background:#1e3a8a;color:#fff;cursor:pointer">Print / save as PDF</button></div>
   </body></html>`);
   w.document.close();
@@ -7179,8 +7181,8 @@ function _evalAcqFocus(i){
   L.popup({maxWidth:250}).setLatLng([c.lat,c.lon]).setContent(
     `<div style="font-size:13px;font-weight:700">${_ceEsc(c.name||'Independent clinic')}</div>
      <div style="font-size:11px;color:#64748b;margin:3px 0 6px">${c.rating?'★'+c.rating+' · ':''}${c.reviews!=null?c.reviews.toLocaleString()+' reviews · ':''}${c.staffN?c.staffN+' DVMs · ':''}Independent</div>
-     <div style="display:inline-block;font-size:9px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:#5b21b6;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:8px;padding:2px 8px">Acquisition target</div>
-     <div style="font-size:10px;color:#94a3b8;margin-top:6px">Full profile: clear the analysis, then click its pin · pipeline view in the Acquisitions tab.</div>`).openOn(map);
+     <div style="display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:#5b21b6;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:8px;padding:2px 8px">Acquisition target</div>
+     <div style="font-size:10.5px;color:#64748b;margin-top:6px">Full profile: clear the analysis, then click its pin · pipeline view in the Acquisitions tab.</div>`).openOn(map);
 }
 function evalToggleFuture(){ evalFuture=!evalFuture; if(evalActive) _evalComputeAndRender(); }
 function _evalInjectFuture(bb){
@@ -8103,7 +8105,7 @@ function _evalSitePopup(g,i){
       <span style="cursor:pointer;font-size:11px;color:var(--navy);font-weight:700" onclick="navigator.clipboard&&navigator.clipboard.writeText('${ll}');vfToast('Copied ${ll}')">Copy coords</span>
       <span class="vm-star ${_inWatch('site',sid)?'on':''}" title="Save site to watchlist" onclick="toggleWatchSite(${g.la},${g.lo},${_evalDisp(g.score)},this)">★</span>
     </div>
-    <div style="font-size:10px;color:#94a3b8;margin-top:4px">${ll}</div>
+    <div style="font-size:10.5px;color:#64748b;margin-top:4px">${ll}</div>
   </div>`;
 }
 function toggleWatchSite(lat,lon,score,el){
@@ -8170,7 +8172,7 @@ function _evalRenderLayers(){
       const rev=c.reviews||0, rad=4+Math.min(5, Math.log10(1+rev)*1.7);
       const m=L.circleMarker([c.lat,c.lon],{radius:rad,color:'#fff',weight:1.5,fillColor:c.pe?'#dc2626':'#2563eb',fillOpacity:0.92,interactive:true});
       const typeLine=c.pe?(c.owner?'PE · '+_esc(c.owner):'PE / corporate'):'Independent';
-      m.bindPopup(`<div style="font-size:12px;min-width:150px"><b>${_esc(c.name||'Unnamed clinic')}</b><br><span style="color:${c.pe?'#dc2626':'#2563eb'};font-weight:700">${typeLine}</span>${typeof c.rating==='number'?`<br><span style="color:#b45309;font-weight:700">★ ${c.rating}</span> · ${rev.toLocaleString()} reviews`:(rev?`<br>${rev.toLocaleString()} reviews`:'<br><span style="color:#94a3b8">no rating</span>')}</div>`);
+      m.bindPopup(`<div style="font-size:12px;min-width:150px"><b>${_esc(c.name||'Unnamed clinic')}</b><br><span style="color:${c.pe?'#dc2626':'#2563eb'};font-weight:700">${typeLine}</span>${typeof c.rating==='number'?`<br><span style="color:#b45309;font-weight:700">★ ${c.rating}</span> · ${rev.toLocaleString()} reviews`:(rev?`<br>${rev.toLocaleString()} reviews`:'<br><span style="color:#64748b">no rating</span>')}</div>`);
       m.addTo(comp);
     }
     comp.addTo(map); evalLayers.comp=comp;
@@ -8195,7 +8197,7 @@ function _evalRenderLayers(){
       const fabMi=(lp.nearRetail!=null&&isFinite(lp.nearRetail))?(lp.nearRetail/1609.34):null;
       const futPct=Math.round(100*(lp.demF||0)/Math.max(1e-6,(lp.dem||0)+(lp.demF||0)));
       return `<div style="min-width:270px;max-width:300px">
-        <div style="display:inline-block;font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#0f766e;background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;padding:3px 9px">⚡ Land play ${i+1} — not leaseable today</div>
+        <div style="display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#0f766e;background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;padding:3px 9px">⚡ Land play ${i+1} — not leaseable today</div>
         <div style="font-size:14px;font-weight:800;margin-top:7px">Future-play score ${_evalDisp(lp.score)}/100 <span style="font-weight:600;font-size:11.5px;color:#64748b">(fabric assumed)</span></div>
         <div style="font-size:12px;color:#334155;line-height:1.6;margin-top:6px">~<b>${homes.toLocaleString()}</b> discounted announced homes in reach${(lp.coms&&lp.coms.length)?' ('+lp.coms.map(x=>x.n).join(', ')+')':''} · winnable share today ${(lp.share*100).toFixed(0)}%.</div>
         <div style="font-size:11.5px;color:#475569;margin-top:5px">Demand mix: <b>${futPct}%</b> from announced development, ${100-futPct}% from rooftops already built${futPct<35?' — largely serving existing neighbors (often just over the ZIP line)':''}.</div>
@@ -8207,6 +8209,35 @@ function _evalRenderLayers(){
   pins.addTo(map); evalLayers.pins=pins;
   _evalRenderLegend();
 }
+// Heatmap hover readout (2026-07-21 UI audit): the suitability ramp conveyed score by COLOR
+// ALONE — an accessibility failure for the ~8% of men with colour-vision deficiency and a
+// violation of the heatmap chart rule (numeric-on-hover + legend ticks required). Cells stay
+// interactive:false for performance; we hit-test evalCells on a throttled map mousemove.
+let _evalHeatTipEl=null, _evalHeatTipT=0;
+function _evalHeatTip(e){
+  if(!evalActive || !evalShow.heat || !evalCells.length){ if(_evalHeatTipEl){ _evalHeatTipEl.style.display='none'; } return; }
+  const now=Date.now(); if(now-_evalHeatTipT<45) return; _evalHeatTipT=now;
+  const la=e.latlng.lat, lo=e.latlng.lng;
+  let best=null, bd=Infinity;
+  for(const g of evalCells){
+    if(Math.abs(g.la-la)>g.stepLa || Math.abs(g.lo-lo)>g.stepLo) continue;
+    const d=Math.abs(g.la-la)+Math.abs(g.lo-lo);
+    if(d<bd){ bd=d; best=g; }
+  }
+  if(!_evalHeatTipEl){
+    _evalHeatTipEl=document.createElement('div');
+    _evalHeatTipEl.style.cssText='position:absolute;z-index:800;pointer-events:none;background:rgba(15,23,42,.92);color:#fff;font-size:11px;font-weight:700;padding:4px 9px;border-radius:7px;white-space:nowrap;display:none;box-shadow:0 2px 10px rgba(0,0,0,.25)';
+    (document.querySelector('.main')||document.body).appendChild(_evalHeatTipEl);
+  }
+  if(!best){ _evalHeatTipEl.style.display='none'; return; }
+  const pt=e.containerPoint;
+  _evalHeatTipEl.textContent='Suitability '+_evalDisp(best.score)+'/100 · share '+(best.share*100).toFixed(0)+'%';
+  _evalHeatTipEl.style.left=(pt.x+14)+'px';
+  _evalHeatTipEl.style.top=(pt.y+14+ (document.querySelector('.kpibar')&&!document.body.classList.contains('vf-opp')?document.querySelector('.kpibar').offsetHeight:0))+'px';
+  _evalHeatTipEl.style.display='block';
+}
+map.on('mousemove', _evalHeatTip);
+map.on('mouseout', ()=>{ if(_evalHeatTipEl) _evalHeatTipEl.style.display='none'; });
 function _evalRenderLegend(){
   let el=document.getElementById('eval-legend');
   if(!el){ el=document.createElement('div'); el.id='eval-legend'; el.className='eval-legend'; (document.querySelector('.main')||document.body).appendChild(el); }
@@ -8226,7 +8257,7 @@ function _evalRenderLegend(){
   }
   el.innerHTML=`
     <div class="legend-title">Placement suitability</div>
-    ${evalShow.heat?`<div class="legend-grad"></div><div class="legend-grad-lbl"><span>Winnable</span><span>Saturated</span></div>`:''}
+    ${evalShow.heat?`<div class="legend-grad"></div><div class="legend-grad-lbl"><span>${_evalDisp(0.30)}</span><span>${_evalDisp(0.20)}</span><span>${_evalDisp(0.12)}</span><span>${_evalDisp(0.05)}</span></div><div style="font-size:10.5px;color:var(--muted);margin:-6px 0 8px;display:flex;justify-content:space-between"><span>Winnable</span><span>Saturated</span></div>`:''}
     ${rows.join('')}`;
   el.classList.add('show');
 }
@@ -8275,8 +8306,8 @@ function _leaseBlock(g){
   const la=g.la, lo=g.lo;
   let note='';
   if(evalDataOk.retail){
-    if(g.retailN>=0.6) note=`<div style="font-size:10px;color:#64748b;margin-bottom:3px">Established retail nearby — existing lease space is more likely.</div>`;
-    else if(g.retailN<0.35) note=`<div style="font-size:10px;color:#64748b;margin-bottom:3px">Sparse retail here — likely a build-to-suit or land play; try Land first.</div>`;
+    if(g.retailN>=0.6) note=`<div style="font-size:10.5px;color:#64748b;margin-bottom:3px">Established retail nearby — existing lease space is more likely.</div>`;
+    else if(g.retailN<0.35) note=`<div style="font-size:10.5px;color:#64748b;margin-bottom:3px">Sparse retail here — likely a build-to-suit or land play; try Land first.</div>`;
   }
   const lnk=(site,mode,label)=>`<a onclick="openLeaseSearch(${la},${lo},'${site}','${mode}')" style="cursor:pointer;color:var(--navy);font-weight:700;text-decoration:none">${label} ↗</a>`;
   return `<div style="margin-top:6px;font-size:10.5px;color:#64748b" onclick="event.stopPropagation()">${note}`
@@ -8297,13 +8328,13 @@ function _evalRenderSidebar(){
     const roadStr = g.aadt>0 ? `~${kfmt(g.aadt)} cars/day${g.aadtRoad?' · '+g.aadtRoad:''}`
                   : (hasRoads ? (g.nearRoad<160?'on an arterial':(g.nearRoad/1609.344).toFixed(1)+' mi to arterial') : '');
     const cn=_evalCannib(g), sid=g.la.toFixed(4)+','+g.lo.toFixed(4);
-    const chipT = g.tier==='strong' ? `<span style="font-size:9px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:#15803d;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:1.5px 7px">Recommended</span>`
-                : g.tier==='fair' ? `<span style="font-size:9px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:#be123c;background:#fff1f2;border:1px solid #fecdd3;border-radius:8px;padding:1.5px 7px">Best available</span>`
-                : `<span style="font-size:9px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:#64748b;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:8px;padding:1.5px 7px">Weak</span>`;
+    const chipT = g.tier==='strong' ? `<span style="font-size:10.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:#15803d;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:1.5px 7px">Recommended</span>`
+                : g.tier==='fair' ? `<span style="font-size:10.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:#be123c;background:#fff1f2;border:1px solid #fecdd3;border-radius:8px;padding:1.5px 7px">Best available</span>`
+                : `<span style="font-size:10.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:#64748b;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:8px;padding:1.5px 7px">Weak</span>`;
     const tab=_siteCardTabs[i]||'ov';
     const pill=(id,l)=>`<span onclick="event.stopPropagation();siteCardTab(${i},'${id}')" style="font-size:10.5px;font-weight:700;cursor:pointer;border-radius:12px;padding:3px 11px;${tab===id?'background:var(--navy);color:#fff':'color:#64748b;border:1px solid #dde4ef'}">${l}</span>`;
     const cs=_siteCatch[sid];
-    const stat=(v,l,c)=>`<div style="flex:1;text-align:center;padding:7px 3px;min-width:0"><div style="font-size:12.5px;font-weight:800;color:${c||'#0f172a'};letter-spacing:-.01em;white-space:nowrap">${v}</div><div style="font-size:7.5px;font-weight:700;color:#94a3b8;letter-spacing:.04em">${l}</div></div>`;
+    const stat=(v,l,c)=>`<div style="flex:1;text-align:center;padding:7px 3px;min-width:0"><div style="font-size:12.5px;font-weight:800;color:${c||'#0f172a'};letter-spacing:-.01em;white-space:nowrap">${v}</div><div style="font-size:10.5px;font-weight:700;color:#64748b;letter-spacing:.04em">${l}</div></div>`;
     const sep='<div style="width:1px;background:#eef2f7;margin:7px 0"></div>';
     const strip=`<div id="evst-${i}" style="display:flex;background:#f8fafc;border:1px solid #eef2f7;border-radius:9px;margin:8px 0">${
       cs?stat(cs.hhIn.toLocaleString(),'HOUSEHOLDS')+sep+stat('~'+kfmt(cs.visits),'VISITS/YR')+sep+stat(String(cs.pe+cs.ind),'COMPETING',(cs.pe+cs.ind)>8?'#be123c':undefined)+sep+stat(_fmtM(cs.rev),'EST. REV','#5b21b6')
@@ -8313,7 +8344,7 @@ function _evalRenderSidebar(){
     if(tab==='ov'){
       body=`${bar('Neighborhood demand', g.demandN, true)}
       ${bar('Low competition', g.lowComp, true)}
-      <div style="font-size:10px;color:#94a3b8;margin:-1px 0 4px">${g.nComp?`${g.nComp} competitor${g.nComp!==1?'s':''} within ${evalRadiusMi} mi (${g.nPE} PE · ${g.nComp-g.nPE} indep)`:`No clinics within ${evalRadiusMi} mi`}</div>
+      <div style="font-size:10.5px;color:#64748b;margin:-1px 0 4px">${g.nComp?`${g.nComp} competitor${g.nComp!==1?'s':''} within ${evalRadiusMi} mi (${g.nPE} PE · ${g.nComp-g.nPE} indep)`:`No clinics within ${evalRadiusMi} mi`}</div>
       ${bar('Retail access', g.retailN, hasRetail)}
       ${bar('Road visibility', g.accessN, hasRoads||hasAADT)}
       ${cn?`<div style="font-size:10.5px;color:#be123c;font-weight:600;margin-top:5px">${cn}</div>`:''}`;
@@ -8323,9 +8354,9 @@ function _evalRenderSidebar(){
         <div style="display:flex;justify-content:space-between"><span style="color:#64748b">Est. vet visits</span><b>~${cs.visits.toLocaleString()}/yr</b></div>
         <div style="display:flex;justify-content:space-between"><span style="color:#64748b">Winnable at ${(cs.share*100).toFixed(0)}% share</span><b>~${cs.captured.toLocaleString()}/yr</b></div>
         <div style="display:flex;justify-content:space-between"><span style="color:#64748b">Competing inside</span><b>${cs.pe+cs.ind} (${cs.pe} PE · ${cs.ind} indep)</b></div>
-        <div style="margin-top:3px;font-size:11px;font-weight:700;color:#5b21b6">Supports a ${cs.size} practice · est. revenue ${_fmtM(cs.rev)} <span style="font-weight:500;color:#94a3b8">(modeled)</span></div>
-        <div style="font-size:9.5px;color:#94a3b8;margin-top:2px">${cs.src==='drive'?'True 10-min drive-time catchment':'~3.5 mi radius estimate — refine with the drive area'}</div>
-      </div>`:`<div style="font-size:11px;color:#94a3b8;padding:6px 0">Computing catchment…</div>`;
+        <div style="margin-top:3px;font-size:11px;font-weight:700;color:#5b21b6">Supports a ${cs.size} practice · est. revenue ${_fmtM(cs.rev)} <span style="font-weight:500;color:#64748b">(modeled)</span></div>
+        <div style="font-size:10.5px;color:#64748b;margin-top:2px">${cs.src==='drive'?'True 10-min drive-time catchment':'~3.5 mi radius estimate — refine with the drive area'}</div>
+      </div>`:`<div style="font-size:11px;color:#64748b;padding:6px 0">Computing catchment…</div>`;
       body+=`<div id="evd-${i}" style="font-size:10.5px;margin-top:6px"></div>
       <div style="display:flex;gap:6px;margin-top:6px" onclick="event.stopPropagation()">
         <button class="vm-export-btn" style="color:#6d28d9;background:#f3effd;border-color:#ddd0f7" onclick="evalDriveTime(${i},this)">◔ 10-min drive area</button>
@@ -8334,11 +8365,11 @@ function _evalRenderSidebar(){
       <div id="evov-${i}"></div>`;
     } else if(tab==='co'){
       const sw=_mpcSweetNear(g.la,g.lo);
-      body=`${_communityHTML(g.la,g.lo,{small:true})||'<div style="font-size:11px;color:#94a3b8;padding:4px 0">No tract profile here.</div>'}
+      body=`${_communityHTML(g.la,g.lo,{small:true})||'<div style="font-size:11px;color:#64748b;padding:4px 0">No tract profile here.</div>'}
       ${sw?`<div style="margin-top:6px;font-size:10.5px;color:#334155;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:6px 9px"><span style="font-weight:800;color:#0f766e">⚡ ${_ceEsc(sw.m.n)}</span> is ${sw.mi.toFixed(1)} mi away, in its pad-engagement window.</div>`:''}`;
     } else {
       body=`<div style="font-size:11px;line-height:2;color:#334155" onclick="event.stopPropagation()">
-        <div><a href="https://www.google.com/maps/search/?api=1&query=${g.la},${g.lo}" target="_blank" rel="noopener" style="color:var(--navy);font-weight:700;text-decoration:none">Google Maps ↗</a> <span style="color:#94a3b8;font-family:'JetBrains Mono',monospace;font-size:9.5px;margin-left:6px">${sid}</span></div>
+        <div><a href="https://www.google.com/maps/search/?api=1&query=${g.la},${g.lo}" target="_blank" rel="noopener" style="color:var(--navy);font-weight:700;text-decoration:none">Google Maps ↗</a> <span style="color:#64748b;font-family:'JetBrains Mono',monospace;font-size:10.5px;margin-left:6px">${sid}</span></div>
         ${_leaseBlock(g)}
       </div>`;
     }
@@ -8421,7 +8452,7 @@ function _evalRenderSidebar(){
     _memoRows+=`<div class="eval-memo-row" onclick="evalSetTab('sites');evalFlyTo(0)">${_ring(_bestSc,'#1e3a8a','#eef1f7')}<span class="t"><b>Lease · Site 1</b> — ${_bestG.tier==='strong'?'recommended':_bestG.tier==='fair'?'best available':'weak'}<br><span class="sub">demand ${Math.round(_bestG.demandN*100)} · share ${(_bestG.share*100).toFixed(0)}% · ${nearStr}</span></span></div>`; }
   if(_lpBest){ _memoRows+=`<div class="eval-memo-row" onclick="evalSetTab('land');map.setView([${_lpBest.la},${_lpBest.lo}],13,{animate:false})">${_ring(_lpSc,'#0d9488','#ccfbf1')}<span class="t"><b>Buy dirt · Land play 1</b>${_lpName?' — '+_ceEsc(_lpName)+' corridor':''}<br><span class="sub">${_lpHomes?`~${_lpHomes.toLocaleString()} homes in reach · `:''}share today ${(_lpBest.share*100).toFixed(0)}%</span></span></div>`; }
   if(_acqPlay&&_acqTop){ const ac=_acqTop.c;
-    _memoRows+=`<div class="eval-memo-row" onclick="_evalAcqFocus(${_acqTop.ci})"><span style="flex-shrink:0;width:38px;height:38px;border-radius:50%;background:#f5f3ff;border:2.5px solid #6d28d9;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1"><span style="font-size:12px;font-weight:800;color:#5b21b6">${ac.staffN||'~2'}</span><span style="font-size:6.5px;font-weight:700;color:#8b5cf6">DVM</span></span><span class="t"><b>Acquire · ${_ceEsc(ac.name||'independent clinic')}</b><br><span class="sub">${ac.rating?'★'+ac.rating+' · ':''}${ac.reviews?ac.reviews.toLocaleString()+' reviews · ':''}independent${_acqCands.length>1?` · ${_acqCands.length-1} more target${_acqCands.length!==2?'s':''} in range`:''}</span></span></div>`; }
+    _memoRows+=`<div class="eval-memo-row" onclick="_evalAcqFocus(${_acqTop.ci})"><span style="flex-shrink:0;width:38px;height:38px;border-radius:50%;background:#f5f3ff;border:2.5px solid #6d28d9;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1"><span style="font-size:12px;font-weight:800;color:#5b21b6">${ac.staffN||'~2'}</span><span style="font-size:10.5px;font-weight:700;color:#8b5cf6">DVM</span></span><span class="t"><b>Acquire · ${_ceEsc(ac.name||'independent clinic')}</b><br><span class="sub">${ac.rating?'★'+ac.rating+' · ':''}${ac.reviews?ac.reviews.toLocaleString()+' reviews · ':''}independent${_acqCands.length>1?` · ${_acqCands.length-1} more target${_acqCands.length!==2?'s':''} in range`:''}</span></span></div>`; }
   const _memoCard=`<div class="eval-memo"><p>${_memoTxt}</p>${_memoRows}</div>`;
   const _tabBtn=(id,label,n)=>`<span class="eval-tab ${evalTab===id?'on':''}" onclick="evalSetTab('${id}')">${label}${n!=null?` <span class="eval-tab-n">${n}</span>`:''}</span>`;
   const _pane=(id,html)=>`<div style="display:${evalTab===id?'block':'none'}">${html}</div>`;
@@ -8440,7 +8471,7 @@ function _evalRenderSidebar(){
       // there (an airport pin scored "Workable · share 94%" — the emptiness IS the problem).
       // The score and bars stay (they read the market AROUND the point); the chip leads with
       // the land question until the pin sits on commercially-plausible ground.
-      const _chip=(fg,bg,bd,txt)=>`<span style="font-size:9px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:${fg};background:${bg};border:1px solid ${bd};border-radius:8px;padding:1.5px 7px">${txt}</span>`;
+      const _chip=(fg,bg,bd,txt)=>`<span style="font-size:10.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:${fg};background:${bg};border:1px solid ${bd};border-radius:8px;padding:1.5px 7px">${txt}</span>`;
       const vd=_siteVerdict(g);
       const chipS = vd.k==='land' ? _chip('#fff','#dc2626','#dc2626',vd.t)
                   : vd.k==='zone'||vd.k==='nocontext' ? _chip('#be123c','#fff1f2','#fecdd3',vd.t)
@@ -8457,9 +8488,9 @@ function _evalRenderSidebar(){
       const compare=best!=null?(sc>=best?`Your pin matches the best spot found in this area (${best}).`:`Best spot found nearby scores ${best} — your pin trails it by ${best-sc}.`):'';
       const sid=g.la.toFixed(4)+','+g.lo.toFixed(4);
       const cn=_evalCannib(g);
-      const _sstat=(v,l)=>`<div style="flex:1;text-align:center;padding:7px 4px;min-width:0"><div style="font-size:13.5px;font-weight:800;color:#0f172a;letter-spacing:-.01em">${v}</div><div style="font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#94a3b8;margin-top:1px">${l}</div></div>`;
+      const _sstat=(v,l)=>`<div style="flex:1;text-align:center;padding:7px 4px;min-width:0"><div style="font-size:13.5px;font-weight:800;color:#0f172a;letter-spacing:-.01em">${v}</div><div style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#64748b;margin-top:1px">${l}</div></div>`;
       return `<div class="eval-card" style="cursor:default;border:1px solid #d7def0;background:#fff;margin:8px 0;box-shadow:0 2px 10px rgba(30,58,138,.07)">
-        <div class="eval-card-head" style="margin-bottom:5px"><span class="eval-rank" style="background:#6d28d9;font-size:11px">★</span><span class="eval-card-title" style="font-size:13px">Your site</span><span class="eval-score" style="color:var(--navy);font-size:19px;letter-spacing:-.02em">${sc}<span style="font-size:9.5px;font-weight:600;color:#94a3b8"> /100</span></span></div>
+        <div class="eval-card-head" style="margin-bottom:5px"><span class="eval-rank" style="background:#6d28d9;font-size:11px">★</span><span class="eval-card-title" style="font-size:13px">Your site</span><span class="eval-score" style="color:var(--navy);font-size:19px;letter-spacing:-.02em">${sc}<span style="font-size:10.5px;font-weight:600;color:#64748b"> /100</span></span></div>
         <div style="margin:0 0 8px">${chipS}</div>
         <div style="display:flex;background:#f8fafc;border:1px solid #eef2f7;border-radius:9px;margin-bottom:8px">
           ${_sstat(isFinite(g.nearC)?(g.nearC/1609.344).toFixed(1)+' mi':'—','nearest clinic')}
@@ -8471,7 +8502,7 @@ function _evalRenderSidebar(){
         ${warns.map(w=>`<div style="font-size:10.5px;color:#9f1239;background:#fff1f2;border:1px solid #fecdd3;border-radius:8px;padding:6px 9px;margin:0 0 8px;line-height:1.5">${w}</div>`).join('')}
         ${(()=>{ const sm=(key,label,v,on)=>{ const open=_siteMetricOpen.has(key);
             return `<div style="cursor:pointer" onclick="event.stopPropagation();_siteMetricToggle('${key}')" title="Click for the data behind this score">
-              <div style="display:flex;align-items:center;gap:4px">${bar(label,v,on).replace('class="eval-bar"','class="eval-bar" style="flex:1;margin-bottom:0"').replace('</div>','')}<span id="smc-${key}" style="font-size:8px;color:#94a3b8;transition:transform .15s;${open?'transform:rotate(180deg)':''}">▼</span></div></div>
+              <div style="display:flex;align-items:center;gap:4px">${bar(label,v,on).replace('class="eval-bar"','class="eval-bar" style="flex:1;margin-bottom:0"').replace('</div>','')}<span id="smc-${key}" style="font-size:10.5px;color:#64748b;transition:transform .15s;${open?'transform:rotate(180deg)':''}">▼</span></div></div>
               <div id="smx-${key}" style="display:${open?'block':'none'};font-size:10.5px;background:#f8fafc;border:1px solid #eef2f7;border-radius:8px;padding:7px 10px;margin:2px 0 6px;line-height:1.55" onclick="event.stopPropagation()">${_siteMetricHTML(key,g)}</div>`; };
           return sm('demand','Neighborhood demand',g.demandN,true)
                + sm('comp','Low competition',g.lowComp,true)
@@ -8484,10 +8515,10 @@ function _evalRenderSidebar(){
           <input type="range" min="1" max="6" step="0.5" value="${_siteCtxMi}" oninput="_onSiteCtx(this.value)" style="flex:1;min-width:0"/>
           <span id="site-ctx-val" style="font-size:10.5px;font-weight:700;color:#334155;width:44px;text-align:right;flex-shrink:0">${_siteCtxMi.toFixed(1)} mi</span>
         </div>
-        <div style="font-size:9.5px;color:#94a3b8;margin-top:2px">Drives the KPI bar above — clinics, PE penetration, growth and saturation around this pin.</div>
+        <div style="font-size:10.5px;color:#64748b;margin-top:2px">Drives the KPI bar above — clinics, PE penetration, growth and saturation around this pin.</div>
         <div style="display:flex;gap:10px;align-items:center;margin-top:7px;font-size:10.5px" onclick="event.stopPropagation()">
           <a href="https://www.google.com/maps/search/?api=1&query=${g.la},${g.lo}" target="_blank" rel="noopener" style="color:var(--navy);font-weight:700;text-decoration:none">Maps ↗</a>
-          <span style="color:#94a3b8;font-family:'JetBrains Mono',monospace;font-size:9.5px">${sid}</span>
+          <span style="color:#64748b;font-family:'JetBrains Mono',monospace;font-size:10.5px">${sid}</span>
         </div>
         ${vd.k==='land' ? '' : _communityHTML(g.la,g.lo,{small:true})}
         ${(()=>{ const sw=_mpcSweetNear(g.la,g.lo); if(!sw) return '';
@@ -8496,7 +8527,7 @@ function _evalRenderSidebar(){
         <div style="display:flex;align-items:center;gap:7px;margin-top:9px;flex-wrap:wrap" onclick="event.stopPropagation()">
           <button class="vm-export-btn" style="background:var(--navy);color:#fff;border-color:var(--navy)" onclick="saveSitePlacement(this)">${_inWatch('site',sid)?'Update saved placement':'Save placement'}</button>
           <button class="vm-export-btn" onclick="siteRemove()">Remove pin</button>
-          <span style="font-size:10px;color:#94a3b8">drag the ★ to re-evaluate</span>
+          <span style="font-size:10.5px;color:#64748b">drag the ★ to re-evaluate</span>
         </div>
       </div>`; })()}
     ${speciesPrompt}
@@ -8554,7 +8585,9 @@ const DRIVE_BUDGET_SEC=600;         // 10 minutes
 // the split). Clinic catchments never change → cached permanently in localStorage (vf_iso_*),
 // building toward the Phase-2 statewide precompute. Costs ~1 Routes call per uncached clinic.
 let evalOverlapLayer=null;
-function _evalClearOverlap(){ if(evalOverlapLayer){ try{ map.removeLayer(evalOverlapLayer); }catch(e){} evalOverlapLayer=null; } }
+function _evalHeatTipHide(){ if(_evalHeatTipEl) _evalHeatTipEl.style.display='none'; }
+function _evalClearOverlap(){
+  _evalHeatTipHide(); if(evalOverlapLayer){ try{ map.removeLayer(evalOverlapLayer); }catch(e){} evalOverlapLayer=null; } }
 function _isoCacheGet(k){ try{ const v=localStorage.getItem('vf_iso_'+k); return v?JSON.parse(v):null; }catch(e){ return null; } }
 function _isoCachePut(k,ring){ try{ localStorage.setItem('vf_iso_'+k, JSON.stringify(ring.map(p=>[+p[0].toFixed(4),+p[1].toFixed(4)]))); }catch(e){} }
 async function evalOverlap(i, btn){
@@ -8615,7 +8648,7 @@ async function evalOverlap(i, btn){
     try{ map.fitBounds(fg.getBounds(),{padding:[40,40],maxZoom:13}); }catch(e){}
     const rows=rings.map((r,ri)=>({name:r.x.c.name||'Clinic', pe:r.x.c.pe, staff:r.x.c.staffN, pct:Math.round(100*ovW[ri]/totW), hh:hhOf(ovW[ri]), d:r.x.d, col:PAL[ri%PAL.length]})).sort((a,b)=>b.pct-a.pct);
     if(out) out.innerHTML=`<div style="background:#f8f6ff;border:1px solid #ddd0f7;border-radius:9px;padding:9px 11px;line-height:1.7;margin-top:6px">
-      <div style="font-size:9.5px;font-weight:800;letter-spacing:.06em;color:#7c3aed">CATCHMENT OVERLAP · road-network based</div>
+      <div style="font-size:10.5px;font-weight:800;letter-spacing:.06em;color:#7c3aed">CATCHMENT OVERLAP · road-network based</div>
       <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:#64748b">Uncontested share of your catchment</span><b style="color:${freePct>=40?'#15803d':freePct>=15?'#b45309':'#be123c'}">${freePct}%</b></div>
       ${rows.map(r=>`<div style="display:flex;justify-content:space-between;align-items:center;font-size:10.5px;gap:6px"><span style="color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${r.col};margin-right:5px;vertical-align:0"></span>${_ceEsc(r.name)}${r.pe?' <span style="color:#dc2626">PE</span>':''}${r.staff?' · '+r.staff+' DVM':''}</span><b style="flex-shrink:0">${r.pct}%${r.hh!=null?' · ~'+hhFmt(r.hh)+' HH':''}</b></div>`).join('')}
       ${hhTotal!=null?`<details style="margin-top:5px"><summary style="font-size:10.5px;font-weight:700;color:#5b21b6;cursor:pointer">Household breakdown · ~${hhFmt(hhTotal)} HH in your catchment</summary>
@@ -8624,11 +8657,11 @@ async function evalOverlap(i, btn){
         <div style="display:flex;justify-content:space-between"><span style="color:#64748b">Contested by 1 other clinic</span><b>~${hhFmt(hhOf(depthW[1]))} HH (${Math.round(100*depthW[1]/totW)}%)</b></div>
         <div style="display:flex;justify-content:space-between"><span style="color:#64748b">Contested by 2 other clinics</span><b>~${hhFmt(hhOf(depthW[2]))} HH (${Math.round(100*depthW[2]/totW)}%)</b></div>
         <div style="display:flex;justify-content:space-between"><span style="color:#b45309">Contested by 3+ clinics</span><b>~${hhFmt(hhOf(depthW[3]))} HH (${Math.round(100*depthW[3]/totW)}%)</b></div>
-        <div style="font-size:9.5px;color:#94a3b8;margin-top:2px">Household-weighted by rooftop density; per-clinic rows show the households inside each overlap.</div>
+        <div style="font-size:10.5px;color:#64748b;margin-top:2px">Household-weighted by rooftop density; per-clinic rows show the households inside each overlap.</div>
         </div></details>`:''}
       <div style="border-top:1px dashed #ddd0f7;margin-top:5px;padding-top:5px;display:flex;justify-content:space-between;font-size:11px"><span style="color:#64748b">Network-adjusted winnable share</span><b style="color:#5b21b6">${(netShare*100).toFixed(0)}%</b></div>
-      <div style="display:flex;justify-content:space-between;font-size:10.5px"><span style="color:#94a3b8">Gravity model says</span><span style="color:#94a3b8">${(gravShare*100).toFixed(0)}%</span></div>
-      <div style="font-size:10px;color:${Math.abs(diff)>0.08?'#b45309':'#94a3b8'};margin-top:2px">${Math.abs(diff)<=0.05?'The two methods agree — high confidence in the share estimate.':diff>0?'Network says BETTER than gravity — a road barrier likely shields this site from a competitor the crow-flies model counts.':'Network says WORSE than gravity — the road grid funnels more competitors into this catchment than straight-line distance suggests.'}</div>
+      <div style="display:flex;justify-content:space-between;font-size:10.5px"><span style="color:#64748b">Gravity model says</span><span style="color:#64748b">${(gravShare*100).toFixed(0)}%</span></div>
+      <div style="font-size:10.5px;color:${Math.abs(diff)>0.08?'#b45309':'#94a3b8'};margin-top:2px">${Math.abs(diff)<=0.05?'The two methods agree — high confidence in the share estimate.':diff>0?'Network says BETTER than gravity — a road barrier likely shields this site from a competitor the crow-flies model counts.':'Network says WORSE than gravity — the road grid funnels more competitors into this catchment than straight-line distance suggests.'}</div>
       <div style="font-size:10.5px;font-weight:700;color:var(--navy);cursor:pointer;margin-top:5px" onclick="_evalClearOverlap();this.style.display='none'">✕ Hide catchments on map</div>
     </div>`;
     if(btn){ btn.disabled=false; btn.textContent='◐ Overlap analysis'; }
@@ -8734,17 +8767,17 @@ async function evalDriveTime(i, btn){
     evalDriveLayer=L.polygon(ring,{color:'#7c3aed',weight:2.5,fillColor:'#7c3aed',fillOpacity:0.12}).addTo(map);
     try{ map.fitBounds(evalDriveLayer.getBounds(),{padding:[40,40],maxZoom:14}); }catch(e){}
     const el=document.getElementById('evd-'+i);
-    if(el) el.innerHTML=`<span style="color:#94a3b8">Analyzing catchment…</span>`;
+    if(el) el.innerHTML=`<span style="color:#64748b">Analyzing catchment…</span>`;
     const cs=await _evalCatchmentStats(ring, g);
     cs.src='drive'; _siteCatch[g.la.toFixed(4)+','+g.lo.toFixed(4)]=cs; _siteCardTabs[i]='ca'; _evalRenderSidebar();
     if(el) el.innerHTML=`<div style="background:#f8f6ff;border:1px solid #ddd0f7;border-radius:9px;padding:8px 11px;line-height:1.7">
-      <div style="font-size:9.5px;font-weight:800;letter-spacing:.06em;color:#7c3aed">10-MIN CATCHMENT · ~${cs.areaMi} mi²</div>
+      <div style="font-size:10.5px;font-weight:800;letter-spacing:.06em;color:#7c3aed">10-MIN CATCHMENT · ~${cs.areaMi} mi²</div>
       <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:#64748b">Households you'd serve</span><b>${cs.hhIn.toLocaleString()}</b></div>
       <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:#64748b">Pet households</span><b>${cs.dogIn.toLocaleString()} dog · ${cs.catIn.toLocaleString()} cat</b></div>
       <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:#64748b">Est. vet visits in catchment</span><b>~${cs.visits.toLocaleString()}/yr</b></div>
       <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:#64748b">Competing clinics inside</span><b>${cs.pe+cs.ind} (${cs.pe} PE · ${cs.ind} indep)</b></div>
       <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:#64748b">Winnable at ${(cs.share*100).toFixed(0)}% share</span><b>~${cs.captured.toLocaleString()} visits/yr</b></div>
-      <div style="margin-top:4px;font-size:11px;font-weight:700;color:#5b21b6">Supports a ${cs.size} practice · est. revenue ${_fmtM(cs.rev)} <span style="font-weight:500;color:#94a3b8">(modeled)</span></div>
+      <div style="margin-top:4px;font-size:11px;font-weight:700;color:#5b21b6">Supports a ${cs.size} practice · est. revenue ${_fmtM(cs.rev)} <span style="font-weight:500;color:#64748b">(modeled)</span></div>
     </div>`;
     if(btn){ btn.disabled=false; btn.textContent=_DRIVE_HIDE; }
   }catch(e){
@@ -8835,7 +8868,7 @@ function _siteMetricHTML(k,g){
     return row('Winnable capture share', Math.round(g.share*100)+'%')
       + row('Weighted competitor pressure', g.comp.toFixed(1)+' (PE ×1.6, size-weighted, distance-decayed)')
       + (g.nearPE<700? `<div style="color:#be123c;padding:1.5px 0">PE clinic within 0.4 mi — share hard-capped at 20%.</div>`:'')
-      + (list.length?`<div style="margin-top:4px;font-weight:700;color:#64748b;font-size:9.5px;text-transform:uppercase;letter-spacing:.04em">Nearest competitors</div>${rows}`:row('Competitors in range','none'))
+      + (list.length?`<div style="margin-top:4px;font-weight:700;color:#64748b;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em">Nearest competitors</div>${rows}`:row('Competitors in range','none'))
       + bench('50%+ reads as an open market; a typical dense-suburb site captures ~20–25%. Empty land = 100%, so pair this with the demand bar.');
   }
   if(k==='retail'){
@@ -8960,8 +8993,8 @@ function _savedSitePopup(s2){
       <span style="margin-left:auto;font-size:16px;font-weight:800;color:var(--navy)">${s2.score}</span></div>
     <div style="font-size:10.5px;color:#64748b;margin:3px 0 6px">${esc(s2.verdict||'')} · saved ${esc(s2.savedAt||'')}</div>
     <div style="font-size:11px;color:#334155;line-height:1.6">${s2.share!=null?('Capture share '+s2.share+'% · '):''}${s2.nComp!=null?(s2.nComp+' competitor'+(s2.nComp===1?'':'s')+(s2.nPE?' ('+s2.nPE+' PE)':'')):''}</div>
-    ${kline?`<div style="font-size:11px;color:#334155;margin-top:2px">${esc(kline)}${k.r?` <span style="color:#94a3b8">· ${k.r} mi context</span>`:''}</div>`:''}
-    <div style="font-size:10px;color:#94a3b8;font-family:'JetBrains Mono',monospace;margin-top:5px">${esc(s2.id)}</div>
+    ${kline?`<div style="font-size:11px;color:#334155;margin-top:2px">${esc(kline)}${k.r?` <span style="color:#64748b">· ${k.r} mi context</span>`:''}</div>`:''}
+    <div style="font-size:10.5px;color:#64748b;font-family:'JetBrains Mono',monospace;margin-top:5px">${esc(s2.id)}</div>
     <div style="display:flex;gap:7px;margin-top:9px">
       <button class="vm-export-btn" style="background:var(--navy);color:#fff;border-color:var(--navy)" onclick="map.closePopup();_siteDropCommit(${s2.lat},${s2.lon})">Re-run analysis</button>
       <button class="vm-export-btn" onclick="map.closePopup();_savedSiteRemove('${esc(s2.id)}')">Remove</button>
