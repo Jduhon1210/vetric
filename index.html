@@ -1505,23 +1505,123 @@ function _vetStaffAt(lat,lon){
 // damage. Unknown roster → neutral 1.0 (no penalty). solo ≈ 0.8×, ~5 DVMs ≈ 1.4×, big hospital up to 1.8×.
 function _staffW(n){ if(!n||n<1) return 1; return Math.min(1.8, Math.max(0.8, Math.sqrt(n/2.5))); }
 // "DVMs on staff" popup block (optional — returns '' when no roster). Mirrors _analystPopupHTML's contract.
-// Modeled practice revenue: ~$650k annual production per FTE DVM is the GP industry benchmark
-// (AVMA/AAHA practice-management figures cluster $600-700k). Only computed off a REAL scraped
-// roster — no estimate is invented from the default-2 assumption. Analyst 'revenue' override
-// (clinic editor) always wins and is shown as-entered.
-const REV_PER_DVM=650000;
+/* ---------- Practice economics: the two-sided model ------------------------
+   Revenue is driven by WINNABLE VISITS and constrained by DOCTOR CAPACITY. The
+   two are ceilings on the same quantity, and the binding one wins:
+       demand ceiling   = catchment visits x capture share
+       capacity ceiling = DVMs on staff x DVM_VISIT_CAPACITY
+   A practice cannot bill visits it cannot win, nor visits it cannot staff.
+   The GAP between the ceilings is the acquisition thesis:
+       demand > capacity  -> UNDERSTAFFED: add a DVM and grow revenue without
+                             fighting for a single point of market share
+       capacity > demand  -> OVER-DOCTORED: revenue per DVM will disappoint
+   Replaces the old headcount-only estimate (staffN x $650k), which implied $325
+   a visit - roughly 1.7x the AVMA-derived level. Modeled revenue drops
+   accordingly; that correction is the point, not a regression.               */
+
+// Revenue per FTE DVM. AVMA 2025 Report on the Economic State of the Veterinary
+// Profession (data year 2023), companion-animal-EXCLUSIVE practices - the right
+// peer group here. Published quartiles Q1 $411,111 / MEDIAN $616,667 / Q3 $867,901.
+// The commonly-quoted $650k sits ~60th percentile; AVMA's 2024 all-practice mean is
+// $554,982 and FALLING in real terms (~$600k in 2019 dollars). Broker figures of
+// $700-850k are aspirational targets from firms selling improvement services.
+const REV_PER_DVM=616667;
+
+// Clinical throughput per FTE DVM per year. AVMA measures 13-15 appointment slots
+// per weekday and ~1,927 worked hours/yr ($554,982 revenue / $288 per vet-hour),
+// giving ~2,800-3,600 visits/yr sustained; the theoretical 3,900-5,200 max assumes
+// no vacation, CE, surgery blocks or unfilled slots. We take the sustained midpoint.
+// DELIBERATELY SEPARATE from OPP_VISITS_PER_DVM (=2000), which is a SATURATION
+// calibration constant behind the whitespace/balanced/hub verdicts, not a
+// productivity figure. Do NOT merge them - it would move every saturation read.
+const DVM_VISIT_CAPACITY=3200;
+
+// DERIVED, never set independently, so the demand and capacity ceilings can never
+// drift out of sync: 616667/3200 = ~$193 a visit. Cross-checks against AVMA's own
+// $288/vet-hour at ~30 min per patient (~$206 once non-appointment hours net out).
+// Consumer "average vet visit cost" figures run higher because this denominator
+// includes tech visits, rechecks and product-only pickups.
+const REV_PER_VISIT=REV_PER_DVM/DVM_VISIT_CAPACITY;
+
+/* Adjusted (normalized) EBITDA margin by practice size.
+   THIS IS A VETRIC MODEL ASSUMPTION, NOT A PUBLISHED BENCHMARK. No neutral
+   size-segmented margin dataset exists for US veterinary GP: AVMA does not collect
+   P&L data at all, and every margin-by-size table in circulation traces back to
+   M&A brokers, who are paid when sellers believe practices are valuable.
+   Derived instead from the neutral AAHA/VMG Chart of Accounts cost structure -
+       fully-loaded labor incl. DVM comp at market ... 40-50% of revenue
+       direct costs (drugs, supplies, lab) ........... 17-25%
+       => 25-43% left for facility, admin, marketing and profit.
+   Size scaling is the documented operating-leverage effect: fixed costs absorb
+   across more production as the roster grows (a $50k rent is 10% of revenue at
+   $500k and 5% at $1M), which is why margin AND multiple both rise with size.
+   Sanity band - Business Valuation Resources (2019) puts small-animal GP at 11-12%
+   average, 14-17% target, >18% superior; this curve sits inside it.
+   NOT the "Well-Managed Practice" 33-42% profit-to-gross figure, which is ~100
+   self-selected top practices BEFORE owner-comp normalization and is not an EBITDA
+   margin at all - applying a multiple to it overstates value 2-3x.            */
+function _ebitdaMargin(dvm){
+  if(dvm==null) return 0.14;
+  if(dvm<1.5)  return 0.10;   // solo: owner production replaced at market comp, no associate leverage
+  if(dvm<3.5)  return 0.14;
+  if(dvm<6.5)  return 0.18;
+  return 0.21;
+}
+// Adjusted-EBITDA multiple [lo,hi]. Reported as a BAND because the evidence
+// genuinely conflicts: neutral credit research (Octus, Jan 2026) puts private
+// practices at mid-to-high single digits, while M&A advisories quote 12-15x for the
+// larger practices they market. Both describe real deals - the brokers' book skews
+// to big, competitively-marketed multi-DVM practices. Multiples compressed ~1.5-2.5
+// turns off the 2021-22 peak and stabilised ~15-20% below it.
+function _ebitdaMultiple(dvm){
+  if(dvm==null) return [5,7];
+  if(dvm<1.5)  return [4,6];      // solo, owner-dependent
+  if(dvm<2.5)  return [5,7];      // solo + associate
+  if(dvm<6.5)  return [6.5,9.5];  // multi-DVM GP
+  return [8.5,12];                // large / multi-site profile
+}
+/* The engine. Pass either ceiling or both; null when neither is known.
+     dvm            - FTE DVMs on staff        (capacity side)
+     winnableVisits - catchment visits x share (demand side)                   */
+function _practiceEcon(o){
+  const cap=(o&&o.dvm!=null)?o.dvm*DVM_VISIT_CAPACITY:null;
+  const dem=(o&&o.winnableVisits!=null)?o.winnableVisits:null;
+  if(cap==null&&dem==null) return null;
+  const visits=(cap!=null&&dem!=null)?Math.min(cap,dem):(dem!=null?dem:cap);
+  const bound =(cap!=null&&dem!=null)?(dem<cap?'demand':'capacity'):(dem!=null?'demand':'capacity');
+  const rev=visits*REV_PER_VISIT, dvmEq=visits/DVM_VISIT_CAPACITY;
+  const sizeFor=(o.dvm!=null?o.dvm:dvmEq);
+  const margin=_ebitdaMargin(sizeFor), ebitda=rev*margin, mx=_ebitdaMultiple(sizeFor);
+  return {visits:Math.round(visits), bound, rev, dvmEq, margin, ebitda,
+          multLo:mx[0], multHi:mx[1], valLo:ebitda*mx[0], valHi:ebitda*mx[1],
+          // >0 = demand the current roster cannot serve (hiring headroom)
+          // <0 = roster larger than the trade area supports
+          headroom:(cap!=null&&dem!=null)?Math.round(dem-cap):null};
+}
+// Only computed off a REAL scraped roster - no estimate is invented from the
+// default-2 assumption. Analyst 'revenue' override always wins, shown as-entered.
 function _revEst(c){
   const ov=getOverrides()[clinicKey(c)];
   if(ov && ov.revenue) return {txt:String(ov.revenue), analyst:true};
   const st=_vetStaffAt(c.lat,c.lon);
-  if(st && st.n){ const v=st.n*REV_PER_DVM; return {txt:'~$'+(v/1e6).toFixed(1)+'M', n:st.n, val:v}; }
+  if(st && st.n){
+    const e=_practiceEcon({dvm:st.n});
+    // An analyst-entered EBITDA multiple replaces the modeled band outright - a human
+    // who has seen the P&L outranks a size-tier heuristic.
+    if(ov && ov.multiple!=null && ov.multiple!==''){
+      const m=parseFloat(ov.multiple);
+      if(isFinite(m) && m>0){ e.multLo=e.multHi=m; e.valLo=e.valHi=e.ebitda*m; e.multAnalyst=true; }
+    }
+    return {txt:'~$'+(e.rev/1e6).toFixed(1)+'M', n:st.n, val:e.rev, econ:e};
+  }
   return null;
 }
 function _revEstLine(c){
   const r=_revEst(c); if(!r) return '';
   return r.analyst
     ? `<div style="font-size:11px;color:#475569;margin-top:2px">Revenue ${String(r.txt).replace(/</g,'&lt;')} <span style="color:#64748b">· analyst</span></div>`
-    : `<div style="font-size:11px;color:#475569;margin-top:2px">Est. revenue <b>${r.txt}</b> <span style="color:#64748b">· ${r.n} DVM × $650k, modeled</span></div>`;
+    : `<div style="font-size:11px;color:#475569;margin-top:2px">Est. revenue <b>${r.txt}</b> <span style="color:#64748b">· ${r.n} DVM × $617k, modeled</span></div>
+       <div style="font-size:11px;color:#475569;margin-top:1px">Adj. EBITDA ~<b>${_fmtM(r.econ.ebitda)}</b> <span style="color:#64748b">· ${Math.round(r.econ.margin*100)}% margin · ${r.econ.multAnalyst?(r.econ.multLo+'× analyst ⇒ '+_fmtM(r.econ.valLo)):(r.econ.multLo+'–'+r.econ.multHi+'× ⇒ '+_fmtM(r.econ.valLo)+'–'+_fmtM(r.econ.valHi))}</span></div>`;
 }
 function _staffPopupHTML(c){
   const s=_vetStaffAt(c.lat,c.lon); if(!s||!s.n) return '';
@@ -7216,7 +7316,7 @@ function siteReport(i){
   ${rows('Neighborhood demand',Math.round(g.demandN*100))}${rows('Winnable capture share',(g.share*100).toFixed(0)+'%')}${rows('Retail co-tenancy',Math.round(g.retailN*100))}${rows('Road visibility',Math.round(g.accessN*100)+(g.aadt>0?' · ~'+Math.round(g.aadt/1000)+'k cars/day':''))}${rows('Nearest clinic',isFinite(g.nearC)?(g.nearC/1609.344).toFixed(1)+' mi':'—')}${rows('Competitors in '+evalRadiusMi+' mi',g.nComp+' ('+g.nPE+' PE)')}
   </table>
   ${cs?`<h2>Catchment (${cs.src==='drive'?'10-min drive-time':'~3.5 mi radius est.'})</h2><table>
-  ${rows('Households',cs.hhIn.toLocaleString())}${rows('Pet households',cs.dogIn.toLocaleString()+' dog · '+cs.catIn.toLocaleString()+' cat')}${rows('Est. annual vet visits','~'+cs.visits.toLocaleString())}${rows('Competing clinics inside',(cs.pe+cs.ind)+' ('+cs.pe+' PE · '+cs.ind+' indep)')}${rows('Winnable at '+(cs.share*100).toFixed(0)+'% share','~'+cs.captured.toLocaleString()+' visits/yr')}${rows('Practice size supported',cs.size)}${rows('Est. revenue (modeled)',_fmtM(cs.rev))}
+  ${rows('Households',cs.hhIn.toLocaleString())}${rows('Pet households',cs.dogIn.toLocaleString()+' dog · '+cs.catIn.toLocaleString()+' cat')}${rows('Est. annual vet visits','~'+cs.visits.toLocaleString())}${rows('Competing clinics inside',(cs.pe+cs.ind)+' ('+cs.pe+' PE · '+cs.ind+' indep)')}${rows('Winnable at '+(cs.share*100).toFixed(0)+'% share','~'+cs.captured.toLocaleString()+' visits/yr')}${rows('Practice size supported',cs.size)}${rows('Est. revenue (modeled)',_fmtM(cs.rev))}${rows('Adj. EBITDA @ '+Math.round(cs.econ.margin*100)+'% margin',_fmtM(cs.econ.ebitda))}${rows('Indicative value @ '+cs.econ.multLo+'-'+cs.econ.multHi+'x',_fmtM(cs.econ.valLo)+' – '+_fmtM(cs.econ.valHi))}
   </table>`:''}
   <h2>Nearest competitors</h2><table>${comps.map(x=>rows(esc(x.c.name||'Clinic')+(x.c.pe?' <span style="color:#dc2626">(PE'+(x.c.owner?' · '+esc(x.c.owner):'')+')</span>':' (independent)'),(x.d/1609.344).toFixed(1)+' mi'+(x.c.staffN?' · '+x.c.staffN+' DVMs':''))).join('')}</table>
   <div style="margin-top:18px;font-size:10.5px;color:#64748b">Modeled from Census ACS 2024, OpenStreetMap, TxDOT AADT, Google Places and Vetric's capture model. Estimates, not projections — verify zoning, availability and pricing before pursuing. vetric.co</div>
@@ -8834,10 +8934,15 @@ async function _evalCatchmentStats(ring, g){
   // blended (gravity+network) share when the auto-blend has landed; else pure gravity
   const share=(g&&g.blendShare!=null)?g.blendShare:Math.min(g&&g.share!=null?g.share:0.5, 0.85);
   const captured=Math.round(visits*share);
-  const dvmFit=captured/OPP_VISITS_PER_DVM;
+  // Practice size + revenue both come off CLINICAL THROUGHPUT (DVM_VISIT_CAPACITY),
+  // not the saturation constant. Using OPP_VISITS_PER_DVM here would say "supports a
+  // 2.5-doctor practice" while revenue implied $386k per DVM - contradicting our own
+  // $617k/DVM anchor. One constant, so the two can never disagree.
+  const econ=_practiceEcon({winnableVisits:captured});
+  const dvmFit=econ.dvmEq;
   const size=dvmFit<1.4?'solo-doctor':dvmFit<2.5?'~2-doctor':dvmFit<3.5?'~3-doctor':'4+ doctor';
-  const rev=dvmFit*REV_PER_DVM;
-  return {hhIn:Math.round(hhIn), dogIn:Math.round(dogIn), catIn:Math.round(catIn), visits, pe, ind, share, basis:(g&&g.blendShare!=null)?'blend':'gravity', captured, dvmFit, size, rev, areaMi:Math.round(_polyAreaMi(ring))};
+  const rev=econ.rev;
+  return {hhIn:Math.round(hhIn), dogIn:Math.round(dogIn), catIn:Math.round(catIn), visits, pe, ind, share, basis:(g&&g.blendShare!=null)?'blend':'gravity', captured, dvmFit, size, rev, econ, areaMi:Math.round(_polyAreaMi(ring))};
 }
 function _fmtM(v){ return v>=1e6?('$'+(v/1e6).toFixed(1)+'M'):('$'+Math.round(v/1000)+'k'); }
 const _DRIVE_SHOW='◔ 10-min drive area', _DRIVE_HIDE='✕ Hide drive area';
@@ -8874,6 +8979,8 @@ async function evalDriveTime(i, btn){
       <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:#64748b">Competing clinics inside</span><b>${cs.pe+cs.ind} (${cs.pe} PE · ${cs.ind} indep)</b></div>
       <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:#64748b">Winnable at ${(cs.share*100).toFixed(0)}% share</span><b>~${cs.captured.toLocaleString()} visits/yr</b></div>
       <div style="margin-top:4px;font-size:11px;font-weight:700;color:#5b21b6">Supports a ${cs.size} practice · est. revenue ${_fmtM(cs.rev)} <span style="font-weight:500;color:#64748b">(modeled)</span></div>
+      <div style="margin-top:2px;font-size:11px;color:#475569">Adj. EBITDA ~<b>${_fmtM(cs.econ.ebitda)}</b> at ${Math.round(cs.econ.margin*100)}% margin · at ${cs.econ.multLo}–${cs.econ.multHi}× ⇒ <b>${_fmtM(cs.econ.valLo)}–${_fmtM(cs.econ.valHi)}</b></div>
+      <div style="margin-top:2px;font-size:10.5px;color:#64748b;line-height:1.45">Revenue = winnable visits × $${Math.round(REV_PER_VISIT)}/visit (AVMA-derived). Margin is a Vetric model assumption from the AAHA/VMG cost structure, not a published benchmark — no neutral size-segmented margin data exists.</div>
     </div>`;
     if(btn){ btn.disabled=false; btn.textContent=_DRIVE_HIDE; }
   }catch(e){
