@@ -5,3 +5,7 @@ node_modules/
 package-lock.json
 .env
 .env.*
+
+# TABS build artifacts (derived, local-only)
+.tabs-checkpoint.json
+.tabs-geocache.json

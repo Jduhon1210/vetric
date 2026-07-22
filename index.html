@@ -677,6 +677,8 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
 .vf-stg-pill{display:inline-flex;align-items:center;gap:6px;font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:9px;padding:3px 9px;margin-right:10px;white-space:nowrap;}
 .vf-stg-pill::before{content:'';width:7px;height:7px;border-radius:50%;background:#f59e0b;}
 .vf-sig{width:13px;height:13px;transform:rotate(45deg);border:2px solid #fff;border-radius:3px;box-shadow:0 1px 5px rgba(15,23,42,.35);}
+.vf-vetalert{width:22px;height:22px;border-radius:50%;background:#dc2626;border:2px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;font-size:11px;line-height:1}
+.vf-vetalert.vf-vetopen{background:#047857}
 /* Land-play pin (design F, 2026-07-15): teal teardrop with a white SPROUT — growth that isn't
    built yet — plus a white corner rank badge. SVG-drawn in the divIcon; these classes only
    position the badge over it. */
@@ -1144,6 +1146,32 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
         </label>
       </div>
       <div class="layer-status" id="tracts-status">Off</div>
+    </div>
+    <div class="layer-item">
+      <div class="layer-row">
+        <div>
+          <div class="layer-name">Development pipeline (all projects)</div>
+          <div class="layer-desc">Every tracked forward development in the 16-county region — 1,200 residential projects (~579k units) + 466 commercial, down to small subdivisions. Indigo = residential (sized by units), amber = commercial (sized by sq ft); solid = under construction, ring = announced, faint = conceptual. Source: NCTCOG Development Monitoring (continuously maintained). Display-only, combinable with any fill.</div>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="toggle-pipeline" onchange="togglePipelineLayer(this.checked)"/>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <div class="layer-status" id="pipeline-status">Off</div>
+    </div>
+    <div class="layer-item">
+      <div class="layer-row">
+        <div>
+          <div class="layer-name">Commercial pipeline &amp; tenants (TABS)</div>
+          <div class="layer-desc">State-registered commercial construction across 9 DFW counties: new buildings and retail shells (future leasable space) with estimated delivery dates, committed tenants by center, and a veterinary early-warning feed — clinics visible in filings months before opening (red paw pins; green = confirmed open via state sales-tax registration). Public records (TDLR TABS + Comptroller). Dates are applicant estimates.</div>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="toggle-commercial" onchange="toggleCommercialLayer(this.checked)"/>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <div class="layer-status" id="commercial-status">Off</div>
     </div>
     <div class="layer-item">
       <div class="layer-row">
@@ -5399,6 +5427,127 @@ async function toggleTractLayer(on){
   if(legend) legend.classList.add('show');
   if(status) status.textContent='On · '+geo.features.length.toLocaleString()+' tracts';
 }
+// ── Development pipeline (NCTCOG) + Commercial pipeline (TABS) — OVERLAYS, display-only ─────
+// dfw-pipeline.json: NCTCOG Development Monitoring forward pipeline (built by build-pipeline.mjs).
+// dfw-commercial.json: TDLR TABS registrations + Comptroller vet outlets (build-tabs.mjs).
+// Both render on a DEDICATED canvas (1,600+ points — never the shared SVG pane, per the perf rule).
+let _pipeData=null,_pipeP=null,pipeLayer=null, _commData=null,_commP=null,commLayer=null;
+let _overlayCanvas=null;
+function _getOverlayCanvas(){ if(!_overlayCanvas) _overlayCanvas=L.canvas({padding:0.5}); return _overlayCanvas; }
+function _loadPipeline(){
+  if(_pipeData) return Promise.resolve(_pipeData);
+  if(_pipeP) return _pipeP;
+  _pipeP=fetch('dfw-pipeline.json?v=1',{cache:'force-cache'}).then(r=>r.ok?r.json():null)
+    .then(d=>{_pipeData=d;return d;}).catch(()=>null);
+  return _pipeP;
+}
+function _loadCommercial(){
+  if(_commData) return Promise.resolve(_commData);
+  if(_commP) return _commP;
+  _commP=fetch('dfw-commercial.json?v=1',{cache:'force-cache'}).then(r=>r.ok?r.json():null)
+    .then(d=>{_commData=d;return d;}).catch(()=>null);
+  return _commP;
+}
+const _PIPE_STATUS={uc:'Under construction',an:'Announced',co:'Conceptual'};
+async function togglePipelineLayer(on){
+  const status=document.getElementById('pipeline-status');
+  if(!on){ if(pipeLayer){ map.removeLayer(pipeLayer); pipeLayer=null; } if(status) status.textContent='Off'; return; }
+  if(status) status.textContent='Loading…';
+  const d=await _loadPipeline();
+  if(!d||!d.list){ if(status) status.textContent='Data unavailable'; const cb=document.getElementById('toggle-pipeline'); if(cb) cb.checked=false; return; }
+  if(pipeLayer) map.removeLayer(pipeLayer);
+  pipeLayer=L.layerGroup();
+  const cv=_getOverlayCanvas();
+  let nR=0,nC=0;
+  for(const r of d.list){
+    const res=r.cl==='R'; if(res)nR++;else nC++;
+    const col=res?'#4f46e5':'#b45309';
+    const size=res?(4+Math.min(9,Math.sqrt(r.u||60)/6)):(4+Math.min(9,Math.sqrt(r.sf||30000)/120));
+    const fo=r.stale?0.10:(r.st==='uc'?0.72:r.st==='an'?0.32:0.14);
+    const m=L.circleMarker([r.la,r.lo],{renderer:cv,radius:size,color:col,weight:r.st==='uc'?1.5:1.2,
+      opacity:r.stale?0.35:0.9,fillColor:col,fillOpacity:fo,dashArray:r.st==='co'?'2,3':null});
+    m.bindTooltip((r.n||'Project')+(r.u?' · '+r.u.toLocaleString()+' units':r.sf?' · '+(r.sf/1000).toFixed(0)+'k sf':''),{direction:'top',sticky:true});
+    m.bindPopup(()=>{
+      const bits=[];
+      if(r.u) bits.push('<b>'+r.u.toLocaleString()+'</b> units'); if(r.sf) bits.push((r.sf/1000).toFixed(0)+'k sq ft'); if(r.ac) bits.push(r.ac.toLocaleString()+' ac');
+      return `<div style="min-width:210px;max-width:260px">
+      <div style="display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#fff;background:${col};border-radius:8px;padding:2px 9px">${res?(r.sc||'Residential'):(r.sc||'Commercial')} · ${_PIPE_STATUS[r.st]||''}</div>
+      <div style="font-size:13px;font-weight:700;margin-top:6px;line-height:1.35">${_ceEsc(r.n||'Project')}</div>
+      <div style="font-size:10.5px;color:#64748b;margin:2px 0 6px">${_ceEsc(r.city||'')}${r.addr?' · '+_ceEsc(r.addr):''}</div>
+      ${bits.length?'<div style="font-size:11.5px;color:#334155">'+bits.join(' · ')+'</div>':''}
+      ${r.dev?'<div style="font-size:11px;color:#475569;margin-top:3px">Developer: <b>'+_ceEsc(r.dev)+'</b></div>':''}
+      ${r.start?'<div style="font-size:11px;color:#475569">Started/expected '+r.start+'</div>':''}
+      ${r.stale?'<div style="font-size:10.5px;color:#9f1239;background:#fff1f2;border:1px solid #fecdd3;border-radius:8px;padding:4px 8px;margin-top:5px">Record last updated '+(r.ed||'pre-2024')+' — status may be outdated.</div>':''}
+      <div style="font-size:10px;color:#94a3b8;margin-top:6px">NCTCOG Development Monitoring${r.ed?' · edited '+r.ed:''}</div></div>`;
+    },{maxWidth:280});
+    pipeLayer.addLayer(m);
+  }
+  map.addLayer(pipeLayer);
+  if(status) status.textContent=nR.toLocaleString()+' residential · '+nC+' commercial shown';
+}
+async function toggleCommercialLayer(on){
+  const status=document.getElementById('commercial-status');
+  if(!on){ if(commLayer){ map.removeLayer(commLayer); commLayer=null; } if(status) status.textContent='Off'; return; }
+  if(status) status.textContent='Loading…';
+  const d=await _loadCommercial();
+  if(!d||!d.list){ if(status) status.textContent='Data unavailable'; const cb=document.getElementById('toggle-commercial'); if(cb) cb.checked=false; return; }
+  if(commLayer) map.removeLayer(commLayer);
+  commLayer=L.layerGroup();
+  const cv=_getOverlayCanvas();
+  // committed-tenant rollup by facility name (tenants usually have no own pin)
+  const byFac={};
+  for(const r of d.list){ if(r.fac&&r.kind==='tenant'){ const k=r.fac.toLowerCase(); (byFac[k]=byFac[k]||[]).push(r); } }
+  const fmt$=v=>v>=1e6?('$'+(v/1e6).toFixed(1)+'M'):v>=1e3?('$'+Math.round(v/1e3)+'k'):('$'+v);
+  let nPin=0,nVet=0;
+  for(const r of d.list){
+    if(r.la==null) continue;
+    const isVet=r.kind==='vet';
+    if(isVet){
+      const m=L.marker([r.la,r.lo],{icon:L.divIcon({className:'',html:'<div class="vf-vetalert">🐾</div>',iconSize:[22,22],iconAnchor:[11,11]})});
+      m.bindTooltip('Vet coming: '+(r.n||''),{direction:'top',offset:[0,-10]});
+      m.bindPopup(`<div style="min-width:200px;max-width:250px">
+        <div style="display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#fff;background:#dc2626;border-radius:8px;padding:2px 9px">Vet clinic — pre-opening</div>
+        <div style="font-size:13px;font-weight:700;margin-top:6px">${_ceEsc(r.n||'')}</div>
+        <div style="font-size:10.5px;color:#64748b;margin:2px 0 6px">${_ceEsc(r.addr||'')}${r.city?' · '+_ceEsc(r.city):''}</div>
+        ${r.end?'<div style="font-size:11.5px;color:#334155">Est. completion <b>'+r.end+'</b></div>':''}
+        ${r.cost?'<div style="font-size:11px;color:#475569">'+fmt$(r.cost)+(r.sf?' · '+r.sf.toLocaleString()+' sf':'')+'</div>':''}
+        ${r.owner?'<div style="font-size:11px;color:#475569">Owner: '+_ceEsc(r.owner)+'</div>':''}
+        <div style="font-size:10px;color:#94a3b8;margin-top:6px">TDLR TABS ${r.id||''} · estimate, applicant-reported</div></div>`,{maxWidth:270});
+      commLayer.addLayer(m); nVet++; nPin++;
+      continue;
+    }
+    // new construction — pad/shell/center pin (canvas square-ish circle, amber)
+    const m=L.circleMarker([r.la,r.lo],{renderer:cv,radius:5+Math.min(7,Math.sqrt((r.cost||2e5)/1e5)),
+      color:'#b45309',weight:1.5,opacity:0.95,fillColor:'#d97706',fillOpacity:0.5});
+    const tenants=r.fac?(byFac[r.fac.toLowerCase()]||[]):[];
+    m.bindTooltip((r.fac||r.n||'Project')+(r.end?' · del. '+r.end:''),{direction:'top',sticky:true});
+    m.bindPopup(()=>`<div style="min-width:210px;max-width:265px">
+      <div style="display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#fff;background:#b45309;border-radius:8px;padding:2px 9px">New commercial</div>
+      <div style="font-size:13px;font-weight:700;margin-top:6px;line-height:1.35">${_ceEsc(r.n||'Project')}</div>
+      <div style="font-size:10.5px;color:#64748b;margin:2px 0 6px">${r.fac?_ceEsc(r.fac)+' · ':''}${_ceEsc(r.addr||'')}${r.city?' · '+_ceEsc(r.city):''}</div>
+      <div style="font-size:11.5px;color:#334155">${r.cost?fmt$(r.cost):''}${r.sf?' · '+r.sf.toLocaleString()+' sf':''}</div>
+      ${r.start||r.end?'<div style="font-size:11px;color:#475569">'+(r.start?'Start '+r.start:'')+(r.end?' → delivery <b>'+r.end+'</b>':'')+'</div>':''}
+      ${r.owner?'<div style="font-size:11px;color:#475569">Owner: '+_ceEsc(r.owner)+'</div>':''}
+      ${tenants.length?'<div style="font-size:11px;color:#334155;margin-top:5px"><b>Committed tenants at this center:</b><br>'+tenants.slice(0,8).map(t=>'· '+_ceEsc(t.n)+(t.end?' <span style="color:#64748b">(~'+t.end+')</span>':'')).join('<br>')+(tenants.length>8?'<br>+'+(tenants.length-8)+' more':'')+'</div>':''}
+      <div style="font-size:10px;color:#94a3b8;margin-top:6px">TDLR TABS ${r.id||''} · dates are applicant estimates</div></div>`,{maxWidth:285});
+    commLayer.addLayer(m); nPin++;
+  }
+  // Comptroller-confirmed vet openings (green paw)
+  for(const v of (d.vets||[])){
+    if(v.la==null) continue;
+    const m=L.marker([v.la,v.lo],{icon:L.divIcon({className:'',html:'<div class="vf-vetalert vf-vetopen">🐾</div>',iconSize:[22,22],iconAnchor:[11,11]})});
+    m.bindTooltip('Vet opened: '+(v.n||''),{direction:'top',offset:[0,-10]});
+    m.bindPopup(`<div style="min-width:200px;max-width:250px">
+      <div style="display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#fff;background:#047857;border-radius:8px;padding:2px 9px">Vet clinic — newly open</div>
+      <div style="font-size:13px;font-weight:700;margin-top:6px">${_ceEsc(v.n||'')}</div>
+      <div style="font-size:10.5px;color:#64748b;margin:2px 0 6px">${_ceEsc(v.addr||'')}${v.city?' · '+_ceEsc(v.city):''}</div>
+      ${v.first?'<div style="font-size:11.5px;color:#334155">First sales <b>'+v.first+'</b></div>':(v.permit?'<div style="font-size:11.5px;color:#334155">Permit issued '+v.permit+'</div>':'')}
+      <div style="font-size:10px;color:#94a3b8;margin-top:6px">TX Comptroller sales-tax registration (NAICS 541940)</div></div>`,{maxWidth:270});
+    commLayer.addLayer(m); nVet++;
+  }
+  map.addLayer(commLayer);
+  if(status) status.textContent=nPin.toLocaleString()+' projects · '+nVet+' vet signals';
+}
 // ── Development signals (zoning & anchors) — curated point events, OVERLAY, display-only ────
 let _sigData=null,_sigP=null,sigLayer=null;
 function _loadSignals(){ if(_sigData) return Promise.resolve(_sigData); if(_sigP) return _sigP;
@@ -6678,6 +6827,8 @@ const VF_DATASETS=[
  {name:'Species verdicts',        file:'vet-species.js',    src:'clinic-website crawl',       how:'node build-species.mjs --all', last:'2026-07-09', every:180, why:'practice focus changes slowly'},
  {name:'Master-planned communities', file:'dfw-mpc.json',   src:'curated (news + RCLCO)',     how:'hand-edit JSON, bump ?v=', last:'2026-07-14', every:60,  why:'announcements and phase openings move fast'},
  {name:'Development signals',     file:'dfw-signals.json',  src:'curated (news/zoning sweep)', how:'sweep + hand-edit JSON, bump ?v=', last:'2026-07-14', every:60,  why:'rezonings and anchor signings move fast'},
+ {name:'Development pipeline',    file:'dfw-pipeline.json', src:'NCTCOG Development Monitoring', how:'node build-pipeline.mjs, bump ?v=', last:'2026-07-22', every:30,  why:'NCTCOG maintains continuously — cheap one-call refresh'},
+ {name:'Commercial pipeline (TABS)', file:'dfw-commercial.json', src:'TDLR TABS + Comptroller',  how:'node build-tabs.mjs, bump ?v= (checkpointed, ~1h cold / mins warm)', last:'2026-07-22', every:14, why:'new registrations land daily; vet early-warning depends on freshness'},
  {name:'Retail / commercial fabric', file:'dfw-retail.json',src:'OSM Overpass bake',          how:'re-run Overpass query + dedupe', last:'2026-06-30', every:180, why:'retail land changes slowly'},
  {name:'Census tracts + demographics', file:'dfw-tracts.json', src:'TIGERweb + ACS 2024',     how:'node build-tracts.mjs', last:'2026-07-09', every:365, why:'annual ACS vintage'},
  {name:'ZIP boundaries',          file:'tx-zips.json',      src:'Census ZCTA 2020',           how:'re-download on new vintage', last:'2026-06-25', every:365, why:'boundaries change at census vintages'},

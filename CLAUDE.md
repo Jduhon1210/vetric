@@ -201,6 +201,41 @@ Header **Drop Site** button (`#site-btn`, `toggleSiteDrop()`) arms a placement m
 ## Announced-development demand + land-play epicenter (2026-07-14, user ask — staging)
 **Evaluate now prices future rooftops.** `_evalInjectFuture(bb)` (called per-compute in `_evalComputeAndRender`, after the tract pass) injects each MPC's REMAINING pipeline (`_mpcRemaining`) as synthetic resid points at its real footprint (poly-fragment centroids, else center+8-ring at 0.55×implied radius): `w=(rem/points)/300×conf` clamped ≤6 (calibration: one OSM residential-landuse point ≈ ~300-home subdivision at w:1), conf = selling 0.6 / announced 0.4, `_pw:1.3` hardcoded (young-family MPC pet profile — set at creation so the tract pass, which only fills `_pw===undefined`, can't zero empty pasture). Tagged `_fut:1`; filter+rebuild each compute so the "⚡ Announced homes" chip (`evalFuture`, default ON, session-only) toggles cleanly. **NORMALIZATION IS REAL-ONLY (regression fix 2026-07-15, user-reported: every top-ranked ZIP graded 'no strong site')**: the cell loops split `g.dem` (real) / `g.demF` (future); `maxDem` maxes over REAL demand only and `demandN=min(1,(dem+demF)/maxDem)` — future demand lifts MPC-adjacent cells to the clamp but can NEVER deflate the rest of the grid. Do not fold future points back into maxDem: one cell near a big footprint becomes the ceiling and sinks the whole ZIP's scores below the EVAL_STRONG bar. Teal dashed dots in the hoods overlay + legend row + a teal disclosure line naming communities and the discounted home total. **RANKED land plays (2026-07-15, user ask — replaced the single epicenter)**: gate-FAIL cells inside the polygon (city-zoned residential/civic still excluded) stay alive in `landGrid` when `_hasFut`, get the IDENTICAL demand/competition/access math as sites, and are scored with the retail term held NEUTRAL (`score=demandN×min(share,.85)^GAMMA×accessMult` — fabric assumed to arrive with the rooftops). Qualify on `demF>=0.8` (must be a FUTURE play), top-3 at fixed ~1.2mi separation → `evalLandPlays[]` (`.coms` = communities in reach) → numbered dashed-teal ⚡ pins + a ranked sidebar card (score via `_evalDisp`, homes in reach, fabric distance, Map→/Land↗ links) + Crexi/LoopNet LAND links in popups. Verified 75009: LP1 96 east/Trinity Falls reach, LP2 95 at the Ramble/Serenade/Wilson-Creek ring cluster, LP3 95 Light Farms/Mosaic corridor — sites unchanged (85 downtown #1). The lease-gate is right that pasture isn't siteable — this surfaces the buy-dirt play the gate would otherwise hide (land-bank thesis). **GOTCHA FIXED: ZIP-mode `openEvaluate` never awaited `_loadMpc`** (area mode did via `_ensureEvalDemographics`) — `_mpcSweetNear` and the injector silently no-oped on ZIP evaluations; now loaded in both paths. **ZIP-select MPC highlight**: `oppSelect` → `_zipMpcHighlight(zip,feat)` draws `_zipMpcLayer` (teal dashed footprints/circles of every MPC whose center/ring/fragment-centroid falls in the ZIP, sticky tooltip w/ homes-to-come); cleared in `clearZipSelection`.
 
+## Development-pipeline layers (2026-07-22, user ask: "I want this data all across DFW no matter how small")
+Two OVERLAY layers (combinable with any fill, NOT in the single-fill exclusion), both DISPLAY-ONLY —
+scoring untouched (the Evaluate future-demand injection still reads only dfw-mpc.json; folding
+dfw-pipeline.json in is the natural next step but needs name+proximity dedupe against the MPC file
+first or MPC-tracked projects double-count). Both render on a DEDICATED shared `L.canvas({padding:0.5})`
+(`_getOverlayCanvas()`) — 1,600+ points must never hit the shared SVG pane (perf rule). Source research
+with every verified endpoint: `research/development-pipeline-sources.md`.
+
+- **Development pipeline (`toggle-pipeline`, `dfw-pipeline.json`, built by `build-pipeline.mjs`)**:
+  NCTCOG Development Monitoring forward pipeline — 1,666 records (1,200 residential = 578,680 units +
+  466 commercial), one HTTP call, ~5s build, license "no use constraints" (credit line embedded in file
+  + popup). Indigo=residential (sized √units), amber=commercial (√sqft); fillOpacity by status
+  uc/an/co; `stale:1` (LastEdited < 2024, only 9 records) renders dimmed + rose disclosure in the popup
+  — a 2016-edited "Under Construction" strip center must not present as live intel. Popup: units/sf/ac,
+  developer, start year, NCTCOG credit + edited year. Refresh: `node build-pipeline.mjs`, bump `?v=`,
+  update VF_DATASETS (cadence 30d). VALIDATED: every dfw-mpc.json MPC present at phase grain, plus
+  majors our curation missed (Goodland Grand Prairie 15,000u, Minto Waxahachie 13,270u, Honey Creek
+  McKinney 10,000u). dfw-mpc.json STAYS — it carries curated pricing/phases/opened-years NCTCOG lacks.
+
+- **Commercial pipeline & tenants (`toggle-commercial`, `dfw-commercial.json`, built by `build-tabs.mjs`)**:
+  TDLR TABS (every TX commercial project ≥$50k must register pre-construction; public record, no auth,
+  next-day currency) across 9 DFW counties, trailing 15 months + Comptroller sales-tax outlets NAICS
+  541940 statewide. Amber circles = new construction ≥$100k (retail shells = future leasable space) w/
+  est. start→delivery dates, cost, sqft, owner; popup rolls up COMMITTED TENANTS at the same
+  FacilityName (finish-out registrations carry the tenant's actual name). RED paw divIcon = vet project
+  in TABS (pre-opening, months of warning); GREEN paw = Comptroller-confirmed newly-open vet (first-sales
+  date). ALL dates are applicant estimates — disclosed in every popup. Build is polite + checkpointed
+  (`.tabs-checkpoint.json`/`.tabs-geocache.json`, git-ignored): 400ms between TABS detail fetches,
+  1.15s Nominatim spacing (their hard limit), identifying UA; cold run ~2h, warm reruns minutes (only
+  new registrations fetch). Refresh: `node build-tabs.mjs`, bump `?v=`, VF_DATASETS cadence 14d.
+  GOTCHAS: TABS list rows have NO address (detail fetch per record is mandatory for coords); city comes
+  back CODED (lookup scraped live from the search page's <option> tags); Comptroller county codes =
+  TDLR county codes − 2000 zero-padded; tenant finish-outs are usually un-geocoded on purpose (they
+  attach to center popups by facility-name match, no own pin).
+
 ## Development-signals layer (2026-07-14, user ask off the sweep)
 `dfw-signals.json` (curated, 7 entries; same 60-day sweep cadence as MPCs, registered in VF_DATASETS) = point events where commercial development is landing: rezonings, grocery-anchor commitments, retail waves, mixed-use approvals. Layers-panel toggle `toggle-signals`/`toggleSignalsLayer`/`sigLayer` (`_loadSignals` force-cache singleton, `?v=`) draws DIAMOND divIcon pins (`.vf-sig`, rotated square) colored by type via `_SIG_COLOR`: teal anchor / purple rezone / navy retail / slate mixed. Tooltip + sourced popup (type chip, city+ETA, note, source). DISPLAY-ONLY overlay, combinable with any fill (NOT in the single-fill exclusion). Refresh = run the news/zoning sweep (research/mpc-sweep-*.md pattern), hand-edit the JSON, bump `?v=`, update VF_DATASETS. Flagship entry: Kroger Marketplace + Custer Frontier (Custer & Laud Howell, McKinney/Prosper border) with six pad sites incl. medical uses, opens Mar 2027.
 
