@@ -3929,8 +3929,7 @@ async function fetchClinics(){
   } else if(evalActive){
     // Evaluate mode owns the sidebar + map layers — fold any newly-loaded clinics
     // into the competition set without disturbing the analysis UI.
-    markers.forEach(m=>setMarkerVisible(m,false));
-    _evalComputeAndRender();
+    _evalComputeAndRender();   // hides pins itself, atomically with drawing the competitor dots
   } else if(!drawnArea && selectedZips.size){
     // A fetch may have added clinics outside the selected ZIP(s) — their markers
     // default to visible — so re-scope markers, KPIs, and the list to the selection.
@@ -7823,7 +7822,10 @@ async function openEvaluateArea(){
   const sb=document.querySelector('.sidebar');
   const setStage=msg=>_evalStage(sb,'Evaluating this area',msg);
   setStage('loading demographics…');
-  markers.forEach(m=>setMarkerVisible(m,false));
+  // Pins are NOT hidden here (2026-07-21, user: 'independents disappear while it's loading').
+  // Hiding before the multi-second context fetch left the map pin-less, and because the eval
+  // layer redraws PE first (PE_COORDS loops before VET_CLINICS) the return read as
+  // "PE stayed, independents vanished". The swap is now atomic inside _evalRenderLayers.
   try{ await _ensureEvalDemographics(); }catch(e){}
   if(!evalActive) return;
   try{ evalAreaZips=await _buildAreaZips(feat); }catch(e){ evalAreaZips=null; }
@@ -7844,7 +7846,8 @@ async function openEvaluate(){
   const sb=document.querySelector('.sidebar');
   const setStage=msg=>_evalStage(sb,'Evaluating ZIP '+zip,msg);
   setStage('starting…');
-  markers.forEach(m=>setMarkerVisible(m,false)); // competitors drawn by the eval layer
+  // Pins stay visible through the fetch — _evalRenderLayers swaps them for competitor dots
+  // atomically once the layer is ready. See the note in openEvaluateArea.
   evalZipAffluence=_evalZipAffluence(zip);
   await _evalFetchContext(evalFeat, setStage);
   if(!evalActive) return; // user bailed during fetch
@@ -8184,6 +8187,9 @@ function exportEvalCSV(){
   ], 'vetric-sites-'+(evalZip||'area')+'.csv');
 }
 function _evalRenderLayers(){
+  // ATOMIC SWAP: base clinic pins give way to the eval competitor dots in the same frame the
+  // dots are drawn — never during the loading window. (Idempotent; safe on every re-render.)
+  if(evalActive) markers.forEach(m=>setMarkerVisible(m,false));
   _evalClearLayers();
   if(evalShow.heat){
     const heat=L.layerGroup();
