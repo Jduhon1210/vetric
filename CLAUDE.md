@@ -231,6 +231,15 @@ with every verified endpoint: `research/development-pipeline-sources.md`.
   (`.tabs-checkpoint.json`/`.tabs-geocache.json`, git-ignored): 400ms between TABS detail fetches,
   1.15s Nominatim spacing (their hard limit), identifying UA; cold run ~2h, warm reruns minutes (only
   new registrations fetch). Refresh: `node build-tabs.mjs`, bump `?v=`, VF_DATASETS cadence 14d.
+  HARDENED after a real failure (one ETIMEDOUT killed the first 2h run at detail 2,362): every fetch
+  routes through `fetchRetry` (3 tries, backoff), a dead detail marks `{fail:1}` and continues, and
+  the output file FLUSHES INCREMENTALLY (every 500 details / 100 geocodes) so a crash never leaves
+  nothing. `--priority` mode ships an interim file in ~10 min (vet-flagged + top-200 new construction
+  + Comptroller vets, then exits) — used for the first ship; the full run replaces the file.
+  Vet classifier mirrors build-clinics: `VET_RE` hit + NOT `VET_JUNK_RE` (shelters/adoption/animal
+  control/police/PET-CT imaging/grooming/boarding/resorts/pet-supply stores) UNLESS `VET_STRONG_RE`
+  (animal hospital/veterinar/pet hospital) overrides the junk. Comptroller rows drop first-sales
+  < 2025 (permit re-issues at old clinics are not "newly open") and dedupe name+addr.
   GOTCHAS: TABS list rows have NO address (detail fetch per record is mandatory for coords); city comes
   back CODED (lookup scraped live from the search page's <option> tags); Comptroller county codes =
   TDLR county codes − 2000 zero-padded; tenant finish-outs are usually un-geocoded on purpose (they
