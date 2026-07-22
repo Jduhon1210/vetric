@@ -71,6 +71,14 @@ const VET_JUNK_RE = /shelter|adoption|animal control|animal services|humane|bomb
 // ...but a STRONG clinic signal overrides junk (build-clinics.mjs rule) — "Towne Center Animal
 // Hospital and Pet Hotel" is a clinic; "K9 Kind Resort" is not.
 const VET_STRONG_RE = /animal\s+(hospital|clinic|medical)|veterinar|pet\s+hospital|vet\s+(care|clinic|hospital)/i;
+// TABS uses several no-facility placeholders — "-", "n/a", "none"… A placeholder must read as
+// NO facility, or the tenant rollup groups every placeholder row under one phantom center
+// (caught live: road projects listed as "committed tenants" of an apartment tower).
+const FAC_NULL_RE = /^\s*(-+|n\/?a|na|none|null|unknown|tbd|x+)\s*$/i;
+function facOf(r) {
+  const f = (r.FacilityName || '').trim();
+  return (f && !FAC_NULL_RE.test(f)) ? f : null;
+}
 const RETAIL_RE = /shops?|plaza|center|centre|crossing|marketplace|towne?\b|\bpad\b|commons|square|village|station|retail|shell/i;
 
 // ---- city-code lookup, scraped live from the search page's <option> tags -------------------
@@ -111,7 +119,10 @@ function wantDetail(r) {
   if (VET_RE.test(name) && (!VET_JUNK_RE.test(name) || VET_STRONG_RE.test(name))) return 'vet';
   const cost = r.EstimatedCost || 0;
   if (r.TypeOfWork === 9001 && cost >= 100000) return 'new';
-  const facReal = r.FacilityName && r.FacilityName !== '-';
+  const facReal = !!facOf(r);
+  // sub-$100k "New Construction" AT a named center is a tenant finish-out inside a shell
+  // (e.g. a $90k donut shop at "Shops at Trinity Falls") — a committed tenant, not a building
+  if (r.TypeOfWork === 9001 && facReal) return 'tenant';
   if ((r.TypeOfWork === 9002 || r.TypeOfWork === 9003) && cost >= 40000 && (facReal || RETAIL_RE.test(name))) return 'tenant';
   return null;
 }
@@ -197,17 +208,23 @@ function assembleRows() {
     const d = ck.det[r.ProjectNumber] || {};
     if (d.fail) continue;
     const city = cities[String(r.City)] || null;
-    const row = {
-      id: r.ProjectNumber, n: (r.ProjectName || '').trim(), kind,
-      fac: (r.FacilityName && r.FacilityName !== '-') ? r.FacilityName.trim() : null,
-      city, cty: COUNTIES[r.County] || null, addr: d.addr || null,
-      cost: r.EstimatedCost || null, sf: d.sf || null,
-      tw: TW[r.TypeOfWork] || null,
-      start: (r.EstimatedStartDate || '').slice(0, 10) || null,
-      end: (r.EstimatedEndDate || '').slice(0, 10) || null,
-      status: d.status || null, owner: d.owner || null, tenant: d.tenant || null,
-      scope: d.scope || null
-    };
+    // Ship ONLY what the UI reads — the raw detail (scope narratives, tenant addresses, statuses)
+    // stays in the checkpoint. Full-shape: 4.3MB; slimmed: ~2MB. Tenant rows exist for the
+    // facility rollup and need just name/fac/date/tenant.
+    const row = (kind === 'tenant')
+      ? { id: r.ProjectNumber, n: (r.ProjectName || '').trim(), kind,
+          fac: facOf(r),
+          city, cost: r.EstimatedCost || null,
+          end: (r.EstimatedEndDate || '').slice(0, 10) || null,
+          tenant: d.tenant || null }
+      : { id: r.ProjectNumber, n: (r.ProjectName || '').trim(), kind,
+          fac: facOf(r),
+          city, cty: COUNTIES[r.County] || null, addr: d.addr || null,
+          cost: r.EstimatedCost || null, sf: d.sf || null,
+          tw: TW[r.TypeOfWork] || null,
+          start: (r.EstimatedStartDate || '').slice(0, 10) || null,
+          end: (r.EstimatedEndDate || '').slice(0, 10) || null,
+          owner: d.owner || null, tenant: d.tenant || null };
     if (d.geo) { row.la = d.geo[0]; row.lo = d.geo[1]; }
     rows.push(row);
   }
