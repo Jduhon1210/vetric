@@ -44,6 +44,24 @@ async function fetchRetry(url, opts, tries = 3) {
     await sleep([1000, 4000, 10000][i] || 10000);
   }
 }
+// ---- crash-safety ---------------------------------------------------------------------------
+// Atomic writes: a kill arriving mid-write must never truncate the checkpoint (a corrupt
+// checkpoint would orphan every fetched detail). Write to a sibling .tmp, then rename —
+// rename is atomic on the same filesystem, so the target is always either old or new, whole.
+function writeAtomic(path, data) {
+  const tmp = path + '.tmp';
+  fs.writeFileSync(tmp, data);
+  fs.renameSync(tmp, path);
+}
+// Safe load: if the main file is somehow corrupt, fall back to its .tmp sibling before giving
+// up — and NEVER die on a parse error, that would block every future resume.
+function loadJson(path, fallback) {
+  for (const cand of [path, path + '.tmp']) {
+    try { if (fs.existsSync(cand)) return JSON.parse(fs.readFileSync(cand, 'utf8')); }
+    catch (e) { console.log('  WARN: ' + cand + ' unreadable (' + e.message + ') — trying fallback'); }
+  }
+  return fallback;
+}
 const VET_RE = /\bvet(?:erinar\w*)?\b|animal|\bpaws?\b|\bpets?\b|canine|feline|k-?9\b|\bspay\b|neuter/i;
 // Same philosophy as build-clinics.mjs classify(): definitive junk overrides the vet signal.
 // Municipal shelters/adoption centers, animal control, police K9 facilities, and human medical
@@ -124,7 +142,7 @@ async function detail(num) {
 }
 
 // ---- phase 3: geocode (Nominatim, cached, 1.15s hard spacing) ------------------------------
-const geoCache = fs.existsSync(GEO) ? JSON.parse(fs.readFileSync(GEO, 'utf8')) : {};
+const geoCache = loadJson(GEO, {});
 let geoDirty = 0;
 async function geocode(addr, city) {
   if (!addr || !city) return null;
@@ -140,7 +158,7 @@ async function geocode(addr, city) {
     if (r && r.ok) { const j = await r.json(); if (j[0]) res = [+(+j[0].lat).toFixed(5), +(+j[0].lon).toFixed(5)]; }
   } catch (e) { /* leave null */ }
   geoCache[key] = res; geoDirty++;
-  if (geoDirty % 25 === 0) fs.writeFileSync(GEO, JSON.stringify(geoCache));
+  if (geoDirty % 25 === 0) writeAtomic(GEO, JSON.stringify(geoCache));
   await sleep(1150);
   return res;
 }
@@ -149,13 +167,13 @@ async function geocode(addr, city) {
 const cities = await cityLookup();
 console.log('city lookup: ' + Object.keys(cities).length + ' entries');
 
-let ck = (!FRESH && fs.existsSync(CKPT)) ? JSON.parse(fs.readFileSync(CKPT, 'utf8')) : { rows: null, det: {} };
+let ck = FRESH ? { rows: null, det: {} } : loadJson(CKPT, { rows: null, det: {} });
 
 if (!ck.rows) {
   console.log('\nphase 1 — county list pulls');
   ck.rows = [];
   for (const code of Object.keys(COUNTIES)) ck.rows.push(...await listCounty(+code));
-  fs.writeFileSync(CKPT, JSON.stringify(ck));
+  writeAtomic(CKPT, JSON.stringify(ck));
 } else console.log(`\nphase 1 — checkpoint reuse (${ck.rows.length} rows)`);
 
 const picked = ck.rows.map(r => ({ r, kind: wantDetail(r) })).filter(x => x.kind);
@@ -203,25 +221,30 @@ function flushOutput(tag) {
     note: 'TDLR TABS registrations (last ' + REG_MONTHS + ' mo, 9 DFW counties; estimates are applicant-reported) + Comptroller active sales-tax outlets NAICS 541940. Public records.',
     list: rows, vets
   };
-  fs.writeFileSync('dfw-commercial.json', JSON.stringify(out));
+  writeAtomic('dfw-commercial.json', JSON.stringify(out));
   const pinned = rows.filter(r => r.la != null).length;
   console.log(`  [flush ${tag}] dfw-commercial.json: ${rows.length} projects, ${pinned} pinned, ${vets.length} vet outlets`);
   return rows;
 }
 
-let dn = 0;
-for (const { r } of RUNSET) {
-  if (ck.det[r.ProjectNumber]) { dn++; continue; }
-  const d = await detail(r.ProjectNumber);
-  ck.det[r.ProjectNumber] = d || { fail: 1 };
-  dn++;
-  if (dn % 50 === 0) { fs.writeFileSync(CKPT, JSON.stringify(ck)); console.log(`  ${dn}/${RUNSET.length}`); }
-  if (dn % 500 === 0) flushOutput('detail ' + dn);
-  await sleep(400);
+// Last-resort crash net: on ANY uncaught error or kill signal, save the checkpoint, the
+// geocache, and the best-possible output file before dying. Everything fetched stays fetched.
+let _crashSaved = false;
+function crashSave(why) {
+  if (_crashSaved) return; _crashSaved = true;
+  console.log('\ncrash-save (' + why + ') — persisting checkpoint + output');
+  try { writeAtomic(CKPT, JSON.stringify(ck)); } catch (e) {}
+  try { writeAtomic(GEO, JSON.stringify(geoCache)); } catch (e) {}
+  try { flushOutput('crash-save'); } catch (e) {}
 }
-fs.writeFileSync(CKPT, JSON.stringify(ck));
+process.on('uncaughtException', e => { console.log('FATAL: ' + (e && e.message)); crashSave('uncaughtException'); process.exit(1); });
+process.on('unhandledRejection', e => { console.log('FATAL: ' + ((e && e.message) || e)); crashSave('unhandledRejection'); process.exit(1); });
+process.on('SIGINT',  () => { crashSave('SIGINT');  process.exit(130); });
+process.on('SIGTERM', () => { crashSave('SIGTERM'); process.exit(143); });
 
-console.log('phase 3 — Comptroller sales-tax vet outlets (NAICS 541940, statewide)');
+// Comptroller vets load FIRST (one cheap call) — a crash-save mid-detail-phase must not ship a
+// file missing them (a shipped bug caught by the SIGTERM drill: "0 vet outlets" in the flush).
+console.log('phase 2a — Comptroller sales-tax vet outlets (NAICS 541940, statewide)');
 try {
   const r = await fetchRetry("https://data.texas.gov/resource/jrea-zgmq.json?$limit=5000&$where=" +
     encodeURIComponent("outlet_naics_code='541940' AND outlet_permit_issue_date>='2025-01-01'"), { headers: UA });
@@ -246,6 +269,28 @@ try {
   }
 } catch (e) { console.log('  comptroller fetch failed (non-fatal): ' + e.message); }
 console.log(`  ${vets.length} statewide vet outlets since 2025`);
+// cached geocodes are free — re-pin previously geocoded DFW outlets in every early flush
+{
+  const DFW_EARLY = new Set(Object.keys(COUNTIES).map(c => String(c - 2000).padStart(3, '0')));
+  for (const v of vets) {
+    if (!DFW_EARLY.has(v.cty) || !v.addr || !v.city) continue;
+    const clean = v.addr.replace(/[,#]?\s*(ste|suite|unit|bldg|#)\.?\s*[\w-]+\s*$/i, '').trim();
+    const hit = geoCache[(clean + '|' + v.city).toLowerCase()];
+    if (hit) { v.la = hit[0]; v.lo = hit[1]; }
+  }
+}
+
+let dn = 0;
+for (const { r } of RUNSET) {
+  if (ck.det[r.ProjectNumber]) { dn++; continue; }
+  const d = await detail(r.ProjectNumber);
+  ck.det[r.ProjectNumber] = d || { fail: 1 };
+  dn++;
+  if (dn % 50 === 0) { writeAtomic(CKPT, JSON.stringify(ck)); console.log(`  ${dn}/${RUNSET.length}`); }
+  if (dn % 500 === 0) flushOutput('detail ' + dn);
+  await sleep(400);
+}
+writeAtomic(CKPT, JSON.stringify(ck));
 
 console.log('phase 4 — geocode (priority: TABS vets -> Comptroller DFW vets -> new construction by cost)');
 // DFW-county comptroller outlets get pins (county code = TDLR code - 2000, zero-padded)
@@ -265,10 +310,10 @@ for (const { r, kind } of RUNSET) {
   const g = await geocode(d.addr, cities[String(r.City)] || null);
   d.geo = g;                               // null is a valid "tried, no hit" marker
   gn++;
-  if (gn % 100 === 0) { fs.writeFileSync(CKPT, JSON.stringify(ck)); flushOutput('geo ' + gn); }
+  if (gn % 100 === 0) { writeAtomic(CKPT, JSON.stringify(ck)); flushOutput('geo ' + gn); }
 }
-fs.writeFileSync(CKPT, JSON.stringify(ck));
-fs.writeFileSync(GEO, JSON.stringify(geoCache));
+writeAtomic(CKPT, JSON.stringify(ck));
+writeAtomic(GEO, JSON.stringify(geoCache));
 
 const rows = flushOutput('final');
 console.log(`\ndone: ${rows.length} projects (${rows.filter(r => r.la != null).length} pinned) · ` +
