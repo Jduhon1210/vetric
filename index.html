@@ -7515,6 +7515,15 @@ function siteReport(i){
   </table>
   ${cs?`<h2>Catchment (${cs.src==='drive'?'10-min drive-time':'~3.5 mi radius est.'})</h2><table>
   ${rows('Households',cs.hhIn.toLocaleString())}${rows('Pet households',cs.dogIn.toLocaleString()+' dog · '+cs.catIn.toLocaleString()+' cat')}${rows('Est. annual vet visits','~'+cs.visits.toLocaleString())}${rows('Competing clinics inside',(cs.pe+cs.ind)+' ('+cs.pe+' PE · '+cs.ind+' indep)')}${rows('Winnable at '+(cs.share*100).toFixed(0)+'% share','~'+cs.captured.toLocaleString()+' visits/yr')}${rows('Practice size supported',cs.size)}${rows('Est. revenue (modeled)',_fmtM(cs.rev))}${rows('Adj. EBITDA @ '+Math.round(cs.econ.margin*100)+'% margin',_fmtM(cs.econ.ebitda))}${rows('Indicative value @ '+cs.econ.multLo+'-'+cs.econ.multHi+'x',_fmtM(cs.econ.valLo)+' – '+_fmtM(cs.econ.valHi))}
+  </table>
+  ${cs.fut?`<h2>Future demand — new residential in catchment (NCTCOG pipeline)</h2><table>
+  ${rows('Developments · units coming',cs.fut.n+' · '+cs.fut.u.toLocaleString()+' ('+cs.fut.uc.toLocaleString()+' under construction)')}
+  ${rows('Pet households at buildout','+'+cs.fut.dog.toLocaleString()+' dog · +'+cs.fut.cat.toLocaleString()+' cat')}
+  ${rows('Added vet visits','+~'+cs.fut.vis.toLocaleString()+'/yr')}
+  ${rows('Winnable at '+(cs.share*100).toFixed(0)+'% share','+~'+cs.fut.cap.toLocaleString()+' visits/yr · +'+_fmtM(cs.fut.cap*REV_PER_VISIT))}
+  ${rows('Largest',cs.fut.names.map(x=>x.n+' ('+x.u.toLocaleString()+')').join(' · '))}
+  </table><div style="font-size:10.5px;color:#64748b">Young-family profile (0.55 dog / 0.25 cat households per home) at full buildout; unit counts are developer-announced.</div>`:''}
+  <table>
   </table>`:''}
   <h2>Nearest competitors</h2><table>${comps.map(x=>rows(esc(x.c.name||'Clinic')+(x.c.pe?' <span style="color:#dc2626">(PE'+(x.c.owner?' · '+esc(x.c.owner):'')+')</span>':' (independent)'),(x.d/1609.344).toFixed(1)+' mi'+(x.c.staffN?' · '+x.c.staffN+' DVMs':''))).join('')}</table>
   <div style="margin-top:18px;font-size:10.5px;color:#64748b">Modeled from Census ACS 2024, OpenStreetMap, TxDOT AADT, Google Places and Vetric's capture model. Estimates, not projections — verify zoning, availability and pricing before pursuing. vetric.co</div>
@@ -9131,6 +9140,31 @@ async function _evalCatchmentStats(ring, g){
   let pe=0, ind=0; for(const c of evalCompsCache){ if(pointInPolygon(c.lat,c.lon,poly)){ c.pe?pe++:ind++; } }
   // blended (gravity+network) share when the auto-blend has landed; else pure gravity
   const share=(g&&g.blendShare!=null)?g.blendShare:Math.min(g&&g.share!=null?g.share:0.5, 0.85);
+  // Future demand: NCTCOG pipeline residential projects whose point falls inside the catchment.
+  // dfw-pipeline.json ONLY (it contains every dfw-mpc.json community at phase grain — mixing the
+  // MPC file in would double-count). Same future-rooftop pet model as everywhere else in the app:
+  // dog HH = units × 0.55, cat HH = units × 0.25 (young-family growth profile), visits via
+  // OPP_VISITS_PER_DOGHH / _CATHH. Stale-flagged records are excluded.
+  let fut=null;
+  try{
+    const pd=await _loadPipeline();
+    if(pd&&pd.list){
+      let fu=0,fuc=0,fn=0; const names=[];
+      for(const r of pd.list){
+        if(r.cl!=='R'||r.stale||!r.u) continue;
+        if(r.la<rs||r.la>rn||r.lo<rw||r.lo>re) continue;
+        if(!pointInPolygon(r.la,r.lo,poly)) continue;
+        fn++; fu+=r.u; if(r.st==='uc') fuc+=r.u;
+        names.push({n:r.n,u:r.u,st:r.st});
+      }
+      if(fn){
+        names.sort((a,b)=>b.u-a.u);
+        const fdog=Math.round(fu*0.55), fcat=Math.round(fu*0.25);
+        const fvis=Math.round(fdog*OPP_VISITS_PER_DOGHH+fcat*OPP_VISITS_PER_CATHH);
+        fut={n:fn,u:fu,uc:fuc,dog:fdog,cat:fcat,vis:fvis,cap:Math.round(fvis*share),names:names.slice(0,3)};
+      }
+    }
+  }catch(e){}
   const captured=Math.round(visits*share);
   // Practice size + revenue both come off CLINICAL THROUGHPUT (DVM_VISIT_CAPACITY),
   // not the saturation constant. Using OPP_VISITS_PER_DVM here would say "supports a
@@ -9140,7 +9174,7 @@ async function _evalCatchmentStats(ring, g){
   const dvmFit=econ.dvmEq;
   const size=dvmFit<1.4?'solo-doctor':dvmFit<2.5?'~2-doctor':dvmFit<3.5?'~3-doctor':'4+ doctor';
   const rev=econ.rev;
-  return {hhIn:Math.round(hhIn), dogIn:Math.round(dogIn), catIn:Math.round(catIn), visits, pe, ind, share, basis:(g&&g.blendShare!=null)?'blend':'gravity', captured, dvmFit, size, rev, econ, areaMi:Math.round(_polyAreaMi(ring))};
+  return {hhIn:Math.round(hhIn), dogIn:Math.round(dogIn), catIn:Math.round(catIn), visits, pe, ind, share, basis:(g&&g.blendShare!=null)?'blend':'gravity', captured, dvmFit, size, rev, econ, fut, areaMi:Math.round(_polyAreaMi(ring))};
 }
 function _fmtM(v){ return v>=1e6?('$'+(v/1e6).toFixed(1)+'M'):('$'+Math.round(v/1000)+'k'); }
 const _DRIVE_SHOW='◔ 10-min drive area', _DRIVE_HIDE='✕ Hide drive area';
@@ -9179,6 +9213,15 @@ async function evalDriveTime(i, btn){
       <div style="margin-top:4px;font-size:11px;font-weight:700;color:#5b21b6">Supports a ${cs.size} practice · est. revenue ${_fmtM(cs.rev)} <span style="font-weight:500;color:#64748b">(modeled)</span></div>
       <div style="margin-top:2px;font-size:11px;color:#475569">Adj. EBITDA ~<b>${_fmtM(cs.econ.ebitda)}</b> at ${Math.round(cs.econ.margin*100)}% margin · at ${cs.econ.multLo}–${cs.econ.multHi}× ⇒ <b>${_fmtM(cs.econ.valLo)}–${_fmtM(cs.econ.valHi)}</b></div>
       <div style="margin-top:2px;font-size:10.5px;color:#64748b;line-height:1.45">Revenue = winnable visits × $${Math.round(REV_PER_VISIT)}/visit (AVMA-derived). Margin is a Vetric model assumption from the AAHA/VMG cost structure, not a published benchmark — no neutral size-segmented margin data exists.</div>
+      ${cs.fut?`<div style="margin-top:8px;padding:7px 9px;background:#f0fdfa;border:1px dashed #99f6e4;border-radius:9px">
+        <div style="font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#0d9488">⚡ Future demand — new residential in catchment</div>
+        <div style="display:flex;justify-content:space-between;font-size:11px;margin-top:4px"><span style="color:#64748b">Developments · units coming</span><b>${cs.fut.n} · ${cs.fut.u.toLocaleString()}</b></div>
+        <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:#64748b">Status</span><b>${cs.fut.uc.toLocaleString()} under construction · ${(cs.fut.u-cs.fut.uc).toLocaleString()} announced</b></div>
+        <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:#64748b">Pet households at buildout</span><b>+${cs.fut.dog.toLocaleString()} dog · +${cs.fut.cat.toLocaleString()} cat</b></div>
+        <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:#64748b">Added vet visits</span><b>+~${cs.fut.vis.toLocaleString()}/yr</b></div>
+        <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:#64748b">Winnable at ${(cs.share*100).toFixed(0)}% share</span><b>+~${cs.fut.cap.toLocaleString()} visits/yr · +${_fmtM(cs.fut.cap*REV_PER_VISIT)}</b></div>
+        <div style="font-size:10px;color:#64748b;margin-top:4px;line-height:1.4">${cs.fut.names.map(x=>_ceEsc(x.n)+' ('+x.u.toLocaleString()+')').join(' · ')}${cs.fut.n>3?' · +'+(cs.fut.n-3)+' more':''} — NCTCOG pipeline; young-family profile (0.55 dog / 0.25 cat HH per home), full buildout.</div>
+      </div>`:''}
     </div>`;
     if(btn){ btn.disabled=false; btn.textContent=_DRIVE_HIDE; }
   }catch(e){

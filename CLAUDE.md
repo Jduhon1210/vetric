@@ -255,6 +255,19 @@ with every verified endpoint: `research/development-pipeline-sources.md`.
   66%→78% precise (2,156→2,531), all 19 vet projects pinned (15 precise + 4 approx). Remaining ~729
   unpinned = streets no free geocoder knows yet + lot/block legal descriptions (list-only, honest).
 
+## Catchment future-demand block (2026-07-23, user ask: "new residential development... as part of future demand with all the same pet algorithm calculations")
+`_evalCatchmentStats` runs a pipeline pass: NCTCOG residential projects (`dfw-pipeline.json`, `cl==='R'`,
+non-stale, `u` present) whose point falls inside the catchment ring (bbox prefilter + `pointInPolygon`)
+aggregate into `cs.fut = {n,u,uc,dog,cat,vis,cap,names[top3]}`. **dfw-pipeline ONLY — never also
+dfw-mpc.json** (NCTCOG contains every MPC at phase grain; mixing double-counts). Pet math = the app's
+established future-rooftop profile: dog HH = units × 0.55, cat = × 0.25, visits via
+OPP_VISITS_PER_DOGHH/_CATHH, winnable at the SAME share as existing demand, revenue at REV_PER_VISIT.
+Rendered as a SEPARATE teal dashed "⚡ Future demand" block in the site-card Catchment pane and its own
+table in the print report — never folded into the existing-demand numbers (full-buildout figures,
+status split disclosed, developer-announced counts caveated). Verified on a Celina ring: 16 developments
+/ 7,617 units → +12,338 visits/yr vs 5,265 existing (future = 2.3× current — the Celina thesis in one
+card). Graceful null outside DFW / file missing (`try/catch`, `fut:null` hides the block).
+
 ## Development-signals layer (2026-07-14, user ask off the sweep)
 `dfw-signals.json` (curated, 7 entries; same 60-day sweep cadence as MPCs, registered in VF_DATASETS) = point events where commercial development is landing: rezonings, grocery-anchor commitments, retail waves, mixed-use approvals. Layers-panel toggle `toggle-signals`/`toggleSignalsLayer`/`sigLayer` (`_loadSignals` force-cache singleton, `?v=`) draws DIAMOND divIcon pins (`.vf-sig`, rotated square) colored by type via `_SIG_COLOR`: teal anchor / purple rezone / navy retail / slate mixed. Tooltip + sourced popup (type chip, city+ETA, note, source). DISPLAY-ONLY overlay, combinable with any fill (NOT in the single-fill exclusion). Refresh = run the news/zoning sweep (research/mpc-sweep-*.md pattern), hand-edit the JSON, bump `?v=`, update VF_DATASETS. Flagship entry: Kroger Marketplace + Custer Frontier (Custer & Laud Howell, McKinney/Prosper border) with six pad sites incl. medical uses, opens Mar 2027.
 
