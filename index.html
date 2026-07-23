@@ -7579,6 +7579,127 @@ async function _evalFillStrips(){
     if(el){ _evalRenderSidebar(); }   // cheapest correct refresh: re-render with the cache warm (returns instantly for done sites)
   }
 }
+/* Clinic-evaluation report (2026-07-23, user ask: "a professional looking site report for a
+   clinic's evaluation"). One printable page assembled ONLY from data the evaluation already
+   computed — no new fetches. Print button -> browser Save-as-PDF (same pattern as siteReport). */
+function _clinicReportHTML(){
+  const sub=_evalSubject, g=evalSiteCell;
+  if(!sub||!g) return null;
+  const sid=g.la.toFixed(4)+','+g.lo.toFixed(4), cs=_siteCatch[sid]||null;
+  const st=_vetStaffAt(sub.la,sub.lo), sv=_svcAt(sub.la,sub.lo), sp=_speciesAt(sub.la,sub.lo);
+  const re_=_revEst({lat:sub.la,lon:sub.lo,name:sub.name});
+  const k=_siteKpis(_siteCtxMi||3);
+  const esc=_ceEsc, disp=_evalDisp(g.score);
+  const today=new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'});
+  const row=(l,v)=>v!=null&&v!==''?`<tr><td class="rk">${l}</td><td class="rv">${v}</td></tr>`:'';
+  // two-sided
+  let ts='';
+  if(sub.dvm&&cs){
+    const e2=_practiceEcon({dvm:sub.dvm,winnableVisits:cs.captured});
+    const cap=sub.dvm*DVM_VISIT_CAPACITY, hr=e2.headroom, hire=hr/DVM_VISIT_CAPACITY;
+    const verdict=Math.abs(hire)<0.35?['Balanced','#1e3a8a','The market supports ~'+Math.round(100*cs.captured/cap)+'% of capacity — this roster is sized to its trade area.']
+      :hr>0?['Understaffed','#047857','~'+hr.toLocaleString()+' winnable visits/yr beyond current capacity ≈ '+hire.toFixed(1)+' DVM of headroom — revenue growth without fighting for share.']
+      :['Utilization flag','#9f1239','The share model supports ~'+cs.captured.toLocaleString()+' of '+cap.toLocaleString()+' visit capacity (~'+Math.abs(hire).toFixed(1)+' DVM over). Established bases often out-earn the model — competitive pressure on growth, not current revenue.'];
+    ts=`<h2>Two-sided practice read</h2><table>
+      ${row('Demand ceiling (winnable at '+(cs.share*100).toFixed(0)+'% share)','~'+cs.captured.toLocaleString()+' visits/yr')}
+      ${row('Capacity ceiling ('+sub.dvm+' DVM × '+DVM_VISIT_CAPACITY.toLocaleString()+')','~'+cap.toLocaleString()+' visits/yr')}
+      ${row('Binding side',e2.bound==='demand'?'Demand — market-limited':'Capacity — doctor-limited')}
+      ${row('Market-supported revenue (share model)',_fmtM(cs.captured*REV_PER_VISIT))}
+      ${row('At-capacity revenue (AVMA benchmark)',_fmtM(cap*REV_PER_VISIT))}
+    </table>
+    <div class="verdict" style="border-color:${verdict[1]};color:${verdict[1]}"><b>${verdict[0]}:</b> ${verdict[2]}</div>`;
+  }
+  const comps=(evalCompsCache||[]).map(c=>({c,d:hav(g.la,g.lo,c.lat,c.lon)})).sort((a,b)=>a.d-b.d).slice(0,6);
+  const svcLine=(sv&&sv.c&&sv.c.length)?sv.c.map(x=>_SVC_LABEL[x]||x).join(' · '):null;
+  const vets=(st&&st.vets&&st.vets.length)?st.vets.slice(0,10).map(esc).join(' · '):null;
+  return `<!doctype html><html><head><title>Vetric clinic evaluation — ${esc(sub.name)}</title><meta charset="utf-8">
+  <style>
+    body{font-family:Inter,-apple-system,'Segoe UI',Roboto,sans-serif;color:#0f172a;max-width:730px;margin:0 auto;padding:0 22px 30px;font-size:12.5px;line-height:1.5;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    .band{background:linear-gradient(150deg,#1e3a8a,#1e3068 55%,#172554);color:#fff;margin:0 -22px;padding:20px 26px 16px;display:flex;justify-content:space-between;align-items:flex-end}
+    .band .eyebrow{font-size:10px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#93c5fd}
+    .band h1{font-size:21px;margin:4px 0 2px;letter-spacing:-.01em}
+    .band .sub{font-size:11px;color:#a7b4d9}
+    .band .score{text-align:right}
+    .band .score .n{font-size:30px;font-weight:800;line-height:1}
+    .band .score .l{font-size:9.5px;color:#a7b4d9;letter-spacing:.08em;text-transform:uppercase}
+    .ident{display:flex;gap:14px;flex-wrap:wrap;font-size:11.5px;padding:10px 0;border-bottom:1px solid #e2e8f0;color:#334155}
+    .ident b{color:#0f172a}
+    h2{font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#1e3a8a;margin:18px 0 6px;border-bottom:1px solid #e2e8f0;padding-bottom:3px}
+    table{width:100%;border-collapse:collapse}
+    td{padding:3.5px 0;vertical-align:top;font-variant-numeric:tabular-nums}
+    .rk{color:#64748b;width:52%}
+    .rv{font-weight:700;text-align:right}
+    .verdict{margin-top:8px;border:1.5px solid;border-radius:9px;padding:7px 11px;font-size:12px}
+    .cols{display:grid;grid-template-columns:1fr 1fr;gap:0 28px}
+    .foot{margin-top:22px;font-size:9.5px;color:#64748b;line-height:1.55;border-top:1px solid #e2e8f0;padding-top:9px}
+    .np{margin:16px 0}
+    .np button{font-size:13px;padding:8px 20px;border-radius:8px;border:1px solid #cbd5e1;background:#1e3a8a;color:#fff;cursor:pointer;font-weight:700}
+    @media print{.np{display:none}body{padding-top:0}}
+  </style></head><body>
+  <div class="band">
+    <div><div class="eyebrow">Vetric · Clinic Evaluation</div>
+      <h1>${esc(sub.name)}</h1>
+      <div class="sub">${cs&&cs.src==='drive'?'10-minute drive-time catchment':'~3.5-mile catchment'} · ${today}</div></div>
+    <div class="score"><div class="n">${disp}</div><div class="l">Market score /100</div></div>
+  </div>
+  <div class="ident">
+    <span>${sub.pe?'<b style="color:#dc2626">PE-owned</b>'+(sub.owner?' · '+esc(sub.owner):''):'<b style="color:#2563eb">Independent</b>'}</span>
+    ${sub.rating?`<span>★<b>${sub.rating}</b>${sub.reviews!=null?' · '+Number(sub.reviews).toLocaleString()+' reviews':''}</span>`:''}
+    ${sub.dvm?`<span><b>${sub.dvm}</b> DVM${sub.dvm>1?'s':''} on staff</span>`:'<span>Roster unknown</span>'}
+    ${sp?`<span>Species: <b>${sp==='small'?'Small animal':sp==='mixed'?'Mixed':'Large animal'}</b></span>`:''}
+  </div>
+  ${vets?`<div style="font-size:11px;color:#475569;margin-top:6px"><b style="color:#0f172a">Veterinarians:</b> ${vets}</div>`:''}
+  ${svcLine?`<div style="font-size:11px;color:#475569;margin-top:3px"><b style="color:#0f172a">Services (site-read):</b> ${svcLine}</div>`:''}
+  <div class="cols">
+    <div>
+      <h2>Practice economics (modeled)</h2><table>
+        ${row('Roster capacity',sub.dvm?('~'+(sub.dvm*DVM_VISIT_CAPACITY).toLocaleString()+' visits/yr'):null)}
+        ${(re_&&re_.econ)?row('Modeled revenue (benchmark)',re_.txt):''}
+        ${(re_&&re_.econ)?row('Adj. EBITDA @ '+Math.round(re_.econ.margin*100)+'% margin',_fmtM(re_.econ.ebitda)):''}
+        ${(re_&&re_.econ)?row(re_.econ.multAnalyst?('Indicative value @ '+re_.econ.multLo+'× (analyst)'):('Indicative value @ '+re_.econ.multLo+'–'+re_.econ.multHi+'×'),re_.econ.multAnalyst?_fmtM(re_.econ.valLo):(_fmtM(re_.econ.valLo)+' – '+_fmtM(re_.econ.valHi))):''}
+      </table>
+      <h2>Market position</h2><table>
+        ${row('Capture share (incumbent-weighted)',(g.share*100).toFixed(0)+'%')}
+        ${row('Competitors within '+evalRadiusMi+' mi',g.nComp+(g.nPE?' ('+g.nPE+' PE)':''))}
+        ${row('Nearest clinic',isFinite(g.nearC)?(g.nearC/1609.344).toFixed(1)+' mi':'—')}
+        ${k?row('Area growth ’21→’24',k.growth!=null?(k.growth>0?'+':'')+(100*k.growth).toFixed(1)+'%':null):''}
+        ${k?row('PE penetration ('+(_siteCtxMi||3)+' mi)',k.pePct!=null?Math.round(k.pePct)+'%':null):''}
+      </table>
+    </div>
+    <div>
+      ${cs?`<h2>Catchment demand</h2><table>
+        ${row('Households',cs.hhIn.toLocaleString())}
+        ${row('Pet households',cs.dogIn.toLocaleString()+' dog · '+cs.catIn.toLocaleString()+' cat')}
+        ${row('Est. vet visits in catchment','~'+cs.visits.toLocaleString()+'/yr')}
+        ${row('Winnable at '+(cs.share*100).toFixed(0)+'% share','~'+cs.captured.toLocaleString()+' visits/yr')}
+      </table>`:''}
+      ${cs&&cs.fut?`<h2>Future demand — pipeline in catchment</h2><table>
+        ${row('Developments · units coming',cs.fut.n+' · '+cs.fut.u.toLocaleString())}
+        ${row('Under construction',cs.fut.uc.toLocaleString()+' units')}
+        ${row('Pet households at buildout','+'+cs.fut.dog.toLocaleString()+' dog · +'+cs.fut.cat.toLocaleString()+' cat')}
+        ${row('Added winnable visits','+~'+cs.fut.cap.toLocaleString()+'/yr · +'+_fmtM(cs.fut.cap*REV_PER_VISIT))}
+        ${row('Largest',cs.fut.names.map(x=>esc(x.n)+' ('+x.u.toLocaleString()+')').join(' · '))}
+      </table>`:''}
+    </div>
+  </div>
+  ${ts}
+  <h2>Nearest competitors (GP only)</h2><table>
+  ${comps.map(x=>row(esc(x.c.name||'Clinic')+(x.c.pe?' <span style="color:#dc2626">(PE'+(x.c.owner?' · '+esc(x.c.owner):'')+')</span>':' (independent)'),(x.d/1609.344).toFixed(1)+' mi'+(x.c.staffN?' · '+x.c.staffN+' DVM':''))).join('')}
+  </table>
+  <div class="np"><button onclick="window.print()">Print / save as PDF</button></div>
+  <div class="foot">
+    <b>Sources:</b> Census ACS 2024 · OpenStreetMap · TxDOT AADT · Google Places · NCTCOG Development Monitoring · clinic-website reads (roster, services, species) · AVMA 2025 economic report (benchmarks).
+    <b>Method notes:</b> Revenue figures are modeled screens, not projections — $${Math.round(REV_PER_VISIT)}/visit is derived from the AVMA companion-exclusive median ($616,667/FTE DVM ÷ ${DVM_VISIT_CAPACITY.toLocaleString()} sustained visits). The EBITDA margin curve is a Vetric model assumption built on the AAHA/VMG chart-of-accounts cost structure — no neutral size-segmented margin dataset exists. Multiples reflect the current post-2022 band; an analyst-entered multiple overrides. Capture share is a gravity model with the clinic weighted as the incumbent and excluded from its own competition; pure specialty/ER practices are excluded from GP competition. Development units are developer-announced totals. Verify all figures in diligence — this is a screening artifact.
+    <br><b>Generated by Vetric</b> · vetric.co · ${today}
+  </div>
+  </body></html>`;
+}
+function clinicReport(){
+  const html=_clinicReportHTML();
+  if(!html) return vfToast('Run a clinic evaluation first.');
+  const w=window.open('','_blank'); if(!w) return vfToast('Pop-up blocked — allow pop-ups for the report.');
+  w.document.write(html); w.document.close();
+}
 function siteReport(i){
   const g=evalTop[i]; if(!g) return;
   const sid=g.la.toFixed(4)+','+g.lo.toFixed(4), cs=_siteCatch[sid];
@@ -8968,6 +9089,7 @@ function _evalRenderSidebar(){
         ${(()=>{ const sid2=g.la.toFixed(4)+','+g.lo.toFixed(4), cs2=_siteCatch[sid2];
           if(_evalSubject&&!cs2) _evalAutoCatch(g);
           return `<button class="vm-export-btn" style="width:100%;margin:0 0 8px;background:#f8f6ff;border-color:#ddd0f7;color:#6d28d9;font-weight:700" onclick="event.stopPropagation();evalDriveTime(-2,this)">${cs2?(cs2.src==='drive'?'Hide 10-min drive-time area':'Show true 10-min drive-time on map'):(_evalSubject?'Computing catchment…':'10-min catchment & future demand')}</button>
+        ${_evalSubject?`<button class="vm-export-btn" style="width:100%;margin:0 0 8px;background:var(--navy);border-color:var(--navy);color:#fff;font-weight:700" onclick="event.stopPropagation();clinicReport()">↓ Download clinic report (PDF)</button>`:''}
         <div id="evd--2">${cs2?_evalCatchHTML(cs2):''}</div>`;})()}
         ${warns.map(w=>`<div style="font-size:10.5px;color:#9f1239;background:#fff1f2;border:1px solid #fecdd3;border-radius:8px;padding:6px 9px;margin:0 0 8px;line-height:1.5">${w}</div>`).join('')}
         ${(()=>{ const sm=(key,label,v,on)=>{ const open=_siteMetricOpen.has(key);

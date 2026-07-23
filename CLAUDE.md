@@ -291,6 +291,17 @@ on map" once the radius read is in). No-roster clinics get a rose prompt pointin
 Verified live (Animal Hospital of Celina, 1 DVM, PE/Harvest, ★4.6·197): halo not star, subject
 absent from evalCompsCache, identity+practice blocks render, auto two-sided read "Understaffed
 ~957 visits ≈ 0.3 DVM headroom", future-demand 25 devs/20,656 units — all with zero clicks.
+**Clinic report (`clinicReport()`/`_clinicReportHTML()`, 2026-07-23, user ask: "professional looking
+site report for a clinic's evaluation")**: navy "Download clinic report (PDF)" button on the clinic-eval
+card → print-window one-pager (same open-window+print pattern as `siteReport`), assembled ONLY from
+already-computed state (no new fetches): navy brand band w/ score/100, identity strip (PE·owner /
+Independent, ★reviews, DVMs, species), roster names, services line, two-column Practice-economics +
+Market-position | Catchment + Future-demand tables, the two-sided read w/ colored verdict box, top-6
+GP competitors, and a method-notes footer (AVMA derivation, margin = Vetric assumption, incumbent-share
+model, "screening artifact — verify in diligence"). GOTCHA fixed at review: `_siteKpis().pePct` is
+ALREADY a percentage (82, not 0.82) — don't ×100 again (the draft printed "8200%"). Fun fact surfaced
+by the report itself: Double Oak VMC is genuinely PE-owned (Shore Capital / Mission Pet Health) per
+pe-data — checkPE was right, not a false positive.
 **INCUMBENT SHARE FIX (2026-07-23, the Double Oak bug — user: "4 doctors but $600k revenue based
 on visits")**: two entrant-model rules were leaking into clinic evaluations. (1) **The 700m PE
 hard-cap (share≤0.10) does NOT apply to the forced cell in clinic mode** — it encodes NEW-BUILD
