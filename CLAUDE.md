@@ -271,8 +271,21 @@ subject (pin drag) demotes to a plain site eval. The dropped/clinic card gained 
 the readout writes into the LIVE node re-queried AFTER `_evalRenderSidebar()` (the re-render detached the
 captured one — readout silently vanished), and a **~3.5mi radius fallback ring** when the Routes proxy is
 unavailable (header discloses which ring was used; also what makes local preview testable — serve.py has
-no /api/route). Verified live (Animal Hospital of Celina, 1 DVM): subject absent from evalCompsCache,
-titled card, "Understaffed ~957 visits ≈ 0.3 DVM headroom", future-demand block 25 devs/20,656 units.
+no /api/route). **Clinic-first card (2026-07-23 same-day rework, user: "I want the actual clinic pin evaluated
+with its own data")**: NO dropped ★ in clinic mode — `_siteMarkerPlace` draws a dashed purple HALO
+(`L.circleMarker` r17, non-interactive) around the clinic's own pin instead (lives in the
+`evalSiteMarker` slot so every lifecycle path treats it identically; not draggable, correctly).
+`_evalClinicGo` snapshots the full identity (`rating/reviews` via `_vetEnrichAt`, `pe/owner` via
+`checkPE`, roster names). The card leads with an IDENTITY block (PE·owner / Independent, ★rating,
+reviews) + PRACTICE block (N DVMs, capacity, roster-names `<details>`, `_revEst` modeled
+revenue/EBITDA/value — analyst multiple honored) and the catchment+two-sided read AUTO-RUNS
+(`_evalAutoCatch`: radius ring computed once ~60ms after first render, cached by sid, re-render
+picks it up inline in `evd--2`; the shared readout template was extracted to `_evalCatchHTML(cs)`
+used by both the auto pass and the drive button, which relabels to "Show true 10-min drive-time
+on map" once the radius read is in). No-roster clinics get a rose prompt pointing at the editor.
+Verified live (Animal Hospital of Celina, 1 DVM, PE/Harvest, ★4.6·197): halo not star, subject
+absent from evalCompsCache, identity+practice blocks render, auto two-sided read "Understaffed
+~957 visits ≈ 0.3 DVM headroom", future-demand 25 devs/20,656 units — all with zero clicks.
 
 ## Catchment future-demand block (2026-07-23, user ask: "new residential development... as part of future demand with all the same pet algorithm calculations")
 `_evalCatchmentStats` runs a pipeline pass: NCTCOG residential projects (`dfw-pipeline.json`, `cl==='R'`,

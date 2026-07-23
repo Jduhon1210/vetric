@@ -8865,8 +8865,21 @@ function _evalRenderSidebar(){
           <div style="width:1px;background:#eef2f7;margin:7px 0"></div>
           ${_sstat((g.share*100).toFixed(0)+'%','capture share')}
         </div>
-        <button class="vm-export-btn" style="width:100%;margin:0 0 8px;background:#f8f6ff;border-color:#ddd0f7;color:#6d28d9;font-weight:700" onclick="event.stopPropagation();evalDriveTime(-2,this)">${_evalSubject?'10-min catchment · two-sided practice read':'10-min catchment & future demand'}</button>
-        <div id="evd--2"></div>
+        ${_evalSubject?(()=>{ const sub=_evalSubject;
+          const ident=[sub.pe?('<span style="color:#dc2626;font-weight:800">PE'+(sub.owner?' · '+_ceEsc(sub.owner):'')+'</span>'):'<span style="color:#2563eb;font-weight:800">Independent</span>',
+                       sub.rating?('★'+sub.rating+(sub.reviews!=null?' · '+Number(sub.reviews).toLocaleString()+' reviews':'')):null].filter(Boolean).join(' &nbsp;·&nbsp; ');
+          const re_=_revEst({lat:sub.la,lon:sub.lo,name:sub.name});
+          const vets=(sub.vets||[]).slice(0,10);
+          return `<div style="margin:0 0 8px;padding:7px 10px;background:#f8fafc;border:1px solid #eef2f7;border-radius:9px">
+            <div style="font-size:11px;color:#334155">${ident}</div>
+            ${sub.dvm?`<div style="font-size:11px;color:#334155;margin-top:3px"><b>${sub.dvm} DVM${sub.dvm>1?'s':''} on staff</b> · capacity ~${(sub.dvm*DVM_VISIT_CAPACITY).toLocaleString()} visits/yr${vets.length?` <details style="display:inline"><summary style="display:inline;cursor:pointer;color:var(--navy);font-weight:700">· roster</summary><div style="margin-top:3px;color:#64748b">${vets.map(_ceEsc).join(' · ')}</div></details>`:''}</div>`
+                     :'<div style="font-size:11px;color:#9f1239;margin-top:3px">No DVM roster scraped — set the count in the clinic editor (⚙) for the two-sided read.</div>'}
+            ${(re_&&re_.econ)?`<div style="font-size:11px;color:#334155;margin-top:2px">Modeled revenue <b>${re_.txt}</b> · EBITDA ~<b>${_fmtM(re_.econ.ebitda)}</b> @ ${Math.round(re_.econ.margin*100)}% · ${re_.econ.multAnalyst?(re_.econ.multLo+'× analyst ⇒ '+_fmtM(re_.econ.valLo)):(re_.econ.multLo+'–'+re_.econ.multHi+'× ⇒ '+_fmtM(re_.econ.valLo)+'–'+_fmtM(re_.econ.valHi))}</div>`:''}
+          </div>`;})():''}
+        ${(()=>{ const sid2=g.la.toFixed(4)+','+g.lo.toFixed(4), cs2=_siteCatch[sid2];
+          if(_evalSubject&&!cs2) _evalAutoCatch(g);
+          return `<button class="vm-export-btn" style="width:100%;margin:0 0 8px;background:#f8f6ff;border-color:#ddd0f7;color:#6d28d9;font-weight:700" onclick="event.stopPropagation();evalDriveTime(-2,this)">${cs2?(cs2.src==='drive'?'Hide 10-min drive-time area':'Show true 10-min drive-time on map'):(_evalSubject?'Computing catchment…':'10-min catchment & future demand')}</button>
+        <div id="evd--2">${cs2?_evalCatchHTML(cs2):''}</div>`;})()}
         ${warns.map(w=>`<div style="font-size:10.5px;color:#9f1239;background:#fff1f2;border:1px solid #fecdd3;border-radius:8px;padding:6px 9px;margin:0 0 8px;line-height:1.5">${w}</div>`).join('')}
         ${(()=>{ const sm=(key,label,v,on)=>{ const open=_siteMetricOpen.has(key);
             return `<div style="cursor:pointer" onclick="event.stopPropagation();_siteMetricToggle('${key}')" title="Click for the data behind this score">
@@ -9190,30 +9203,9 @@ function _evalDriveResetBtns(){
 function _evalHideDrive(){ if(evalDriveLayer){ map.removeLayer(evalDriveLayer); evalDriveLayer=null; } _evalDriveResetBtns(); }
 // Full reset — drop the polygon AND the cache (used on recompute / clear).
 function _evalClearDrive(){ _evalHideDrive(); _evalDriveIdx=-1; _evalDriveRing=null; _evalClearOverlap(); }
-async function evalDriveTime(i, btn){
-  const g=(i===-2)?evalSiteCell:evalTop[i]; if(!g) return;   // -2 = the dropped-site / clinic-evaluation card
-  // TOGGLE OFF: this site's drive area is currently on screen → hide it.
-  if(evalDriveLayer && _evalDriveIdx===i){ _evalHideDrive(); return; }   // _evalHideDrive already clears the readout
-  _evalHideDrive();   // clear any other site's polygon + reset all buttons first
-  const orig = btn ? btn.textContent : '';
-  if(btn){ btn.disabled=true; btn.textContent='Computing…'; }
-  try{
-    // Reuse the cached ring if it's this same site (hidden then re-shown) — no second Routes call.
-    let ring, ringSrc='drive';
-    try{ ring = (_evalDriveIdx===i && _evalDriveRing) ? _evalDriveRing : await computeIsochrone(g.la, g.lo, DRIVE_BUDGET_SEC); }
-    catch(e){ // Routes proxy down/unavailable -> honest ~3.5mi radius ring instead of nothing
-      ringSrc='radius'; const R=3.5/69, lf=Math.cos(g.la*Math.PI/180); ring=[];
-      for(let k=0;k<=32;k++){ const a2=k*Math.PI/16; ring.push([g.la+R*Math.sin(a2), g.lo+R*Math.cos(a2)/lf]); }
-    }
-    _evalDriveIdx=i; _evalDriveRing=ring;
-    evalDriveLayer=L.polygon(ring,{color:'#7c3aed',weight:2.5,fillColor:'#7c3aed',fillOpacity:0.12}).addTo(map);
-    try{ map.fitBounds(evalDriveLayer.getBounds(),{padding:[40,40],maxZoom:14}); }catch(e){}
-    const el=document.getElementById('evd-'+i);
-    if(el) el.innerHTML=`<span style="color:#64748b">Analyzing catchment…</span>`;
-    let cs=await _evalCatchmentStats(ring, g);
-    cs.src=ringSrc; _siteCatch[g.la.toFixed(4)+','+g.lo.toFixed(4)]=cs; _siteCardTabs[i]='ca'; _evalRenderSidebar();
-    const elL=document.getElementById('evd-'+i)||el;   // re-render rebuilt the card — write into the live node
-    if(elL) elL.innerHTML=`<div style="background:#f8f6ff;border:1px solid #ddd0f7;border-radius:9px;padding:8px 11px;line-height:1.7">
+// Shared catchment readout — used by the drive-time button AND the clinic-card auto-run.
+function _evalCatchHTML(cs){
+  return `<div style="background:#f8f6ff;border:1px solid #ddd0f7;border-radius:9px;padding:8px 11px;line-height:1.7">
       <div style="font-size:10.5px;font-weight:800;letter-spacing:.06em;color:#7c3aed">${cs.src==='drive'?'10-MIN CATCHMENT':'~3.5 MI RADIUS (drive-time unavailable)'} · ~${cs.areaMi} mi²</div>
       <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:#64748b">Households you'd serve</span><b>${cs.hhIn.toLocaleString()}</b></div>
       <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:#64748b">Pet households</span><b>${cs.dogIn.toLocaleString()} dog · ${cs.catIn.toLocaleString()} cat</b></div>
@@ -9244,6 +9236,31 @@ async function evalDriveTime(i, btn){
         <div style="font-size:10px;color:#64748b;margin-top:4px;line-height:1.4">${cs.fut.names.map(x=>_ceEsc(x.n)+' ('+x.u.toLocaleString()+')').join(' · ')}${cs.fut.n>3?' · +'+(cs.fut.n-3)+' more':''} — NCTCOG pipeline; young-family profile (0.55 dog / 0.25 cat HH per home), full buildout.</div>
       </div>`:''}
     </div>`;
+}
+async function evalDriveTime(i, btn){
+  const g=(i===-2)?evalSiteCell:evalTop[i]; if(!g) return;   // -2 = the dropped-site / clinic-evaluation card
+  // TOGGLE OFF: this site's drive area is currently on screen → hide it.
+  if(evalDriveLayer && _evalDriveIdx===i){ _evalHideDrive(); return; }   // _evalHideDrive already clears the readout
+  _evalHideDrive();   // clear any other site's polygon + reset all buttons first
+  const orig = btn ? btn.textContent : '';
+  if(btn){ btn.disabled=true; btn.textContent='Computing…'; }
+  try{
+    // Reuse the cached ring if it's this same site (hidden then re-shown) — no second Routes call.
+    let ring, ringSrc='drive';
+    try{ ring = (_evalDriveIdx===i && _evalDriveRing) ? _evalDriveRing : await computeIsochrone(g.la, g.lo, DRIVE_BUDGET_SEC); }
+    catch(e){ // Routes proxy down/unavailable -> honest ~3.5mi radius ring instead of nothing
+      ringSrc='radius'; const R=3.5/69, lf=Math.cos(g.la*Math.PI/180); ring=[];
+      for(let k=0;k<=32;k++){ const a2=k*Math.PI/16; ring.push([g.la+R*Math.sin(a2), g.lo+R*Math.cos(a2)/lf]); }
+    }
+    _evalDriveIdx=i; _evalDriveRing=ring;
+    evalDriveLayer=L.polygon(ring,{color:'#7c3aed',weight:2.5,fillColor:'#7c3aed',fillOpacity:0.12}).addTo(map);
+    try{ map.fitBounds(evalDriveLayer.getBounds(),{padding:[40,40],maxZoom:14}); }catch(e){}
+    const el=document.getElementById('evd-'+i);
+    if(el) el.innerHTML=`<span style="color:#64748b">Analyzing catchment…</span>`;
+    let cs=await _evalCatchmentStats(ring, g);
+    cs.src=ringSrc; _siteCatch[g.la.toFixed(4)+','+g.lo.toFixed(4)]=cs; _siteCardTabs[i]='ca'; _evalRenderSidebar();
+    const elL=document.getElementById('evd-'+i)||el;   // re-render rebuilt the card — write into the live node
+    if(elL) elL.innerHTML=_evalCatchHTML(cs);
     if(btn){ btn.disabled=false; btn.textContent=_DRIVE_HIDE; }
   }catch(e){
     vfToast('Drive-time unavailable — is the Routes API set up?');
@@ -9521,6 +9538,13 @@ function _siteDropEnd(){
 window.addEventListener('keydown', e=>{ if(e.key==='Escape' && siteDropMode) _siteDropEnd(); });
 function _siteMarkerPlace(lat,lon){
   if(evalSiteMarker){ map.removeLayer(evalSiteMarker); evalSiteMarker=null; }
+  // Clinic evaluation: the clinic's own pin IS the subject — draw a dashed halo around it
+  // instead of dropping a star on top. Lives in the evalSiteMarker slot so every lifecycle
+  // path (_siteClear / siteRemove / re-drop) treats it identically.
+  if(_evalSubject && Math.abs(lat-_evalSubject.la)<0.0006 && Math.abs(lon-_evalSubject.lo)<0.0006){
+    evalSiteMarker=L.circleMarker([lat,lon],{radius:17,color:'#6d28d9',weight:3,dashArray:'5,4',fill:false,opacity:0.9,interactive:false}).addTo(map);
+    return;
+  }
   const ic=L.divIcon({className:'', html:'<div class="vf-site-pin">★</div>', iconSize:[30,30], iconAnchor:[15,15]});
   evalSiteMarker=L.marker([lat,lon],{icon:ic, draggable:true, zIndexOffset:1200}).addTo(map);
   evalSiteMarker.bindTooltip('Your site — drag to re-evaluate', {direction:'top', offset:[0,-14]});
@@ -9530,6 +9554,21 @@ function _siteClear(){
   evalSitePt=null; evalSiteCell=null; _evalSubject=null;
   if(evalSiteMarker){ map.removeLayer(evalSiteMarker); evalSiteMarker=null; }
 }
+let _evalAutoCatchBusy=false;
+function _evalAutoCatch(g){
+  if(_evalAutoCatchBusy) return; _evalAutoCatchBusy=true;
+  setTimeout(async()=>{
+    try{
+      const sid=g.la.toFixed(4)+','+g.lo.toFixed(4);
+      if(_siteCatch[sid]){ _evalAutoCatchBusy=false; return; }
+      const R=3.5/69, lf=Math.cos(g.la*Math.PI/180), ring=[];
+      for(let k=0;k<=32;k++){ const a2=k*Math.PI/16; ring.push([g.la+R*Math.sin(a2), g.lo+R*Math.cos(a2)/lf]); }
+      const cs=await _evalCatchmentStats(ring,g); cs.src='radius'; _siteCatch[sid]=cs;
+      if(_evalSubject && evalActive) _evalRenderSidebar();   // cached now — renders inline
+    }catch(e){}
+    _evalAutoCatchBusy=false;
+  },60);
+}
 /* Clinic evaluation (2026-07-23, user ask: "site evaluations on other clinics").
    Reuses the ENTIRE drop-a-site engine at the clinic's own coordinates, with two differences:
    the subject clinic is EXCLUDED from its own competition (else it competes against itself and
@@ -9538,8 +9577,11 @@ function _siteClear(){
 let _evalSubject=null;
 function _evalClinicGo(la,lo,nameEnc){
   const name=decodeURIComponent(nameEnc||'')||'Clinic';
-  const st=_vetStaffAt(la,lo);
-  _evalSubject={la,lo,name,dvm:(st&&st.n)||null};
+  const st=_vetStaffAt(la,lo), enr=_vetEnrichAt(la,lo);
+  let pe=null; try{ pe=checkPE(name,la,lo,null,getOverrides()); }catch(e){}
+  _evalSubject={la,lo,name,dvm:(st&&st.n)||null,vets:(st&&st.vets)||[],
+    rating:(enr&&enr.rating)||null,reviews:(enr&&enr.reviews!=null)?enr.reviews:null,
+    pe:!!pe,owner:(pe&&pe.owner)||null};
   map.closePopup();
   _siteDropCommit(la,lo);
 }
