@@ -30,6 +30,14 @@ const COUNTIES = { 2043: 'Collin', 2057: 'Dallas', 2061: 'Denton', 2220: 'Tarran
 const REG_MONTHS = 15;                        // registration look-back window
 const FRESH = process.argv.includes('--fresh');
 const PRIORITY = process.argv.includes('--priority');   // interim ship: vets + top-200 new only, then exit
+// Paid last-mile geocoders, env-gated — keys NEVER live in the repo. Preference order:
+//   GEOCODIO_KEY   — ToS-clean for Vetric (permanent storage + display on any map allowed;
+//                    free tier 2,500/day covers the residue). RECOMMENDED.
+//   GOOGLE_PLACES_KEY + --google — works, but Google's terms require display on a Google map
+//                    and cap coordinate caching at 30 days; Vetric is Leaflet/OSM. Only runs
+//                    behind the explicit flag so the trade-off is a deliberate choice.
+const GEOCODIO_KEY = process.env.GEOCODIO_KEY || null;
+const GOOGLE_OK = !!process.env.GOOGLE_PLACES_KEY && process.argv.includes('--google');
 const CKPT = '.tabs-checkpoint.json', GEO = '.tabs-geocache.json';
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -190,6 +198,37 @@ async function _censusTiger(addr, city) {
   } catch (e) { await sleep(300); }
   return null;
 }
+async function _geocodio(addr, city) {
+  const url = 'https://api.geocod.io/v1.7/geocode?limit=1&api_key=' + GEOCODIO_KEY +
+    '&q=' + encodeURIComponent(`${addr}, ${city}, TX`);
+  try {
+    const r = await fetchRetry(url, { headers: UA }, 2);
+    await sleep(150);
+    if (r && r.ok) {
+      const j = await r.json(); const m = j && j.results && j.results[0];
+      // reject city/county-centroid answers — approximate is exactly what this lane exists to beat
+      if (m && m.location && m.accuracy >= 0.8 && !/^(place|county|state)$/.test(m.accuracy_type || ''))
+        return [+(+m.location.lat).toFixed(5), +(+m.location.lng).toFixed(5)];
+    }
+  } catch (e) { await sleep(150); }
+  return null;
+}
+async function _google(addr, city) {
+  const url = 'https://maps.googleapis.com/maps/api/geocode/json?key=' + process.env.GOOGLE_PLACES_KEY +
+    '&address=' + encodeURIComponent(`${addr}, ${city}, TX`);
+  try {
+    const r = await fetchRetry(url, { headers: UA }, 2);
+    await sleep(120);
+    if (r && r.ok) {
+      const j = await r.json(); const m = j && j.results && j.results[0];
+      if (m && m.geometry && m.geometry.location && m.geometry.location_type !== 'APPROXIMATE')
+        return [+(+m.geometry.location.lat).toFixed(5), +(+m.geometry.location.lng).toFixed(5)];
+    }
+  } catch (e) { await sleep(120); }
+  return null;
+}
+const _paidLane = GEOCODIO_KEY ? _geocodio : (GOOGLE_OK ? _google : null);
+
 // TX-specific normalization: corner/side prefixes off, highway abbreviations expanded to the
 // names Nominatim indexes, intersections into "A and B" form.
 function _txVariants(addr) {
@@ -213,11 +252,18 @@ async function geocode(addr, city, opts) {
   const hit = geoCache[key];
   if (Array.isArray(hit)) return hit;
   if (hit && hit.a) return hit;
-  if (hit && hit.x) return null;                 // terminal miss — all lanes already tried
+  if (hit && hit.x) {
+    // free lanes are terminal — but a newly-supplied paid key earns exactly one more attempt
+    if (!(_paidLane && hit.x === 1)) return null;
+    const pg = await _paidLane(clean, city);
+    geoCache[key] = pg || { x: 2 }; _geoSave();
+    return pg;
+  }
   let res = null;
   if (hit === undefined) res = await _nominatim(`${clean}, ${city}, TX`);   // lane 1 (v1 nulls skip: already tried)
   if (!res) for (const v of _txVariants(clean)) { res = await _nominatim(`${v}, ${city}, Texas`); if (res) break; }
   if (!res) res = await _censusTiger(clean, city);
+  if (!res && _paidLane) res = await _paidLane(clean, city);
   if (!res && opts && opts.vetApprox) {
     const ck2 = ('__city__' + city).toLowerCase();
     let cc = geoCache[ck2];
@@ -270,7 +316,7 @@ function assembleRows() {
           fac: facOf(r),
           city, cost: r.EstimatedCost || null,
           end: (r.EstimatedEndDate || '').slice(0, 10) || null,
-          tenant: d.tenant || null }
+          tenant: d.tenant || null, addr: d.addr || null }
       : { id: r.ProjectNumber, n: (r.ProjectName || '').trim(), kind,
           fac: facOf(r),
           city, cty: COUNTIES[r.County] || null, addr: d.addr || null,
@@ -377,8 +423,10 @@ for (const v of cpaRun) {                 // small set, most valuable, goes firs
   else if (g && g.a) { v.la = g.a[0]; v.lo = g.a[1]; v.approx = 1; }
 }
 flushOutput('cpa-vets');
+// vet + new first (highest value), then tenant finish-outs — the user wants EVERY project
+// mappable, and tenant addresses (established centers) actually geocode at a higher rate
+// than new construction. Priority order comes from RUNSET's kind sort.
 for (const { r, kind } of RUNSET) {
-  if (kind !== 'vet' && kind !== 'new') continue;
   const d = ck.det[r.ProjectNumber];
   if (!d || d.fail) continue;
   // skip only SUCCESSFUL geocodes — a null from the v1 pass means "Nominatim free-text missed",
