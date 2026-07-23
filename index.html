@@ -5457,20 +5457,47 @@ const _CRANE_SVG='<svg width="10" height="10" viewBox="0 0 10 10"><path d="M1.2 
 // Analyst-ticket popup (user pick B4): dense label/value rows, tabular numerals, tenant block
 // as a <details> dropdown. Suppresses the facility line when it just repeats the project name.
 function _tabsTicket(r,tenants){
+  // User picks (2026-07-23): B3 delivery-timeline card up front, B4 analyst-ticket rows in a
+  // dropdown, tenant block as its own dropdown. Timeline needs both dates; without them the
+  // ticket rows render open instead.
   const row=(k,v)=>v?`<div style="display:flex;justify-content:space-between;gap:12px;padding:3px 0;border-bottom:1px dashed #e5eaf3;font-variant-numeric:tabular-nums"><span style="color:#64748b;font-size:11px">${k}</span><span style="font-weight:700;font-size:11px;text-align:right">${v}</span></div>`:'';
   const fmt$=v=>v>=1e6?('$'+(v/1e6).toFixed(1)+'M'):v>=1e3?('$'+Math.round(v/1e3)+'k'):('$'+v);
   const facLine=(r.fac&&r.fac.toLowerCase()!==(r.n||'').toLowerCase())?r.fac:null;
-  const ten=tenants&&tenants.length?`<details style="margin-top:6px"><summary style="cursor:pointer;font-size:11px;font-weight:800;color:#0d9488">${tenants.length} committed tenant${tenants.length>1?'s':''} at this center</summary>
-      <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">${tenants.slice(0,14).map(t=>'<span style="font-size:10px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:7px;padding:2px 7px;color:#334155"><b>'+_ceEsc(t.n)+'</b>'+(t.end?' · '+t.end.slice(2,7).replace('-','/'):'')+'</span>').join('')}${tenants.length>14?'<span style="font-size:10px;color:#64748b">+'+(tenants.length-14)+' more</span>':''}</div></details>`:'';
-  return `<div style="min-width:225px;max-width:285px">
-    <div style="display:inline-block;font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#fff;background:#b45309;border-radius:7px;padding:2px 8px">New commercial</div>
-    <div style="font-size:13.5px;font-weight:700;margin:6px 0 4px;line-height:1.3">${_ceEsc(r.n||'Project')}</div>
-    ${row('Center',facLine?_ceEsc(facLine):null)}
+  const mo=d=>{const dt=new Date(d);return isNaN(dt)?null:dt.toLocaleDateString('en-US',{month:'short',year:'2-digit'}).replace(' ',' ’');};
+  let timeline='';
+  if(r.start&&r.end){
+    const t0=+new Date(r.start), t1=+new Date(r.end), now=Date.now();
+    if(isFinite(t0)&&isFinite(t1)&&t1>t0){
+      const pct=Math.max(0,Math.min(1,(now-t0)/(t1-t0)));
+      const monthsLeft=Math.round((t1-now)/2629800000);
+      const done=now>=t1;
+      timeline=`<div style="margin:7px 0 2px">
+        <div style="position:relative;height:7px;border-radius:4px;background:#eadfcb">
+          <span style="position:absolute;inset:0 auto 0 0;width:${(pct*100).toFixed(0)}%;background:${done?'#94a3b8':'#d97706'};border-radius:4px"></span>
+          ${!done?`<span style="position:absolute;top:-3px;bottom:-3px;left:${(pct*100).toFixed(0)}%;width:2px;background:#0f172a;border-radius:1px"></span>`:''}
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:9.5px;color:#64748b;margin-top:3px"><span>${mo(r.start)||r.start}</span>${!done?'<span>today</span>':''}<span>${mo(r.end)||r.end}</span></div>
+        <div style="font-size:11.5px;font-weight:700;color:${done?'#64748b':'#b45309'};margin-top:3px">${done?'Est. delivered '+(mo(r.end)||r.end):(monthsLeft<=0?'Delivering about now':'Delivers in ~'+monthsLeft+' month'+(monthsLeft>1?'s':''))}</div>
+      </div>`;
+    }
+  }
+  const rowsHTML=`${row('Center',facLine?_ceEsc(facLine):null)}
     ${row('Address',r.addr?_ceEsc(r.addr)+(r.city?', '+_ceEsc(r.city):''):(r.city?_ceEsc(r.city):null))}
     ${row('Cost / size',(r.cost?fmt$(r.cost):'')+(r.sf?(r.cost?' · ':'')+r.sf.toLocaleString()+' sf':'')||null)}
     ${row('Start',r.start)}
     ${row('Delivery',r.end?'<b>'+r.end+'</b>':null)}
-    ${row('Owner',r.owner?_ceEsc(r.owner):null)}
+    ${row('Owner',r.owner?_ceEsc(r.owner):null)}`;
+  const ticket=timeline
+    ? `<details style="margin-top:5px"><summary style="cursor:pointer;font-size:11px;font-weight:800;color:var(--navy)">Details — cost, size, owner</summary><div style="margin-top:4px">${rowsHTML}</div></details>`
+    : rowsHTML;
+  const ten=tenants&&tenants.length?`<details style="margin-top:6px"><summary style="cursor:pointer;font-size:11px;font-weight:800;color:#0d9488">${tenants.length} committed tenant${tenants.length>1?'s':''} at this center</summary>
+      <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">${tenants.slice(0,14).map(t=>'<span style="font-size:10px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:7px;padding:2px 7px;color:#334155"><b>'+_ceEsc(t.n)+'</b>'+(t.end?' · '+t.end.slice(2,7).replace('-','/'):'')+'</span>').join('')}${tenants.length>14?'<span style="font-size:10px;color:#64748b">+'+(tenants.length-14)+' more</span>':''}</div></details>`:'';
+  return `<div style="min-width:225px;max-width:285px">
+    <div style="display:inline-block;font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#fff;background:#b45309;border-radius:7px;padding:2px 8px">New commercial</div>
+    <div style="font-size:13.5px;font-weight:700;margin:6px 0 2px;line-height:1.3">${_ceEsc(r.n||'Project')}</div>
+    ${facLine&&timeline?`<div style="font-size:10.5px;color:#64748b">${_ceEsc(facLine)}${r.city?' · '+_ceEsc(r.city):''}</div>`:''}
+    ${timeline}
+    ${ticket}
     ${ten}
     ${r.approx?'<div style="font-size:10.5px;color:#9f1239;background:#fff1f2;border:1px solid #fecdd3;border-radius:8px;padding:4px 8px;margin-top:6px">Location approximate (city level) — the filing\'s address didn\'t street-geocode.</div>':''}
     <div style="font:9.5px/1.4 ui-monospace,Menlo,monospace;color:#94a3b8;margin-top:7px">TDLR TABS ${r.id||''} · dates are applicant estimates</div></div>`;
@@ -8317,8 +8344,14 @@ function _evalComputeAndRender(){
     // NO maxComp: a uniformly saturated ZIP scores uniformly low and means the same in 75077 as
     // in an empty exurb. Fair-fight A_OWN=1.0 @3mi: comp=0 -> 1.0, comp=1 -> 0.5, comp=8.7 (a dense
     // suburb median) -> 0.22, comp=15 (PE-ringed) -> 0.14.
-    g.share = A_OWN/(A_OWN + g.comp);
-    if(g.nearPE < PE_NEAR_HARD) g.share = Math.min(g.share, 0.10); // unwinnable sitting on top of a PE incumbent (0.10 ≡ old 0.20 on the fair-fight scale)
+    // CLINIC MODE (2026-07-23, the Double Oak bug): the forced cell IS the incumbent.
+    // (a) Its attraction scales by its own roster (_staffW) — a 4-DVM 766-review hospital is not
+    //     a hypothetical 2-3 DVM entrant; (b) the 700m PE hard-cap does NOT apply — that cap
+    //     encodes NEW-BUILD entry risk next to a corporate incumbent, and an existing practice
+    //     0.17mi from a PE clinic (Double Oak vs Lantana) is proof of coexistence, not a 10% share.
+    const _incW = (g.forced && _evalSubject && _evalSubject.dvm) ? _staffW(_evalSubject.dvm) : 1;
+    g.share = (A_OWN*_incW)/(A_OWN*_incW + g.comp);
+    if(g.nearPE < PE_NEAR_HARD && !(g.forced && _evalSubject)) g.share = Math.min(g.share, 0.10); // unwinnable sitting on top of a PE incumbent (0.10 ≡ old 0.20 on the fair-fight scale)
     g.lowComp = g.share; // alias: the "Low competition" bar now shows absolute winnable share
     // Core is MULTIPLICATIVE captured demand — what the site actually WINS. Demand can no longer
     // additively buy back a competition-taken site (the 75077 bug).
@@ -8545,7 +8578,7 @@ function _evalRenderLayers(){
   const pins=L.layerGroup();
   // Honesty gate: in 'none' mode the engine does NOT plant recommendation pins — the map shows
   // the heatmap + competitors only, until the user explicitly reveals the weak fallbacks.
-  if(evalTopMode!=='none' || evalShowWeak){
+  if(!_evalSubject && (evalTopMode!=='none' || evalShowWeak)){   // clinic eval: the clinic is the subject — no de novo site pins
     evalTop.forEach((g,i)=>{
       const grayed = g.tier!=='strong';
       const m=L.marker([g.la,g.lo],{icon:L.divIcon({className:'',html:`<div class="eval-pin"${grayed?' style="background:#94a3b8;box-shadow:0 2px 8px rgba(100,116,139,.45)"':''}>${i+1}</div>`,iconSize:[26,26],iconAnchor:[13,13]})});
@@ -8553,7 +8586,7 @@ function _evalRenderLayers(){
       m.addTo(pins);
     });
   }
-  evalLandPlays.forEach((lp,i)=>{
+  if(!_evalSubject) evalLandPlays.forEach((lp,i)=>{
     const _lpSvg='<svg width="34" height="46" viewBox="0 0 34 46" xmlns="http://www.w3.org/2000/svg"><path d="M17 2C9.3 2 3 8.3 3 16C3 27.5 17 44 17 44C17 44 31 27.5 31 16C31 8.3 24.7 2 17 2Z" fill="#0d9488" stroke="#fff" stroke-width="2"/><path d="M17 23 V13" stroke="#fff" stroke-width="2.2" fill="none" stroke-linecap="round"/><path d="M17 16 C17 12.5 20 10.5 23 10.5 C23 14 20.5 16 17 16 Z" fill="#fff"/><path d="M17 19 C17 15.5 14 13.5 11 13.5 C11 17 13.5 19 17 19 Z" fill="#fff"/></svg>';
     const m=L.marker([lp.la,lp.lo],{icon:L.divIcon({className:'',html:'<div class="vf-lp">'+_lpSvg+'<span class="vf-lp-n">'+(i+1)+'</span></div>',iconSize:[34,46],iconAnchor:[17,44],popupAnchor:[0,-46]})});
     m.bindTooltip('Land play '+(i+1)+' — future-demand corridor',{direction:'top',offset:[0,-48]});
@@ -8680,6 +8713,7 @@ function _leaseBlock(g){
     +`<div style="margin-top:2px">Land to build: ${lnk('crexi','land','Crexi')} · ${lnk('loopnet','land','LoopNet')}</div></div>`;
 }
 function _evalRenderSidebar(){
+  if(_evalSubject && (evalTab==='sites'||evalTab==='land')) evalTab='layers';   // clinic eval: those panes are empty by design
   const sb=document.querySelector('.sidebar'); if(!sb) return;
   setTimeout(()=>{ try{ _evalFillStrips(); }catch(e){} }, 30);
   setTimeout(()=>{ try{ _evalAutoBlend(); }catch(e){} }, 400);   // network refinement of the headline capture, background
@@ -8687,7 +8721,7 @@ function _evalRenderSidebar(){
   const hasRetail=evalDataOk.retail, hasRoads=evalDataOk.roads, hasResid=evalDataOk.resid, hasAADT=evalDataOk.aadt;
   const bar=(label,v,on)=>{ const pct=on?Math.round(Math.max(0,Math.min(1,v))*100):null;
     return `<div class="eval-bar"><span>${label}</span><span class="eval-track"><span style="width:${pct==null?0:pct}%;background:${pct==null?'#cbd5e1':'#3b5bb5'}"></span></span><span class="eval-pct">${pct==null?'—':pct}</span></div>`; };
-  const cards=evalTop.map((g,i)=>{
+  const cards=(_evalSubject?[]:evalTop).map((g,i)=>{   // clinic eval: no de novo site cards
     const headline=_evalDisp(g.score);
     const nearStr = isFinite(g.nearC) ? (g.nearC/1609.344).toFixed(1)+' mi to nearest clinic' : 'no clinics nearby';
     const kfmt=v=>v>=10000?Math.round(v/1000)+'k':v>=1000?(v/1000).toFixed(1)+'k':String(v);
@@ -8806,7 +8840,8 @@ function _evalRenderSidebar(){
   if(evalSat) _memoTxt+=`This market grades <b style="color:${evalSat.grade.c}">${evalSat.grade.l} — ${evalSat.grade.t.toLowerCase()}</b>. `;
   if(evalSat) _memoTxt+=`${evalSat.peInRange} PE + ${evalSat.indInRange} independent clinics compete in range${_futHomes?`, with ~${_futHomes.toLocaleString()} announced homes on the way`:''}. `;
   else if(_futHomes) _memoTxt+=`~${_futHomes.toLocaleString()} announced homes are on the way here. `;
-  if(evalTop.length && evalTopMode==='good'){ _memoTxt+=`The call: <b>lease</b> — Site 1 clears the bar at ${_bestSc}`; if(_lpSc&&_lpSc>_bestSc) _memoTxt+=`, though the ${_lpName?_ceEsc(_lpName)+' ':''}land play (${_lpSc}) outscores every lease option — dirt may beat rent here`; _memoTxt+='.'; if(_acqPlay&&_acqTop) _memoTxt+=` Acquisition alternative: ${_acqCands.length} independent${_acqCands.length!==1?'s':''} already hold share here — strongest: ${_acqDesc}.`; }
+  if(_evalSubject){ _memoTxt+=`Evaluating <b>${_ceEsc(_evalSubject.name)}</b> in place — its practice read (roster vs winnable demand, staffing headroom, future rooftops) is on the card below. De novo site recommendations are off for clinic evaluations.`; }
+  else if(evalTop.length && evalTopMode==='good'){ _memoTxt+=`The call: <b>lease</b> — Site 1 clears the bar at ${_bestSc}`; if(_lpSc&&_lpSc>_bestSc) _memoTxt+=`, though the ${_lpName?_ceEsc(_lpName)+' ':''}land play (${_lpSc}) outscores every lease option — dirt may beat rent here`; _memoTxt+='.'; if(_acqPlay&&_acqTop) _memoTxt+=` Acquisition alternative: ${_acqCands.length} independent${_acqCands.length!==1?'s':''} already hold share here — strongest: ${_acqDesc}.`; }
   else if(evalTop.length && evalTopMode==='fair'){
     if(_acqPlay&&_acqTop) _memoTxt+=`The call: <b>this is an acquisition play</b> — the best buildable spot (${_bestSc}) is held back: ${_evalWeakWhy(_bestG)}, and ${_acqCands.length} independent${_acqCands.length!==1?'s':''} already hold the market. Strongest target: ${_acqDesc}.`+(_lpSc?` Dirt alternative: the top land play scores ${_lpSc}${_lpHomes?` with ~${_lpHomes.toLocaleString()} homes in reach`:''}.`:'');
     else _memoTxt+=`The call: <b>don't force a lease</b> — the best spot (${_bestSc}) is held back: ${_evalWeakWhy(_bestG)}. `+(_lpSc?`The stronger move is dirt — the top land play scores ${_lpSc}${_lpHomes?` with ~${_lpHomes.toLocaleString()} homes in reach`:''}.`:`An acquisition may beat a new build here.`); }
@@ -8814,9 +8849,9 @@ function _evalRenderSidebar(){
   else if(!evalTop.length){ _memoTxt+=`No commercially-siteable spots were found — this area may be largely rural${_lpSc?`; the land plays are the only moves here`:''}${_acqPlay&&_acqTop?`. Acquisition path: ${_acqDesc}`:''}.`; }
   const _ring=(scv,col,track)=>`<svg width="38" height="38" viewBox="0 0 40 40" style="flex-shrink:0"><circle cx="20" cy="20" r="16" fill="none" stroke="${track}" stroke-width="5"/><circle cx="20" cy="20" r="16" fill="none" stroke="${col}" stroke-width="5" stroke-dasharray="${(scv*1.005).toFixed(1)} 100.5" stroke-linecap="round" transform="rotate(-90 20 20)"/><text x="20" y="24" text-anchor="middle" font-size="11" font-weight="700" fill="#0f172a">${scv}</text></svg>`;
   let _memoRows='';
-  if(_bestG){ const nearStr=isFinite(_bestG.nearC)?(_bestG.nearC/1609.344).toFixed(1)+' mi to nearest clinic':'no clinics nearby';
+  if(_bestG && !_evalSubject){ const nearStr=isFinite(_bestG.nearC)?(_bestG.nearC/1609.344).toFixed(1)+' mi to nearest clinic':'no clinics nearby';
     _memoRows+=`<div class="eval-memo-row" onclick="evalSetTab('sites');evalFlyTo(0)">${_ring(_bestSc,'#1e3a8a','#eef1f7')}<span class="t"><b>Lease · Site 1</b> — ${_bestG.tier==='strong'?'recommended':_bestG.tier==='fair'?'best available':'weak'}<br><span class="sub">demand ${Math.round(_bestG.demandN*100)} · share ${(_bestG.share*100).toFixed(0)}% · ${nearStr}</span></span></div>`; }
-  if(_lpBest){ _memoRows+=`<div class="eval-memo-row" onclick="evalSetTab('land');map.setView([${_lpBest.la},${_lpBest.lo}],13,{animate:false})">${_ring(_lpSc,'#0d9488','#ccfbf1')}<span class="t"><b>Buy dirt · Land play 1</b>${_lpName?' — '+_ceEsc(_lpName)+' corridor':''}<br><span class="sub">${_lpHomes?`~${_lpHomes.toLocaleString()} homes in reach · `:''}share today ${(_lpBest.share*100).toFixed(0)}%</span></span></div>`; }
+  if(_lpBest && !_evalSubject){ _memoRows+=`<div class="eval-memo-row" onclick="evalSetTab('land');map.setView([${_lpBest.la},${_lpBest.lo}],13,{animate:false})">${_ring(_lpSc,'#0d9488','#ccfbf1')}<span class="t"><b>Buy dirt · Land play 1</b>${_lpName?' — '+_ceEsc(_lpName)+' corridor':''}<br><span class="sub">${_lpHomes?`~${_lpHomes.toLocaleString()} homes in reach · `:''}share today ${(_lpBest.share*100).toFixed(0)}%</span></span></div>`; }
   if(_acqPlay&&_acqTop){ const ac=_acqTop.c;
     _memoRows+=`<div class="eval-memo-row" onclick="_evalAcqFocus(${_acqTop.ci})"><span style="flex-shrink:0;width:38px;height:38px;border-radius:50%;background:#f5f3ff;border:2.5px solid #6d28d9;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1"><span style="font-size:12px;font-weight:800;color:#5b21b6">${ac.staffN||'~2'}</span><span style="font-size:10.5px;font-weight:700;color:#8b5cf6">DVM</span></span><span class="t"><b>Acquire · ${_ceEsc(ac.name||'independent clinic')}</b><br><span class="sub">${ac.rating?'★'+ac.rating+' · ':''}${ac.reviews?ac.reviews.toLocaleString()+' reviews · ':''}independent${_acqCands.length>1?` · ${_acqCands.length-1} more target${_acqCands.length!==2?'s':''} in range`:''}</span></span></div>`; }
   const _memoCard=`<div class="eval-memo"><p>${_memoTxt}</p>${_memoRows}</div>`;
@@ -8912,7 +8947,7 @@ function _evalRenderSidebar(){
         </div>
       </div>`; })()}
     ${speciesPrompt}
-    <div class="eval-tabs">${_tabBtn('sites','Sites',evalTop.length)}${_tabBtn('land','Land',evalLandPlays.length)}${_tabBtn('layers','Layers',null)}${_tabBtn('data','Data',null)}</div>
+    <div class="eval-tabs">${_evalSubject?'':_tabBtn('sites','Sites',evalTop.length)+_tabBtn('land','Land',evalLandPlays.length)}${_tabBtn('layers','Layers',null)}${_tabBtn('data','Data',null)}</div>
     ${_pane('sites', `${verdictBanner}<div class="eval-cards">${hideCards?'':cards}</div>`)}
     ${_pane('land', `${_evalFutInfo?`<div style="font-size:11px;color:#0f766e;background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;padding:7px 10px;margin:8px 0 2px;line-height:1.5">⚡ Demand includes ~${_evalFutInfo.reduce((t,x)=>t+Math.round(x.rem*x.conf),0).toLocaleString()} confidence-discounted announced homes (${_evalFutInfo.map(x=>x.n).join(', ')}). Toggle “Announced homes” off for today-only demand.</div>`:''}
     ${evalLandPlays.length?`<div style="border:1.5px dashed #0d9488;background:#f0fdfa;border-radius:10px;padding:10px 12px;margin:8px 0 2px">
@@ -9221,9 +9256,11 @@ function _evalCatchHTML(cs){
         <div style="display:flex;justify-content:space-between;font-size:11px;margin-top:4px"><span style="color:#64748b">Demand ceiling (winnable)</span><b>~${cs.captured.toLocaleString()} visits/yr</b></div>
         <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:#64748b">Capacity ceiling (${_evalSubject.dvm} DVM × ${DVM_VISIT_CAPACITY.toLocaleString()})</span><b>~${cap.toLocaleString()} visits/yr</b></div>
         <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:#64748b">Binding side</span><b>${e2.bound==='demand'?'Demand — market-limited':'Capacity — doctor-limited'}</b></div>
-        <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:#64748b">Modeled revenue · adj. EBITDA</span><b>${_fmtM(e2.rev)} · ${_fmtM(e2.ebitda)} @ ${Math.round(e2.margin*100)}%</b></div>
-        ${hr>0?`<div style="margin-top:5px;font-size:11px;font-weight:700;color:#047857">Understaffed: ~${hr.toLocaleString()} winnable visits/yr beyond current capacity ≈ ${hire.toFixed(1)} DVM of headroom — revenue growth without fighting for a point of share.</div>`
-              :`<div style="margin-top:5px;font-size:11px;font-weight:700;color:#9f1239">Over-doctored: capacity exceeds winnable demand by ~${Math.abs(hr).toLocaleString()} visits/yr — expect revenue per DVM below the $617k benchmark.</div>`}
+        <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:#64748b">Market-supported revenue (share model)</span><b>${_fmtM(cs.captured*REV_PER_VISIT)}</b></div>
+        <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:#64748b">At-capacity revenue (AVMA benchmark)</span><b>${_fmtM(_evalSubject.dvm*REV_PER_DVM)}</b></div>
+        ${Math.abs(hire)<0.35?`<div style="margin-top:5px;font-size:11px;font-weight:700;color:var(--navy)">Balanced: the market supports ~${Math.round(100*cs.captured/cap)}% of capacity — this roster is sized to its trade area.</div>`
+          :hr>0?`<div style="margin-top:5px;font-size:11px;font-weight:700;color:#047857">Understaffed: ~${hr.toLocaleString()} winnable visits/yr beyond current capacity ≈ ${hire.toFixed(1)} DVM of headroom — revenue growth without fighting for a point of share.</div>`
+              :`<div style="margin-top:5px;font-size:11px;font-weight:700;color:#9f1239">Utilization flag: the share model supports ~${cs.captured.toLocaleString()} of their ${cap.toLocaleString()}-visit capacity (~${Math.abs(hire).toFixed(1)} DVM over). An established base often out-earns the model — read this as competitive pressure on growth, not current revenue.</div>`}
         <div style="font-size:10px;color:#64748b;margin-top:4px">Roster from website scrape (override in the clinic editor if wrong). Winnable = catchment visits × modeled share; the clinic is excluded from its own competition.</div>
       </div>`;})():''}
       ${cs.fut?`<div style="margin-top:8px;padding:7px 9px;background:#f0fdfa;border:1px dashed #99f6e4;border-radius:9px">

@@ -220,7 +220,11 @@ with every verified endpoint: `research/development-pipeline-sources.md`.
   majors our curation missed (Goodland Grand Prairie 15,000u, Minto Waxahachie 13,270u, Honey Creek
   McKinney 10,000u). dfw-mpc.json STAYS — it carries curated pricing/phases/opened-years NCTCOG lacks.
 
-- **Commercial pipeline & tenants (`toggle-commercial`, `dfw-commercial.json`, built by `build-tabs.mjs`)**:
+- **Commercial pipeline & tenants (`toggle-commercial`, `dfw-commercial.json`, built by `build-tabs.mjs`)**
+  — popup = **B3 delivery-timeline card** (start→today→delivery bar + "Delivers in ~N months"; grey/done
+  state past delivery) with the **B4 analyst-ticket rows in a "Details" `<details>` dropdown** and the
+  committed-tenant chips in a second dropdown (user picks 2026-07-23; timeline needs both dates, else
+  ticket rows render open):
   TDLR TABS (every TX commercial project ≥$50k must register pre-construction; public record, no auth,
   next-day currency) across 9 DFW counties, trailing 15 months + Comptroller sales-tax outlets NAICS
   541940 statewide. Amber circles = new construction ≥$100k (retail shells = future leasable space) w/
@@ -286,6 +290,25 @@ on map" once the radius read is in). No-roster clinics get a rose prompt pointin
 Verified live (Animal Hospital of Celina, 1 DVM, PE/Harvest, ★4.6·197): halo not star, subject
 absent from evalCompsCache, identity+practice blocks render, auto two-sided read "Understaffed
 ~957 visits ≈ 0.3 DVM headroom", future-demand 25 devs/20,656 units — all with zero clicks.
+**INCUMBENT SHARE FIX (2026-07-23, the Double Oak bug — user: "4 doctors but $600k revenue based
+on visits")**: two entrant-model rules were leaking into clinic evaluations. (1) **The 700m PE
+hard-cap (share≤0.10) does NOT apply to the forced cell in clinic mode** — it encodes NEW-BUILD
+entry risk next to a corporate incumbent; Double Oak VMC (★4.9, 766 reviews, 4 DVMs) sits 270m from
+PE Lantana and the cap pinned its share at 10% → winnable ~5k → demand-bound "$600k revenue" for a
+practice actually billing ~$2.5M. (2) **The subject's attraction scales by its own roster** —
+`_incW=_staffW(dvm)` on the forced cell's A_OWN (odds-scaling the Huff share): a 4-DVM hospital is
+not a hypothetical 2-3 DVM entrant. Both gated on `g.forced && _evalSubject` — dropped-site/new-build
+evaluations keep the cap and the fair-fight entrant exactly as calibrated. Verified: Double Oak share
+0.10→**0.235**, winnable 12,053 vs capacity 12,800 → **"Balanced: market supports ~94% of capacity"**
+(a third verdict state, |headroom|<0.35 DVM, between Understaffed/Utilization-flag; the over-doctored
+wording now reads as a UTILIZATION flag with the established-base caveat, never as current revenue —
+and the two-sided block shows BOTH revenue ceilings, market-supported AND at-capacity, instead of
+silently collapsing to min). **Clinic mode also hides all de novo output** (user ask): no site pins,
+no land-play pins, no Sites/Land tabs or cards, memo replaced with a clinic-mode line; evalTab
+coerced off the hidden panes. KNOWN residual (diagnosed, not yet applied): pure-specialty/ER
+competitors (VEG ER, emergency&specialty, dentistry-only, TeleCardiology — 4 of Double Oak's 11)
+still count in comp at full weight in ALL models; excluding them is a cross-model scoring change
+(evaluate+hex+list) awaiting a decision — see the 2026-07-23 session report.
 
 ## Catchment future-demand block (2026-07-23, user ask: "new residential development... as part of future demand with all the same pet algorithm calculations")
 `_evalCatchmentStats` runs a pipeline pass: NCTCOG residential projects (`dfw-pipeline.json`, `cl==='R'`,
