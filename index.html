@@ -1416,7 +1416,8 @@ function vetricSignOut(){
 <script src="pe-data.js" defer></script>
 <script src="vet-clinics.js" defer></script>
 <script src="vet-staff.js" defer onerror="window.VET_STAFF=window.VET_STAFF||{}"></script><!-- DVMs-on-staff (build-vets.mjs); optional, app degrades gracefully if absent -->
-<script src="vet-species.js" defer onerror="window.VET_SPECIES=window.VET_SPECIES||{}"></script><!-- species focus small/large/mixed (build-species.mjs); optional -->
+<script src="vet-species.js" defer onerror="window.VET_SPECIES=window.VET_SPECIES||{}"></script>
+<script src="vet-services.js" defer onerror="window.VET_SERVICES=window.VET_SERVICES||{}"></script><!-- services offered per clinic, website-read (build-services.mjs); graceful if absent --><!-- species focus small/large/mixed (build-species.mjs); optional -->
 <script>
 const NAVY='#1e3a8a', RED='#dc2626', AMBER='#f59e0b';
 // Set to true to revert to Overpass for independent clinics (one-line rollback)
@@ -1448,6 +1449,29 @@ function _speciesAt(la,lo){
   const hit=VET_SPECIES[ci+'_'+cj]; if(hit) return hit;
   for(let di=-3;di<=3;di++) for(let dj=-4;dj<=4;dj++){ const v=VET_SPECIES[(ci+di)+'_'+(cj+dj)]; if(v) return v; }
   return null;
+}
+// Website-read SERVICES (vet-services.js, build-services.mjs): {c:[category codes], r:[verbatim
+// service-list items in the clinic's own words]}. Same cell-window lookup tolerance as species.
+const _SVC_LABEL={sx:'Surgery',dent:'Dental',brd:'Boarding',grm:'Grooming',dc:'Daycare',exo:'Exotics',urg:'Urgent care',dx:'In-house lab/imaging',well:'Wellness plans',repro:'Reproduction',rehab:'Rehab/alt',eol:'End-of-life',chip:'Microchip',house:'House calls',tele:'Telehealth',vax:'Vaccines',pharm:'Pharmacy',behav:'Behavior/training',nutr:'Nutrition',senior:'Senior care',crem:'Cremation',allergy:'Allergy/derm',endo:'Endoscopy',regen:'Regenerative'};
+function _svcAt(la,lo){
+  if(typeof VET_SERVICES==='undefined') return null;
+  const ci=Math.round(la*1000), cj=Math.round(lo*1000);
+  const hit=VET_SERVICES[ci+'_'+cj]; if(hit) return hit;
+  for(let di=-3;di<=3;di++) for(let dj=-4;dj<=4;dj++){ const v=VET_SERVICES[(ci+di)+'_'+(cj+dj)]; if(v) return v; }
+  return null;
+}
+// Popup block: category chips + the clinic's own list in a dropdown. Returns '' when unread.
+function _svcPopupHTML(c){
+  const sv=_svcAt(c.lat,c.lon); if(!sv||(!sv.c&&!sv.r)) return '';
+  const chips=(sv.c||[]).map(x=>_SVC_LABEL[x]||x).slice(0,10)
+    .map(l=>`<span style="font-size:10px;background:#eef2f8;border:1px solid #dde4ef;border-radius:7px;padding:1.5px 7px;color:#334155">${l}</span>`).join('');
+  const more=(sv.c||[]).length>10?`<span style="font-size:10px;color:#64748b">+${sv.c.length-10}</span>`:'';
+  const raw=(sv.r&&sv.r.length)?`<details style="margin-top:4px"><summary style="cursor:pointer;font-size:10.5px;font-weight:700;color:var(--navy)">Their services list (${sv.r.length})</summary><div style="font-size:10.5px;color:#475569;margin-top:3px;line-height:1.6">${sv.r.map(x=>_ceEsc(x)).join(' · ')}</div></details>`:'';
+  return `<div style="margin-top:6px">
+    <div style="font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#64748b">Services <span style="font-weight:600;text-transform:none;letter-spacing:0">· site-read</span></div>
+    ${chips?`<div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:3px">${chips}${more}</div>`:''}
+    ${raw}
+  </div>`;
 }
 // The competition-exclusion test, upgraded: the WEBSITE-read species wins when we have it
 // ("large" → excluded; "small"/"mixed" → competes — a mixed practice's site says so even when
@@ -2072,7 +2096,7 @@ function buildPopup(c) {
       <button class="gear-btn" onclick="_evalClinicGo(${c.lat},${c.lon},'${encodeURIComponent(c.name||'Clinic')}')" title="Evaluate this clinic — catchment, winnable share, staffing headroom" aria-label="Evaluate this clinic" style="right:38px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"/></svg></button>
       <button class="gear-btn" onclick="openClinicEditor('${key}')" title="Edit this location" aria-label="Edit this location"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></button>
     </div>
-    ${starHTML}${kindHTML}${multHTML}${addrHTML}${telHTML}${webHTML}${peHTML}${_staffPopupHTML(c)}${_analystPopupHTML(getOverrides()[key])}
+    ${starHTML}${kindHTML}${multHTML}${addrHTML}${telHTML}${webHTML}${peHTML}${_staffPopupHTML(c)}${_svcPopupHTML(c)}${_analystPopupHTML(getOverrides()[key])}
     <div class="popup-disclaimer">Source: privateequityvet.org — Texas</div>
     <div class="settings-panel" id="sp-${key}">
       <div><div class="settings-label">Clinic name</div>
@@ -6928,6 +6952,7 @@ const VF_DATASETS=[
  {name:'Independent clinics',     file:'vet-clinics.js',    src:'Google Places scan',         how:'node build-clinics.mjs (needs GOOGLE_PLACES_KEY)', last:'2026-07-14', every:90,  why:'openings / closures / ownership churn'},
  {name:'DVM rosters',             file:'vet-staff.js',      src:'clinic-website crawl',       how:'node build-vets.mjs', last:'2026-07-08', every:90,  why:'staff turnover moves competition weights'},
  {name:'Species verdicts',        file:'vet-species.js',    src:'clinic-website crawl',       how:'node build-species.mjs --all', last:'2026-07-09', every:180, why:'practice focus changes slowly'},
+ {name:'Services offered',        file:'vet-services.js',   src:'clinic-website crawl',       how:'node build-services.mjs --all', last:'2026-07-23', every:180, why:'service mix changes slowly; drives ancillary-revenue reads'},
  {name:'Master-planned communities', file:'dfw-mpc.json',   src:'curated (news + RCLCO)',     how:'hand-edit JSON, bump ?v=', last:'2026-07-14', every:60,  why:'announcements and phase openings move fast'},
  {name:'Development signals',     file:'dfw-signals.json',  src:'curated (news/zoning sweep)', how:'sweep + hand-edit JSON, bump ?v=', last:'2026-07-14', every:60,  why:'rezonings and anchor signings move fast'},
  {name:'Development pipeline',    file:'dfw-pipeline.json', src:'NCTCOG Development Monitoring', how:'node build-pipeline.mjs, bump ?v=', last:'2026-07-22', every:30,  why:'NCTCOG maintains continuously — cheap one-call refresh'},
@@ -8937,6 +8962,7 @@ function _evalRenderSidebar(){
             <div style="font-size:11px;color:#334155">${ident}</div>
             ${sub.dvm?`<div style="font-size:11px;color:#334155;margin-top:3px"><b>${sub.dvm} DVM${sub.dvm>1?'s':''} on staff</b> · capacity ~${(sub.dvm*DVM_VISIT_CAPACITY).toLocaleString()} visits/yr${vets.length?` <details style="display:inline"><summary style="display:inline;cursor:pointer;color:var(--navy);font-weight:700">· roster</summary><div style="margin-top:3px;color:#64748b">${vets.map(_ceEsc).join(' · ')}</div></details>`:''}</div>`
                      :'<div style="font-size:11px;color:#9f1239;margin-top:3px">No DVM roster scraped — set the count in the clinic editor (⚙) for the two-sided read.</div>'}
+            ${(()=>{const sv=_svcAt(sub.la,sub.lo); if(!sv||!sv.c||!sv.c.length) return ''; const ls=sv.c.map(x=>_SVC_LABEL[x]||x); return `<div style="font-size:10.5px;color:#475569;margin-top:3px">Offers: ${ls.slice(0,8).join(' · ')}${ls.length>8?' · +'+(ls.length-8)+' more':''} <span style="color:#94a3b8">· site-read</span></div>`;})()}
             ${(re_&&re_.econ)?`<div style="font-size:11px;color:#334155;margin-top:2px">Modeled revenue <b>${re_.txt}</b> · EBITDA ~<b>${_fmtM(re_.econ.ebitda)}</b> @ ${Math.round(re_.econ.margin*100)}% · ${re_.econ.multAnalyst?(re_.econ.multLo+'× analyst ⇒ '+_fmtM(re_.econ.valLo)):(re_.econ.multLo+'–'+re_.econ.multHi+'× ⇒ '+_fmtM(re_.econ.valLo)+'–'+_fmtM(re_.econ.valHi))}</div>`:''}
           </div>`;})():''}
         ${(()=>{ const sid2=g.la.toFixed(4)+','+g.lo.toFixed(4), cs2=_siteCatch[sid2];

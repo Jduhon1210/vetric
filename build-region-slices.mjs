@@ -42,7 +42,7 @@ function sliceAll(regionKey, bb) {
     console.log(`vet-clinics-${regionKey}.js: ${kept.length}/${all.length} clinics`);
   }
   // vet-staff.js + vet-species.js (cell-keyed objects)
-  for (const [file, varName] of [['vet-staff.js', 'VET_STAFF'], ['vet-species.js', 'VET_SPECIES']]) {
+  for (const [file, varName] of [['vet-staff.js', 'VET_STAFF'], ['vet-species.js', 'VET_SPECIES'], ['vet-services.js', 'VET_SERVICES']]) {
     if (!fs.existsSync(file)) { console.log(`${file}: absent, skipped`); continue; }
     const raw = fs.readFileSync(file, 'utf8');
     const ai = raw.indexOf('window.' + varName + '=');           // skip header comments (they contain braces)

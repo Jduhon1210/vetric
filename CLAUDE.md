@@ -351,6 +351,24 @@ The clinic editor (⚙) has a **Building & layout** section: on open, `_ceBldgLo
 - **DVM count is analyst-overridable (`staffOv`) — the scrape undercounts JS-rendered team pages**: e.g. Double Oak VMC's static HTML has none of its 4 vets (the cards load via JS), so the scrape caught only Kelly Watson (homepage-featured) → `n=1`. The clinic editor has an editable **"Veterinarians on staff (DVMs)"** field (`ce-staff`) that writes `vf_overrides[key].staffOv`. **`_vetStaffAt` honors it** (override wins over scraped `n`), via `_vetStaffOv(la,lo)` — a CACHED read-only lookup (`_ovStaffRaw`/`_ovStaffObj`, reparses only when the stored string changes) so the per-clinic competition loops stay cheap and the cache can't be polluted by mutate-then-save callers. The override flows everywhere `_vetStaffAt` is read: popup, `_staffW` weight, List underservice `dvm` sum, Saturation KPI. `saveClinicEditor` invalidates `_areaClinCache` + `oppBaseRows` (+ the hex index) so saturation/list rebuild with the corrected count. No re-scrape can fix JS sites for free — the override IS the fix.
 - **DVM count → competition weight (`_staffW`)**: a bigger practice is a stronger competitor. Each competitor in BOTH competition models (`_evalCompetitors`→`_evalComputeAndRender`, and `buildHexClinicIndex`→`buildHexBaseInputs`) carries `staffN` (from `_vetStaffAt`), and `comp` multiplies by `_staffW(staffN)` alongside the PE-weight and `mult` (`_revW`≡1 no-op since 2026-07-08 — reviews don't affect competition). Sublinear, centered on a typical ~2-3 DVM clinic (≈1.0×), **clamped GENTLE `[0.8, 1.8]`** (solo 0.8×, 5 DVMs 1.41×, big hospital up to 1.8×; unknown roster = neutral 1.0). The 0.8 floor is deliberate — the scrape undercounts (JS/corporate sites → "1"), so a tight floor stops a wrongly-undercounted hospital from being over-weakened. The A_OWN base 2.5 calibration still holds because `_staffW` is centered (median competitor ≈ 1.0×), not an across-the-board inflation.
 
+## Services offered (website scrape — vet-services.js, 2026-07-23, user ask: "statewide scrapes to see what services clinics offer")
+`build-services.mjs` (sibling of build-species: same crawl frame, checkpointed `.services-checkpoint.json`
+git-ignored, ~10-30 min warm statewide, NO --render) reads homepage + the services page (link-discovered,
+else /services|/our-services probes) → `vet-services.js` `window.VET_SERVICES={cellKey:{c:[codes],r:[verbatim]}}`
+(~846KB, **2,413 clinics = 79% of sites**, avg 7.0 services). HYBRID by design (user: "are you going to get
+ALL the services?"): **`c` = 24 normalized category codes** (sx dent brd grm dc exo urg dx well repro rehab
+eol chip house tele vax pharm behav nutr senior crem allergy endo regen — filterable/comparable; PE lens:
+brd/grm/dc = ancillary revenue, well = recurring, sx/dx = ACT capability) + **`r` = the clinic's own
+service-list verbatim** (li/h3 items off the services page, ≤24, junk-filtered: hours/phones/nav/chrome —
+the RAW_JUNK filter is applied in `pack()` so filter improvements clean already-checkpointed data
+retroactively at the next flush). Corpus-mined once: the only real taxonomy gap found was bare
+"diagnostics" (dx regex broadened + 263 retro-added from raw evidence); everything else frequent was
+website chrome → filtered. Frontend: `_svcAt(la,lo)` (species-style cell-window lookup),
+`_svcPopupHTML(c)` in the pin popup (category chips + "Their services list (N)" `<details>`), an
+"Offers: …" line in the clinic-eval identity block, `_SVC_LABEL` map. Loaded defer+onerror-graceful;
+pilot slice `vet-services-dfw.js` wired in build-region-slices + middleware REGION_SLICES. VF_DATASETS
+cadence 180d. Refresh: `node build-services.mjs --all` (checkpoint = only new/changed sites cost).
+
 ## Practice economics — revenue + EBITDA (2026-07-22, user ask: "base it on winnable visits and doctors")
 Replaced the headcount-only estimate (`staffN × $650k`) with a **two-sided model**. Revenue is driven by
 WINNABLE VISITS and constrained by DOCTOR CAPACITY; the two are ceilings on the same quantity and the

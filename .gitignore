@@ -9,3 +9,4 @@ package-lock.json
 # TABS build artifacts (derived, local-only)
 .tabs-checkpoint.json
 .tabs-geocache.json
+.services-checkpoint.json

@@ -32,7 +32,8 @@ const REGION_SLICES = {
     '/pe-data.js': '/pe-data-dfw.js',
     '/vet-clinics.js': '/vet-clinics-dfw.js',
     '/vet-staff.js': '/vet-staff-dfw.js',
-    '/vet-species.js': '/vet-species-dfw.js'
+    '/vet-species.js': '/vet-species-dfw.js',
+    '/vet-services.js': '/vet-services-dfw.js'
   }
 };
 
