@@ -2046,6 +2046,7 @@ function buildPopup(c) {
     <div class="popup-header">
       <div class="popup-name">${c.name}</div>
       <span class="vm-star ${_inWatch('target',key)?'on':''}" style="font-size:19px;align-self:center;padding:0 3px" title="Save clinic to watchlist" onclick="toggleWatchClinicKey('${key}',this)">★</span>
+      <button class="gear-btn" onclick="_evalClinicGo(${c.lat},${c.lon},'${encodeURIComponent(c.name||'Clinic')}')" title="Evaluate this clinic — catchment, winnable share, staffing headroom" aria-label="Evaluate this clinic" style="right:38px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"/></svg></button>
       <button class="gear-btn" onclick="openClinicEditor('${key}')" title="Edit this location" aria-label="Edit this location"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></button>
     </div>
     ${starHTML}${kindHTML}${multHTML}${addrHTML}${telHTML}${webHTML}${peHTML}${_staffPopupHTML(c)}${_analystPopupHTML(getOverrides()[key])}
@@ -7671,7 +7672,8 @@ function _evalZipAffluence(zip){
 function _evalCompetitors(feat, radiusMi){
   const {s,n,w,e}=_evalBuffer(feat, radiusMi);
   const deleted=getDeleted(), overrides=getOverrides(), byKey=new Map();
-  const add=(la,lo,pe,reviews,rating,name,owner)=>{ if(la<s||la>n||lo<w||lo>e) return; const k=`${Math.round(la*1000)}_${Math.round(lo*1000)}`; const _ov=overrides[k]; if(deleted[k]||(_ov&&_ov.exclude)) return; if(!_vfCountEquine() && _isLargeAnimalAt(name,la,lo)) return; const _rev=(_ov&&_ov.reviewsOv!=null)?_ov.reviewsOv:(typeof reviews==='number'?reviews:null); if(!byKey.has(k)) byKey.set(k,{lat:la,lon:lo,pe:!!pe,reviews:_rev,rating:(typeof rating==='number'?rating:null),mult:(_ov&&_ov.mult)||1,name:name||null,owner:owner||null,staffN:(_vetStaffAt(la,lo)||{}).n||null}); }; // reviews/rating/name DISPLAY-only; mult is the per-clinic competition override (Settings → edit pin)
+  const add=(la,lo,pe,reviews,rating,name,owner)=>{ if(la<s||la>n||lo<w||lo>e) return;
+    if(_evalSubject && Math.abs(la-_evalSubject.la)<0.0005 && Math.abs(lo-_evalSubject.lo)<0.0005) return; /* ~50m: the clinic under evaluation */ const k=`${Math.round(la*1000)}_${Math.round(lo*1000)}`; const _ov=overrides[k]; if(deleted[k]||(_ov&&_ov.exclude)) return; if(!_vfCountEquine() && _isLargeAnimalAt(name,la,lo)) return; const _rev=(_ov&&_ov.reviewsOv!=null)?_ov.reviewsOv:(typeof reviews==='number'?reviews:null); if(!byKey.has(k)) byKey.set(k,{lat:la,lon:lo,pe:!!pe,reviews:_rev,rating:(typeof rating==='number'?rating:null),mult:(_ov&&_ov.mult)||1,name:name||null,owner:owner||null,staffN:(_vetStaffAt(la,lo)||{}).n||null}); }; // reviews/rating/name DISPLAY-only; mult is the per-clinic competition override (Settings → edit pin)
   if(peLoaded && typeof PE_COORDS!=='undefined') for(const c of PE_COORDS){ if(c[0]<s||c[0]>n||c[1]<w||c[1]>e) continue; const enr=_vetEnrichAt(c[0],c[1]); add(c[0],c[1],true,enr&&enr.reviews,enr&&enr.rating, c[4]||(enr&&enr.name), c[2]); } // c[4]=clinic name, c[2]=owner/PE firm. NB: var must NOT be named 'e' — shadows the destructured east bound 'e' above → TDZ ReferenceError
   // SINGLE independent source: VET_CLINICS (Google Places, complete & not viewport-limited),
   // PE-typed via checkPE. Do NOT also fold in evalData.vets (Overpass) — that double-counted
@@ -8854,7 +8856,7 @@ function _evalRenderSidebar(){
       const cn=_evalCannib(g);
       const _sstat=(v,l)=>`<div style="flex:1;text-align:center;padding:7px 4px;min-width:0"><div style="font-size:13.5px;font-weight:800;color:#0f172a;letter-spacing:-.01em">${v}</div><div style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#64748b;margin-top:1px">${l}</div></div>`;
       return `<div class="eval-card" style="cursor:default;border:1px solid #d7def0;background:#fff;margin:8px 0;box-shadow:0 2px 10px rgba(30,58,138,.07)">
-        <div class="eval-card-head" style="margin-bottom:5px"><span class="eval-rank" style="background:#6d28d9;font-size:11px">★</span><span class="eval-card-title" style="font-size:13px">Your site</span><span class="eval-score" style="color:var(--navy);font-size:19px;letter-spacing:-.02em">${sc}<span style="font-size:10.5px;font-weight:600;color:#64748b"> /100</span></span></div>
+        <div class="eval-card-head" style="margin-bottom:5px"><span class="eval-rank" style="background:#6d28d9;font-size:11px">${_evalSubject?'🩺':'★'}</span><span class="eval-card-title" style="font-size:13px">${_evalSubject?('Clinic evaluation — '+_ceEsc(_evalSubject.name)):'Your site'}</span><span class="eval-score" style="color:var(--navy);font-size:19px;letter-spacing:-.02em">${sc}<span style="font-size:10.5px;font-weight:600;color:#64748b"> /100</span></span></div>
         <div style="margin:0 0 8px">${chipS}</div>
         <div style="display:flex;background:#f8fafc;border:1px solid #eef2f7;border-radius:9px;margin-bottom:8px">
           ${_sstat(isFinite(g.nearC)?(g.nearC/1609.344).toFixed(1)+' mi':'—','nearest clinic')}
@@ -8863,6 +8865,8 @@ function _evalRenderSidebar(){
           <div style="width:1px;background:#eef2f7;margin:7px 0"></div>
           ${_sstat((g.share*100).toFixed(0)+'%','capture share')}
         </div>
+        <button class="vm-export-btn" style="width:100%;margin:0 0 8px;background:#f8f6ff;border-color:#ddd0f7;color:#6d28d9;font-weight:700" onclick="event.stopPropagation();evalDriveTime(-2,this)">${_evalSubject?'10-min catchment · two-sided practice read':'10-min catchment & future demand'}</button>
+        <div id="evd--2"></div>
         ${warns.map(w=>`<div style="font-size:10.5px;color:#9f1239;background:#fff1f2;border:1px solid #fecdd3;border-radius:8px;padding:6px 9px;margin:0 0 8px;line-height:1.5">${w}</div>`).join('')}
         ${(()=>{ const sm=(key,label,v,on)=>{ const open=_siteMetricOpen.has(key);
             return `<div style="cursor:pointer" onclick="event.stopPropagation();_siteMetricToggle('${key}')" title="Click for the data behind this score">
@@ -9187,7 +9191,7 @@ function _evalHideDrive(){ if(evalDriveLayer){ map.removeLayer(evalDriveLayer); 
 // Full reset — drop the polygon AND the cache (used on recompute / clear).
 function _evalClearDrive(){ _evalHideDrive(); _evalDriveIdx=-1; _evalDriveRing=null; _evalClearOverlap(); }
 async function evalDriveTime(i, btn){
-  const g=evalTop[i]; if(!g) return;
+  const g=(i===-2)?evalSiteCell:evalTop[i]; if(!g) return;   // -2 = the dropped-site / clinic-evaluation card
   // TOGGLE OFF: this site's drive area is currently on screen → hide it.
   if(evalDriveLayer && _evalDriveIdx===i){ _evalHideDrive(); return; }   // _evalHideDrive already clears the readout
   _evalHideDrive();   // clear any other site's polygon + reset all buttons first
@@ -9195,16 +9199,22 @@ async function evalDriveTime(i, btn){
   if(btn){ btn.disabled=true; btn.textContent='Computing…'; }
   try{
     // Reuse the cached ring if it's this same site (hidden then re-shown) — no second Routes call.
-    let ring = (_evalDriveIdx===i && _evalDriveRing) ? _evalDriveRing : await computeIsochrone(g.la, g.lo, DRIVE_BUDGET_SEC);
+    let ring, ringSrc='drive';
+    try{ ring = (_evalDriveIdx===i && _evalDriveRing) ? _evalDriveRing : await computeIsochrone(g.la, g.lo, DRIVE_BUDGET_SEC); }
+    catch(e){ // Routes proxy down/unavailable -> honest ~3.5mi radius ring instead of nothing
+      ringSrc='radius'; const R=3.5/69, lf=Math.cos(g.la*Math.PI/180); ring=[];
+      for(let k=0;k<=32;k++){ const a2=k*Math.PI/16; ring.push([g.la+R*Math.sin(a2), g.lo+R*Math.cos(a2)/lf]); }
+    }
     _evalDriveIdx=i; _evalDriveRing=ring;
     evalDriveLayer=L.polygon(ring,{color:'#7c3aed',weight:2.5,fillColor:'#7c3aed',fillOpacity:0.12}).addTo(map);
     try{ map.fitBounds(evalDriveLayer.getBounds(),{padding:[40,40],maxZoom:14}); }catch(e){}
     const el=document.getElementById('evd-'+i);
     if(el) el.innerHTML=`<span style="color:#64748b">Analyzing catchment…</span>`;
-    const cs=await _evalCatchmentStats(ring, g);
-    cs.src='drive'; _siteCatch[g.la.toFixed(4)+','+g.lo.toFixed(4)]=cs; _siteCardTabs[i]='ca'; _evalRenderSidebar();
-    if(el) el.innerHTML=`<div style="background:#f8f6ff;border:1px solid #ddd0f7;border-radius:9px;padding:8px 11px;line-height:1.7">
-      <div style="font-size:10.5px;font-weight:800;letter-spacing:.06em;color:#7c3aed">10-MIN CATCHMENT · ~${cs.areaMi} mi²</div>
+    let cs=await _evalCatchmentStats(ring, g);
+    cs.src=ringSrc; _siteCatch[g.la.toFixed(4)+','+g.lo.toFixed(4)]=cs; _siteCardTabs[i]='ca'; _evalRenderSidebar();
+    const elL=document.getElementById('evd-'+i)||el;   // re-render rebuilt the card — write into the live node
+    if(elL) elL.innerHTML=`<div style="background:#f8f6ff;border:1px solid #ddd0f7;border-radius:9px;padding:8px 11px;line-height:1.7">
+      <div style="font-size:10.5px;font-weight:800;letter-spacing:.06em;color:#7c3aed">${cs.src==='drive'?'10-MIN CATCHMENT':'~3.5 MI RADIUS (drive-time unavailable)'} · ~${cs.areaMi} mi²</div>
       <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:#64748b">Households you'd serve</span><b>${cs.hhIn.toLocaleString()}</b></div>
       <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:#64748b">Pet households</span><b>${cs.dogIn.toLocaleString()} dog · ${cs.catIn.toLocaleString()} cat</b></div>
       <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:#64748b">Est. vet visits in catchment</span><b>~${cs.visits.toLocaleString()}/yr</b></div>
@@ -9213,6 +9223,17 @@ async function evalDriveTime(i, btn){
       <div style="margin-top:4px;font-size:11px;font-weight:700;color:#5b21b6">Supports a ${cs.size} practice · est. revenue ${_fmtM(cs.rev)} <span style="font-weight:500;color:#64748b">(modeled)</span></div>
       <div style="margin-top:2px;font-size:11px;color:#475569">Adj. EBITDA ~<b>${_fmtM(cs.econ.ebitda)}</b> at ${Math.round(cs.econ.margin*100)}% margin · at ${cs.econ.multLo}–${cs.econ.multHi}× ⇒ <b>${_fmtM(cs.econ.valLo)}–${_fmtM(cs.econ.valHi)}</b></div>
       <div style="margin-top:2px;font-size:10.5px;color:#64748b;line-height:1.45">Revenue = winnable visits × $${Math.round(REV_PER_VISIT)}/visit (AVMA-derived). Margin is a Vetric model assumption from the AAHA/VMG cost structure, not a published benchmark — no neutral size-segmented margin data exists.</div>
+      ${(_evalSubject&&_evalSubject.dvm)?(()=>{const e2=_practiceEcon({dvm:_evalSubject.dvm,winnableVisits:cs.captured});const cap=_evalSubject.dvm*DVM_VISIT_CAPACITY;const hr=e2.headroom;const hire=hr>0?(hr/DVM_VISIT_CAPACITY):0;
+        return `<div style="margin-top:8px;padding:7px 9px;background:#eef4ff;border:1px solid #d7e3fa;border-radius:9px">
+        <div style="font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--navy)">Two-sided practice read — ${_ceEsc(_evalSubject.name)}</div>
+        <div style="display:flex;justify-content:space-between;font-size:11px;margin-top:4px"><span style="color:#64748b">Demand ceiling (winnable)</span><b>~${cs.captured.toLocaleString()} visits/yr</b></div>
+        <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:#64748b">Capacity ceiling (${_evalSubject.dvm} DVM × ${DVM_VISIT_CAPACITY.toLocaleString()})</span><b>~${cap.toLocaleString()} visits/yr</b></div>
+        <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:#64748b">Binding side</span><b>${e2.bound==='demand'?'Demand — market-limited':'Capacity — doctor-limited'}</b></div>
+        <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:#64748b">Modeled revenue · adj. EBITDA</span><b>${_fmtM(e2.rev)} · ${_fmtM(e2.ebitda)} @ ${Math.round(e2.margin*100)}%</b></div>
+        ${hr>0?`<div style="margin-top:5px;font-size:11px;font-weight:700;color:#047857">Understaffed: ~${hr.toLocaleString()} winnable visits/yr beyond current capacity ≈ ${hire.toFixed(1)} DVM of headroom — revenue growth without fighting for a point of share.</div>`
+              :`<div style="margin-top:5px;font-size:11px;font-weight:700;color:#9f1239">Over-doctored: capacity exceeds winnable demand by ~${Math.abs(hr).toLocaleString()} visits/yr — expect revenue per DVM below the $617k benchmark.</div>`}
+        <div style="font-size:10px;color:#64748b;margin-top:4px">Roster from website scrape (override in the clinic editor if wrong). Winnable = catchment visits × modeled share; the clinic is excluded from its own competition.</div>
+      </div>`;})():''}
       ${cs.fut?`<div style="margin-top:8px;padding:7px 9px;background:#f0fdfa;border:1px dashed #99f6e4;border-radius:9px">
         <div style="font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#0d9488">⚡ Future demand — new residential in catchment</div>
         <div style="display:flex;justify-content:space-between;font-size:11px;margin-top:4px"><span style="color:#64748b">Developments · units coming</span><b>${cs.fut.n} · ${cs.fut.u.toLocaleString()}</b></div>
@@ -9506,11 +9527,26 @@ function _siteMarkerPlace(lat,lon){
   evalSiteMarker.on('dragend', ()=>{ const pt=evalSiteMarker.getLatLng(); _siteDropCommit(pt.lat, pt.lng); });
 }
 function _siteClear(){
-  evalSitePt=null; evalSiteCell=null;
+  evalSitePt=null; evalSiteCell=null; _evalSubject=null;
   if(evalSiteMarker){ map.removeLayer(evalSiteMarker); evalSiteMarker=null; }
+}
+/* Clinic evaluation (2026-07-23, user ask: "site evaluations on other clinics").
+   Reuses the ENTIRE drop-a-site engine at the clinic's own coordinates, with two differences:
+   the subject clinic is EXCLUDED from its own competition (else it competes against itself and
+   share craters to ~0), and the catchment card gains the two-sided practice read — roster
+   capacity vs winnable demand -> the binding ceiling and the staffing-headroom verdict. */
+let _evalSubject=null;
+function _evalClinicGo(la,lo,nameEnc){
+  const name=decodeURIComponent(nameEnc||'')||'Clinic';
+  const st=_vetStaffAt(la,lo);
+  _evalSubject={la,lo,name,dvm:(st&&st.n)||null};
+  map.closePopup();
+  _siteDropCommit(la,lo);
 }
 function siteRemove(){ _siteClear(); if(evalActive) _evalComputeAndRender(); try{ updateClinicKpis(); updateLayerKpis(); }catch(e){} }
 function _siteDropCommit(lat,lon){
+  // a commit away from the subject clinic (drag, re-run elsewhere) is a plain site eval again
+  if(_evalSubject && Math.hypot(lat-_evalSubject.la,(lon-_evalSubject.lo)*Math.cos(lat*Math.PI/180))*111320>60) _evalSubject=null;
   _siteDropEnd();
   evalSitePt={lat,lon};
   try{ _loadHexWater(); _loadAirports(); }catch(e){}    // warm the lake + airport outlines for the land-reality checks (best-effort)

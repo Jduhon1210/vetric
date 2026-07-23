@@ -255,6 +255,25 @@ with every verified endpoint: `research/development-pipeline-sources.md`.
   66%→78% precise (2,156→2,531), all 19 vet projects pinned (15 precise + 4 approx). Remaining ~729
   unpinned = streets no free geocoder knows yet + lot/block legal descriptions (list-only, honest).
 
+## Clinic evaluation (2026-07-23, user ask: "site evaluations on other clinics tabs")
+Every clinic pin popup has an **Evaluate button** (target icon left of the gear) → `_evalClinicGo(la,lo,nameEnc)`
+sets `_evalSubject={la,lo,name,dvm}` (roster via `_vetStaffAt`) and reuses the ENTIRE drop-a-site engine
+at the clinic's coordinates. Two differences from a plain drop: (1) **the subject clinic is EXCLUDED from
+its own competition** — `_evalCompetitors`'s `add()` skips anything within ~50m of `_evalSubject`
+(without this it competes against itself and share craters); (2) the card titles "Clinic evaluation —
+<name>" (🩺 badge) and the catchment readout gains the **two-sided practice read** when the roster is
+known: demand ceiling (winnable = catchment visits × share) vs capacity ceiling (DVM × DVM_VISIT_CAPACITY)
+→ binding side + **staffing-headroom verdict** (green "Understaffed: ~N visits ≈ X DVM of headroom —
+revenue growth without fighting for share" / rose "Over-doctored"). This is the both-ceilings-known case
+`_practiceEcon` was built for. Lifecycle: `_siteClear()` nulls the subject; a commit >60m from the
+subject (pin drag) demotes to a plain site eval. The dropped/clinic card gained its own catchment button
+(`evalDriveTime(-2,…)` — **index -2 = the forced cell**; `evd--2` container) with TWO fixes made there:
+the readout writes into the LIVE node re-queried AFTER `_evalRenderSidebar()` (the re-render detached the
+captured one — readout silently vanished), and a **~3.5mi radius fallback ring** when the Routes proxy is
+unavailable (header discloses which ring was used; also what makes local preview testable — serve.py has
+no /api/route). Verified live (Animal Hospital of Celina, 1 DVM): subject absent from evalCompsCache,
+titled card, "Understaffed ~957 visits ≈ 0.3 DVM headroom", future-demand block 25 devs/20,656 units.
+
 ## Catchment future-demand block (2026-07-23, user ask: "new residential development... as part of future demand with all the same pet algorithm calculations")
 `_evalCatchmentStats` runs a pipeline pass: NCTCOG residential projects (`dfw-pipeline.json`, `cl==='R'`,
 non-stale, `u` present) whose point falls inside the catchment ring (bbox prefilter + `pointInPolygon`)
