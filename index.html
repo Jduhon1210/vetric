@@ -5445,7 +5445,7 @@ function _loadPipeline(){
 function _loadCommercial(){
   if(_commData) return Promise.resolve(_commData);
   if(_commP) return _commP;
-  _commP=fetch('dfw-commercial.json?v=1',{cache:'force-cache'}).then(r=>r.ok?r.json():null)
+  _commP=fetch('dfw-commercial.json?v=2',{cache:'force-cache'}).then(r=>r.ok?r.json():null)
     .then(d=>{_commData=d;return d;}).catch(()=>null);
   return _commP;
 }
