@@ -680,6 +680,8 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
 .vf-vetalert{width:22px;height:22px;border-radius:50%;background:#dc2626;border:2px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;font-size:11px;line-height:1}
 .vf-vetalert.vf-vetopen{background:#047857}
 .vf-vetalert.vf-approx{opacity:.72;border-style:dashed}
+.vf-crane{width:17px;height:17px;border-radius:50%;background:#d97706;border:1.6px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center}
+.vf-crane.vf-approx{opacity:.62;border-style:dashed}
 /* Land-play pin (design F, 2026-07-15): teal teardrop with a white SPROUT — growth that isn't
    built yet — plus a white corner rank badge. SVG-drawn in the divIcon; these classes only
    position the badge over it. */
@@ -5450,6 +5452,38 @@ function _loadCommercial(){
   return _commP;
 }
 const _PIPE_STATUS={uc:'Under construction',an:'Announced',co:'Conceptual'};
+const _CRANE_SVG='<svg width="10" height="10" viewBox="0 0 10 10"><path d="M1.2 9h7.6M2.5 9V3.2L8 1.4M8 1.4v2.2M8 1.4 5.6 2.2m0 0v2.1" stroke="#fff" stroke-width="1.15" fill="none" stroke-linecap="round"/></svg>';
+// Analyst-ticket popup (user pick B4): dense label/value rows, tabular numerals, tenant block
+// as a <details> dropdown. Suppresses the facility line when it just repeats the project name.
+function _tabsTicket(r,tenants){
+  const row=(k,v)=>v?`<div style="display:flex;justify-content:space-between;gap:12px;padding:3px 0;border-bottom:1px dashed #e5eaf3;font-variant-numeric:tabular-nums"><span style="color:#64748b;font-size:11px">${k}</span><span style="font-weight:700;font-size:11px;text-align:right">${v}</span></div>`:'';
+  const fmt$=v=>v>=1e6?('$'+(v/1e6).toFixed(1)+'M'):v>=1e3?('$'+Math.round(v/1e3)+'k'):('$'+v);
+  const facLine=(r.fac&&r.fac.toLowerCase()!==(r.n||'').toLowerCase())?r.fac:null;
+  const ten=tenants&&tenants.length?`<details style="margin-top:6px"><summary style="cursor:pointer;font-size:11px;font-weight:800;color:#0d9488">${tenants.length} committed tenant${tenants.length>1?'s':''} at this center</summary>
+      <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">${tenants.slice(0,14).map(t=>'<span style="font-size:10px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:7px;padding:2px 7px;color:#334155"><b>'+_ceEsc(t.n)+'</b>'+(t.end?' · '+t.end.slice(2,7).replace('-','/'):'')+'</span>').join('')}${tenants.length>14?'<span style="font-size:10px;color:#64748b">+'+(tenants.length-14)+' more</span>':''}</div></details>`:'';
+  return `<div style="min-width:225px;max-width:285px">
+    <div style="display:inline-block;font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#fff;background:#b45309;border-radius:7px;padding:2px 8px">New commercial</div>
+    <div style="font-size:13.5px;font-weight:700;margin:6px 0 4px;line-height:1.3">${_ceEsc(r.n||'Project')}</div>
+    ${row('Center',facLine?_ceEsc(facLine):null)}
+    ${row('Address',r.addr?_ceEsc(r.addr)+(r.city?', '+_ceEsc(r.city):''):(r.city?_ceEsc(r.city):null))}
+    ${row('Cost / size',(r.cost?fmt$(r.cost):'')+(r.sf?(r.cost?' · ':'')+r.sf.toLocaleString()+' sf':'')||null)}
+    ${row('Start',r.start)}
+    ${row('Delivery',r.end?'<b>'+r.end+'</b>':null)}
+    ${row('Owner',r.owner?_ceEsc(r.owner):null)}
+    ${ten}
+    ${r.approx?'<div style="font-size:10.5px;color:#9f1239;background:#fff1f2;border:1px solid #fecdd3;border-radius:8px;padding:4px 8px;margin-top:6px">Location approximate (city level) — the filing\'s address didn\'t street-geocode.</div>':''}
+    <div style="font:9.5px/1.4 ui-monospace,Menlo,monospace;color:#94a3b8;margin-top:7px">TDLR TABS ${r.id||''} · dates are applicant estimates</div></div>`;
+}
+// Tenant micro-dots (density rule C1): canvas dots, visible at zoom >= 13 — every record stays
+// clickable without turning metro cores to soup. _commZoomSync attaches/detaches the sublayer.
+let _commTenantGrp=null;
+function _commZoomSync(){
+  if(!_commTenantGrp) return;
+  const want=!!commLayer && map.hasLayer(commLayer) && map.getZoom()>=13;
+  const has=map.hasLayer(_commTenantGrp);
+  if(want&&!has) map.addLayer(_commTenantGrp);
+  else if(!want&&has) map.removeLayer(_commTenantGrp);
+}
 async function togglePipelineLayer(on){
   const status=document.getElementById('pipeline-status');
   if(!on){ if(pipeLayer){ map.removeLayer(pipeLayer); pipeLayer=null; } if(status) status.textContent='Off'; return; }
@@ -5488,7 +5522,7 @@ async function togglePipelineLayer(on){
 }
 async function toggleCommercialLayer(on){
   const status=document.getElementById('commercial-status');
-  if(!on){ if(commLayer){ map.removeLayer(commLayer); commLayer=null; } if(status) status.textContent='Off'; return; }
+  if(!on){ if(commLayer){ map.removeLayer(commLayer); commLayer=null; } if(_commTenantGrp){ map.removeLayer(_commTenantGrp); _commTenantGrp=null; } if(status) status.textContent='Off'; return; }
   if(status) status.textContent='Loading…';
   const d=await _loadCommercial();
   if(!d||!d.list){ if(status) status.textContent='Data unavailable'; const cb=document.getElementById('toggle-commercial'); if(cb) cb.checked=false; return; }
@@ -5518,20 +5552,11 @@ async function toggleCommercialLayer(on){
       commLayer.addLayer(m); nVet++; nPin++;
       continue;
     }
-    // new construction — pad/shell/center pin (canvas square-ish circle, amber)
-    const m=L.circleMarker([r.la,r.lo],{renderer:cv,radius:5+Math.min(7,Math.sqrt((r.cost||2e5)/1e5)),
-      color:'#b45309',weight:1.5,opacity:0.95,fillColor:'#d97706',fillOpacity:0.5});
+    // new construction — crane-glyph pin (user pick A2) + analyst-ticket popup (pick B4)
+    const m=L.marker([r.la,r.lo],{icon:L.divIcon({className:'',html:'<div class="vf-crane'+(r.approx?' vf-approx':'')+'">'+_CRANE_SVG+'</div>',iconSize:[17,17],iconAnchor:[8,8]})});
     const tenants=r.fac?(byFac[r.fac.toLowerCase()]||[]):[];
-    m.bindTooltip((r.fac||r.n||'Project')+(r.end?' · del. '+r.end:''),{direction:'top',sticky:true});
-    m.bindPopup(()=>`<div style="min-width:210px;max-width:265px">
-      <div style="display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#fff;background:#b45309;border-radius:8px;padding:2px 9px">New commercial</div>
-      <div style="font-size:13px;font-weight:700;margin-top:6px;line-height:1.35">${_ceEsc(r.n||'Project')}</div>
-      <div style="font-size:10.5px;color:#64748b;margin:2px 0 6px">${r.fac?_ceEsc(r.fac)+' · ':''}${_ceEsc(r.addr||'')}${r.city?' · '+_ceEsc(r.city):''}</div>
-      <div style="font-size:11.5px;color:#334155">${r.cost?fmt$(r.cost):''}${r.sf?' · '+r.sf.toLocaleString()+' sf':''}</div>
-      ${r.start||r.end?'<div style="font-size:11px;color:#475569">'+(r.start?'Start '+r.start:'')+(r.end?' → delivery <b>'+r.end+'</b>':'')+'</div>':''}
-      ${r.owner?'<div style="font-size:11px;color:#475569">Owner: '+_ceEsc(r.owner)+'</div>':''}
-      ${tenants.length?'<div style="font-size:11px;color:#334155;margin-top:5px"><b>Committed tenants at this center:</b><br>'+tenants.slice(0,8).map(t=>'· '+_ceEsc(t.n)+(t.end?' <span style="color:#64748b">(~'+t.end+')</span>':'')).join('<br>')+(tenants.length>8?'<br>+'+(tenants.length-8)+' more':'')+'</div>':''}
-      <div style="font-size:10px;color:#94a3b8;margin-top:6px">TDLR TABS ${r.id||''} · dates are applicant estimates</div></div>`,{maxWidth:285});
+    m.bindTooltip((r.fac||r.n||'Project')+(r.end?' · del. '+r.end:''),{direction:'top',offset:[0,-8]});
+    m.bindPopup(()=>_tabsTicket(r,tenants),{maxWidth:300});
     commLayer.addLayer(m); nPin++;
   }
   // Comptroller-confirmed vet openings (green paw)
@@ -5548,8 +5573,27 @@ async function toggleCommercialLayer(on){
       <div style="font-size:10px;color:#94a3b8;margin-top:6px">TX Comptroller sales-tax registration (NAICS 541940)</div></div>`,{maxWidth:270});
     commLayer.addLayer(m); nVet++;
   }
+  // tenant finish-outs as zoom-gated slate micro-dots (they also live in center dropdowns)
+  if(_commTenantGrp){ map.removeLayer(_commTenantGrp); }
+  _commTenantGrp=L.layerGroup(); let nTen=0;
+  for(const r of d.list){
+    if(r.kind!=='tenant'||r.la==null) continue;
+    const t=L.circleMarker([r.la,r.lo],{renderer:cv,radius:3.4,color:'#475569',weight:1,opacity:r.approx?0.5:0.9,fillColor:'#64748b',fillOpacity:r.approx?0.4:0.85,dashArray:r.approx?'2,2':null});
+    t.bindTooltip((r.n||'Tenant finish-out')+(r.fac?' · '+r.fac:''),{direction:'top',sticky:true});
+    t.bindPopup(()=>`<div style="min-width:200px;max-width:260px">
+      <div style="display:inline-block;font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#fff;background:#475569;border-radius:7px;padding:2px 8px">Tenant finish-out</div>
+      <div style="font-size:13px;font-weight:700;margin:6px 0 4px">${_ceEsc(r.n||'')}</div>
+      ${r.fac?'<div style="font-size:10.5px;color:#64748b;margin-bottom:4px">at '+_ceEsc(r.fac)+'</div>':''}
+      ${r.tenant?'<div style="font-size:11px;color:#334155">Tenant: <b>'+_ceEsc(r.tenant)+'</b></div>':''}
+      ${r.end?'<div style="font-size:11px;color:#334155">Est. open <b>'+r.end+'</b></div>':''}
+      ${r.approx?'<div style="font-size:10.5px;color:#9f1239;background:#fff1f2;border:1px solid #fecdd3;border-radius:8px;padding:4px 8px;margin-top:5px">Location approximate (city level).</div>':''}
+      <div style="font:9.5px/1.4 ui-monospace,Menlo,monospace;color:#94a3b8;margin-top:6px">TDLR TABS ${r.id||''}</div></div>`,{maxWidth:275});
+    _commTenantGrp.addLayer(t); nTen++;
+  }
   map.addLayer(commLayer);
-  if(status) status.textContent=nPin.toLocaleString()+' projects · '+nVet+' vet signals';
+  if(!window._commZoomHooked){ window._commZoomHooked=1; map.on('zoomend',_commZoomSync); }
+  _commZoomSync();
+  if(status) status.textContent=nPin.toLocaleString()+' projects · '+nTen.toLocaleString()+' tenant spots (zoom ≥13) · '+nVet+' vet signals';
 }
 // ── Development signals (zoning & anchors) — curated point events, OVERLAY, display-only ────
 let _sigData=null,_sigP=null,sigLayer=null;
