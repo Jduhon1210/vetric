@@ -243,7 +243,17 @@ with every verified endpoint: `research/development-pipeline-sources.md`.
   GOTCHAS: TABS list rows have NO address (detail fetch per record is mandatory for coords); city comes
   back CODED (lookup scraped live from the search page's <option> tags); Comptroller county codes =
   TDLR county codes − 2000 zero-padded; tenant finish-outs are usually un-geocoded on purpose (they
-  attach to center popups by facility-name match, no own pin).
+  attach to center popups by facility-name match, no own pin). **Geocode LADDER (2026-07-22, user:
+  'how can we get around the geocoding failures')**: lane 1 Nominatim free-text → lane 2 Nominatim
+  after TX cleanup (`_txVariants`: SWC/side-of prefixes stripped, SH→State Highway, IH→I-, CR→County
+  Road, "A & B"→"A and B" intersections) → lane 3 **Census TIGER** (`_censusTiger`, free/no-key —
+  TIGER learns newly-platted streets from county filings before OSM maps them: the win case for
+  construction sites) → lane 4 city-centroid **for vet rows ONLY**, shipped as `approx:1` (ghosted
+  dashed paw + rose "Location approximate" disclosure; ordinary projects never approx-pin — no fake
+  blobs at city centers). Cache shapes: `[la,lo]` precise / `{a:[la,lo]}` approx / `{x:1}` terminal
+  miss / `null` legacy v1 miss (ladder retries lanes 2-4 exactly once). Recovery measured: new-const
+  66%→78% precise (2,156→2,531), all 19 vet projects pinned (15 precise + 4 approx). Remaining ~729
+  unpinned = streets no free geocoder knows yet + lot/block legal descriptions (list-only, honest).
 
 ## Development-signals layer (2026-07-14, user ask off the sweep)
 `dfw-signals.json` (curated, 7 entries; same 60-day sweep cadence as MPCs, registered in VF_DATASETS) = point events where commercial development is landing: rezonings, grocery-anchor commitments, retail waves, mixed-use approvals. Layers-panel toggle `toggle-signals`/`toggleSignalsLayer`/`sigLayer` (`_loadSignals` force-cache singleton, `?v=`) draws DIAMOND divIcon pins (`.vf-sig`, rotated square) colored by type via `_SIG_COLOR`: teal anchor / purple rezone / navy retail / slate mixed. Tooltip + sourced popup (type chip, city+ETA, note, source). DISPLAY-ONLY overlay, combinable with any fill (NOT in the single-fill exclusion). Refresh = run the news/zoning sweep (research/mpc-sweep-*.md pattern), hand-edit the JSON, bump `?v=`, update VF_DATASETS. Flagship entry: Kroger Marketplace + Custer Frontier (Custer & Laud Howell, McKinney/Prosper border) with six pad sites incl. medical uses, opens Mar 2027.

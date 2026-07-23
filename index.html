@@ -679,6 +679,7 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
 .vf-sig{width:13px;height:13px;transform:rotate(45deg);border:2px solid #fff;border-radius:3px;box-shadow:0 1px 5px rgba(15,23,42,.35);}
 .vf-vetalert{width:22px;height:22px;border-radius:50%;background:#dc2626;border:2px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;font-size:11px;line-height:1}
 .vf-vetalert.vf-vetopen{background:#047857}
+.vf-vetalert.vf-approx{opacity:.72;border-style:dashed}
 /* Land-play pin (design F, 2026-07-15): teal teardrop with a white SPROUT — growth that isn't
    built yet — plus a white corner rank badge. SVG-drawn in the divIcon; these classes only
    position the badge over it. */
@@ -5503,7 +5504,7 @@ async function toggleCommercialLayer(on){
     if(r.la==null) continue;
     const isVet=r.kind==='vet';
     if(isVet){
-      const m=L.marker([r.la,r.lo],{icon:L.divIcon({className:'',html:'<div class="vf-vetalert">🐾</div>',iconSize:[22,22],iconAnchor:[11,11]})});
+      const m=L.marker([r.la,r.lo],{icon:L.divIcon({className:'',html:'<div class="vf-vetalert'+(r.approx?' vf-approx':'')+'">🐾</div>',iconSize:[22,22],iconAnchor:[11,11]})});
       m.bindTooltip('Vet coming: '+(r.n||''),{direction:'top',offset:[0,-10]});
       m.bindPopup(`<div style="min-width:200px;max-width:250px">
         <div style="display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#fff;background:#dc2626;border-radius:8px;padding:2px 9px">Vet clinic — pre-opening</div>
@@ -5512,6 +5513,7 @@ async function toggleCommercialLayer(on){
         ${r.end?'<div style="font-size:11.5px;color:#334155">Est. completion <b>'+r.end+'</b></div>':''}
         ${r.cost?'<div style="font-size:11px;color:#475569">'+fmt$(r.cost)+(r.sf?' · '+r.sf.toLocaleString()+' sf':'')+'</div>':''}
         ${r.owner?'<div style="font-size:11px;color:#475569">Owner: '+_ceEsc(r.owner)+'</div>':''}
+        ${r.approx?'<div style="font-size:10.5px;color:#9f1239;background:#fff1f2;border:1px solid #fecdd3;border-radius:8px;padding:4px 8px;margin-top:5px">Location approximate (city level) — the filing\'s address didn\'t street-geocode.</div>':''}
         <div style="font-size:10px;color:#94a3b8;margin-top:6px">TDLR TABS ${r.id||''} · estimate, applicant-reported</div></div>`,{maxWidth:270});
       commLayer.addLayer(m); nVet++; nPin++;
       continue;
@@ -5535,13 +5537,14 @@ async function toggleCommercialLayer(on){
   // Comptroller-confirmed vet openings (green paw)
   for(const v of (d.vets||[])){
     if(v.la==null) continue;
-    const m=L.marker([v.la,v.lo],{icon:L.divIcon({className:'',html:'<div class="vf-vetalert vf-vetopen">🐾</div>',iconSize:[22,22],iconAnchor:[11,11]})});
+    const m=L.marker([v.la,v.lo],{icon:L.divIcon({className:'',html:'<div class="vf-vetalert vf-vetopen'+(v.approx?' vf-approx':'')+'">🐾</div>',iconSize:[22,22],iconAnchor:[11,11]})});
     m.bindTooltip('Vet opened: '+(v.n||''),{direction:'top',offset:[0,-10]});
     m.bindPopup(`<div style="min-width:200px;max-width:250px">
       <div style="display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#fff;background:#047857;border-radius:8px;padding:2px 9px">Vet clinic — newly open</div>
       <div style="font-size:13px;font-weight:700;margin-top:6px">${_ceEsc(v.n||'')}</div>
       <div style="font-size:10.5px;color:#64748b;margin:2px 0 6px">${_ceEsc(v.addr||'')}${v.city?' · '+_ceEsc(v.city):''}</div>
       ${v.first?'<div style="font-size:11.5px;color:#334155">First sales <b>'+v.first+'</b></div>':(v.permit?'<div style="font-size:11.5px;color:#334155">Permit issued '+v.permit+'</div>':'')}
+      ${v.approx?'<div style="font-size:10.5px;color:#9f1239;background:#fff1f2;border:1px solid #fecdd3;border-radius:8px;padding:4px 8px;margin-top:5px">Location approximate (city level) — the outlet\'s address didn\'t street-geocode.</div>':''}
       <div style="font-size:10px;color:#94a3b8;margin-top:6px">TX Comptroller sales-tax registration (NAICS 541940)</div></div>`,{maxWidth:270});
     commLayer.addLayer(m); nVet++;
   }

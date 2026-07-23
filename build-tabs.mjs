@@ -152,25 +152,79 @@ async function detail(num) {
   } catch (e) { return null; }   // persistent network failure -> skip record, keep the run alive
 }
 
-// ---- phase 3: geocode (Nominatim, cached, 1.15s hard spacing) ------------------------------
+// ---- phase 3: geocode ladder (cached, polite) ----------------------------------------------
+// Lane 1: Nominatim free-text. Lane 2: Nominatim after TX-specific cleanup (corner prefixes,
+// highway abbreviations, intersections). Lane 3: Census TIGER (free, no key) — TIGER learns
+// NEWLY-PLATTED streets from county filings long before OSM maps them, so it has a different
+// failure profile; construction sites in brand-new subdivisions are exactly its win case.
+// Lane 4 (vet rows only): city-centroid, flagged approximate — a coming competitor pinned at
+// city level with a disclosure beats an invisible one; ordinary projects skip this lane so the
+// map never grows misleading blobs at city centers.
+// Cache values: [la,lo] = precise · {a:[la,lo]} = approx · {x:1} = all lanes failed (final) ·
+// null = legacy v1 miss (retryable by the ladder exactly once).
 const geoCache = loadJson(GEO, {});
 let geoDirty = 0;
-async function geocode(addr, city) {
-  if (!addr || !city) return null;
-  // suite/unit fragments hurt Nominatim's hit rate — strip them for the query
-  const clean = addr.replace(/[,#]?\s*(ste|suite|unit|bldg|#)\.?\s*[\w-]+\s*$/i, '').trim();
-  const key = (clean + '|' + city).toLowerCase();
-  if (key in geoCache) return geoCache[key];
-  const url = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q=' +
-    encodeURIComponent(`${clean}, ${city}, TX`);
-  let res = null;
+function _geoSave() { geoDirty++; if (geoDirty % 25 === 0) writeAtomic(GEO, JSON.stringify(geoCache)); }
+const _cleanAddr = a => a.replace(/[,#]?\s*(ste|suite|unit|bldg|#)\.?\s*[\w-]+\s*$/i, '').trim();
+
+async function _nominatim(q) {
+  const url = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q=' + encodeURIComponent(q);
   try {
     const r = await fetchRetry(url, { headers: UA }, 2);
-    if (r && r.ok) { const j = await r.json(); if (j[0]) res = [+(+j[0].lat).toFixed(5), +(+j[0].lon).toFixed(5)]; }
-  } catch (e) { /* leave null */ }
-  geoCache[key] = res; geoDirty++;
-  if (geoDirty % 25 === 0) writeAtomic(GEO, JSON.stringify(geoCache));
-  await sleep(1150);
+    await sleep(1150);
+    if (r && r.ok) { const j = await r.json(); if (j[0]) return [+(+j[0].lat).toFixed(5), +(+j[0].lon).toFixed(5)]; }
+  } catch (e) { await sleep(1150); }
+  return null;
+}
+async function _censusTiger(addr, city) {
+  const url = 'https://geocoding.geo.census.gov/geocoder/locations/onelineaddress?benchmark=Public_AR_Current&format=json&address=' +
+    encodeURIComponent(`${addr}, ${city}, TX`);
+  try {
+    const r = await fetchRetry(url, { headers: UA }, 2);
+    await sleep(300);
+    if (r && r.ok) {
+      const j = await r.json();
+      const m = j && j.result && j.result.addressMatches && j.result.addressMatches[0];
+      if (m && m.coordinates) return [+(+m.coordinates.y).toFixed(5), +(+m.coordinates.x).toFixed(5)];
+    }
+  } catch (e) { await sleep(300); }
+  return null;
+}
+// TX-specific normalization: corner/side prefixes off, highway abbreviations expanded to the
+// names Nominatim indexes, intersections into "A and B" form.
+function _txVariants(addr) {
+  const out = [];
+  let a = addr
+    .replace(/^\s*(([NS][EW]?C|corner|side)\s+of\s+|(north|south|east|west)\s+side\s+of\s+)/i, '')
+    .replace(/\bIH[- ]?(\d+)/gi, 'I-$1')
+    .replace(/\bSH[- ]?(\d+)/gi, 'State Highway $1')
+    .replace(/\bState Hwy\b/gi, 'State Highway')
+    .replace(/\bHwy\b/gi, 'Highway')
+    .replace(/\bCR[- ]?(\d+)/gi, 'County Road $1');
+  if (a !== addr) out.push(a);
+  const ix = a.split(/\s*(?:&|\bat\b|@)\s*/i);
+  if (ix.length === 2 && ix[0].length > 3 && ix[1].length > 3) out.push(ix[0] + ' and ' + ix[1]);
+  return out.slice(0, 2);
+}
+async function geocode(addr, city, opts) {
+  if (!addr || !city) return null;
+  const clean = _cleanAddr(addr);
+  const key = (clean + '|' + city).toLowerCase();
+  const hit = geoCache[key];
+  if (Array.isArray(hit)) return hit;
+  if (hit && hit.a) return hit;
+  if (hit && hit.x) return null;                 // terminal miss — all lanes already tried
+  let res = null;
+  if (hit === undefined) res = await _nominatim(`${clean}, ${city}, TX`);   // lane 1 (v1 nulls skip: already tried)
+  if (!res) for (const v of _txVariants(clean)) { res = await _nominatim(`${v}, ${city}, Texas`); if (res) break; }
+  if (!res) res = await _censusTiger(clean, city);
+  if (!res && opts && opts.vetApprox) {
+    const ck2 = ('__city__' + city).toLowerCase();
+    let cc = geoCache[ck2];
+    if (cc === undefined) { cc = await _nominatim(`${city}, Texas`); geoCache[ck2] = cc; _geoSave(); }
+    if (Array.isArray(cc)) { geoCache[key] = { a: cc }; _geoSave(); return { a: cc }; }
+  }
+  geoCache[key] = res || { x: 1 }; _geoSave();
   return res;
 }
 
@@ -225,7 +279,8 @@ function assembleRows() {
           start: (r.EstimatedStartDate || '').slice(0, 10) || null,
           end: (r.EstimatedEndDate || '').slice(0, 10) || null,
           owner: d.owner || null, tenant: d.tenant || null };
-    if (d.geo) { row.la = d.geo[0]; row.lo = d.geo[1]; }
+    if (Array.isArray(d.geo)) { row.la = d.geo[0]; row.lo = d.geo[1]; }
+    else if (d.geo && d.geo.a) { row.la = d.geo.a[0]; row.lo = d.geo.a[1]; row.approx = 1; }
     rows.push(row);
   }
   return rows;
@@ -293,7 +348,8 @@ console.log(`  ${vets.length} statewide vet outlets since 2025`);
     if (!DFW_EARLY.has(v.cty) || !v.addr || !v.city) continue;
     const clean = v.addr.replace(/[,#]?\s*(ste|suite|unit|bldg|#)\.?\s*[\w-]+\s*$/i, '').trim();
     const hit = geoCache[(clean + '|' + v.city).toLowerCase()];
-    if (hit) { v.la = hit[0]; v.lo = hit[1]; }
+    if (Array.isArray(hit)) { v.la = hit[0]; v.lo = hit[1]; }
+    else if (hit && hit.a) { v.la = hit.a[0]; v.lo = hit.a[1]; v.approx = 1; }
   }
 }
 
@@ -316,15 +372,19 @@ const cpaDfw = vets.filter(v => DFW_CPA.has(v.cty));
 const cpaRun = PRIORITY ? cpaDfw.slice(0, 120) : cpaDfw;
 let gn = 0;
 for (const v of cpaRun) {                 // small set, most valuable, goes first
-  const g = await geocode(v.addr, v.city);
-  if (g) { v.la = g[0]; v.lo = g[1]; }
+  const g = await geocode(v.addr, v.city, { vetApprox: true });
+  if (Array.isArray(g)) { v.la = g[0]; v.lo = g[1]; }
+  else if (g && g.a) { v.la = g.a[0]; v.lo = g.a[1]; v.approx = 1; }
 }
 flushOutput('cpa-vets');
 for (const { r, kind } of RUNSET) {
   if (kind !== 'vet' && kind !== 'new') continue;
   const d = ck.det[r.ProjectNumber];
-  if (!d || d.fail || d.geo !== undefined) continue;
-  const g = await geocode(d.addr, cities[String(r.City)] || null);
+  if (!d || d.fail) continue;
+  // skip only SUCCESSFUL geocodes — a null from the v1 pass means "Nominatim free-text missed",
+  // and those are precisely the rows the ladder's other lanes exist for
+  if (Array.isArray(d.geo) || (d.geo && d.geo.a)) continue;
+  const g = await geocode(d.addr, cities[String(r.City)] || null, kind === 'vet' ? { vetApprox: true } : null);
   d.geo = g;                               // null is a valid "tried, no hit" marker
   gn++;
   if (gn % 100 === 0) { writeAtomic(CKPT, JSON.stringify(ck)); flushOutput('geo ' + gn); }
