@@ -5496,7 +5496,7 @@ function _loadPipeline(){
 function _loadCommercial(){
   if(_commData) return Promise.resolve(_commData);
   if(_commP) return _commP;
-  _commP=fetch('dfw-commercial.json?v=2',{cache:'force-cache'}).then(r=>r.ok?r.json():null)
+  _commP=fetch('dfw-commercial.json?v=3',{cache:'force-cache'}).then(r=>r.ok?r.json():null)
     .then(d=>{_commData=d;return d;}).catch(()=>null);
   return _commP;
 }
@@ -6956,7 +6956,7 @@ const VF_DATASETS=[
  {name:'Master-planned communities', file:'dfw-mpc.json',   src:'curated (news + RCLCO)',     how:'hand-edit JSON, bump ?v=', last:'2026-07-14', every:60,  why:'announcements and phase openings move fast'},
  {name:'Development signals',     file:'dfw-signals.json',  src:'curated (news/zoning sweep)', how:'sweep + hand-edit JSON, bump ?v=', last:'2026-07-14', every:60,  why:'rezonings and anchor signings move fast'},
  {name:'Development pipeline',    file:'dfw-pipeline.json', src:'NCTCOG Development Monitoring', how:'node build-pipeline.mjs, bump ?v=', last:'2026-07-22', every:30,  why:'NCTCOG maintains continuously — cheap one-call refresh'},
- {name:'Commercial pipeline (TABS)', file:'dfw-commercial.json', src:'TDLR TABS + Comptroller',  how:'node build-tabs.mjs, bump ?v= (checkpointed, ~1h cold / mins warm)', last:'2026-07-22', every:14, why:'new registrations land daily; vet early-warning depends on freshness'},
+ {name:'Commercial pipeline (TABS)', file:'dfw-commercial.json', src:'TDLR TABS + Comptroller',  how:'node build-tabs.mjs, bump ?v= (checkpointed, ~1h cold / mins warm)', last:'2026-07-23', every:14, why:'new registrations land daily; vet early-warning depends on freshness'},
  {name:'Retail / commercial fabric', file:'dfw-retail.json',src:'OSM Overpass bake',          how:'re-run Overpass query + dedupe', last:'2026-06-30', every:180, why:'retail land changes slowly'},
  {name:'Census tracts + demographics', file:'dfw-tracts.json', src:'TIGERweb + ACS 2024',     how:'node build-tracts.mjs', last:'2026-07-09', every:365, why:'annual ACS vintage'},
  {name:'ZIP boundaries',          file:'tx-zips.json',      src:'Census ZCTA 2020',           how:'re-download on new vintage', last:'2026-06-25', every:365, why:'boundaries change at census vintages'},

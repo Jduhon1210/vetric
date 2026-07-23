@@ -245,18 +245,40 @@ function _txVariants(addr) {
   if (ix.length === 2 && ix[0].length > 3 && ix[1].length > 3) out.push(ix[0] + ' and ' + ix[1]);
   return out.slice(0, 2);
 }
+async function _cityApprox(city) {
+  const ck2 = ('__city__' + city).toLowerCase();
+  let cc = geoCache[ck2];
+  if (cc === undefined) { cc = await _nominatim(`${city}, Texas`); geoCache[ck2] = cc; _geoSave(); }
+  return Array.isArray(cc) ? { a: cc } : null;
+}
+/* Cache states: [la,lo] precise · {a:[la,lo],p?} city-approx (p = paid lane already tried the
+   upgrade) · {x:1} legacy free-lane miss (retryable) · {x:2} even the city failed, no paid key
+   yet · {x:3} paid lane also failed — absolutely terminal. Every state either resolves to a pin
+   or records exactly why it can't, and a newly-supplied paid key upgrades approx pins and
+   retries misses exactly once. */
+// TDLR's city table has occasional label drift from the real place name.
+const CITY_ALIAS = { 'Hudson Oak': 'Hudson Oaks' };
 async function geocode(addr, city, opts) {
   if (!addr || !city) return null;
+  city = CITY_ALIAS[city] || city;
   const clean = _cleanAddr(addr);
   const key = (clean + '|' + city).toLowerCase();
   const hit = geoCache[key];
   if (Array.isArray(hit)) return hit;
-  if (hit && hit.a) return hit;
+  if (hit && hit.a) {
+    if (_paidLane && !hit.p) {                     // approx -> precise upgrade, once per key
+      const pg = await _paidLane(clean, city);
+      if (pg) { geoCache[key] = pg; _geoSave(); return pg; }
+      hit.p = 1; geoCache[key] = hit; _geoSave();
+    }
+    return hit;
+  }
   if (hit && hit.x) {
-    // free lanes are terminal — but a newly-supplied paid key earns exactly one more attempt
-    if (!(_paidLane && hit.x === 1)) return null;
-    const pg = await _paidLane(clean, city);
-    geoCache[key] = pg || { x: 2 }; _geoSave();
+    if (hit.x >= 3) return null;
+    if (hit.x === 2 && !_paidLane) return null;    // city unknown and nothing new to try
+    let pg = _paidLane ? await _paidLane(clean, city) : null;
+    if (!pg) pg = await _cityApprox(city);
+    geoCache[key] = pg || { x: _paidLane ? 3 : 2 }; _geoSave();
     return pg;
   }
   let res = null;
@@ -264,17 +286,24 @@ async function geocode(addr, city, opts) {
   if (!res) for (const v of _txVariants(clean)) { res = await _nominatim(`${v}, ${city}, Texas`); if (res) break; }
   if (!res) res = await _censusTiger(clean, city);
   if (!res && _paidLane) res = await _paidLane(clean, city);
-  if (!res && opts && opts.vetApprox) {
-    const ck2 = ('__city__' + city).toLowerCase();
-    let cc = geoCache[ck2];
-    if (cc === undefined) { cc = await _nominatim(`${city}, Texas`); geoCache[ck2] = cc; _geoSave(); }
-    if (Array.isArray(cc)) { geoCache[key] = { a: cc }; _geoSave(); return { a: cc }; }
-  }
-  geoCache[key] = res || { x: 1 }; _geoSave();
+  // Universal last resort (user directive 2026-07-23: every record gets a pin): city centroid,
+  // flagged approx:1, rendered ghosted+disclosed.
+  if (!res) { const ap = await _cityApprox(city); if (ap) { geoCache[key] = ap; _geoSave(); return ap; } }
+  geoCache[key] = res || { x: _paidLane ? 3 : 2 }; _geoSave();
   return res;
 }
 
 // ---- main ----------------------------------------------------------------------------------
+// Single-instance lock: two concurrent runs clobber each other's checkpoint writes.
+const LOCK = '.tabs.lock';
+if (fs.existsSync(LOCK)) {
+  const pid = parseInt(fs.readFileSync(LOCK, 'utf8'), 10);
+  let alive = false; try { process.kill(pid, 0); alive = true; } catch (e) {}
+  if (alive) { console.log('Another build-tabs run (pid ' + pid + ') is active — exiting. Re-run when it finishes.'); process.exit(0); }
+}
+fs.writeFileSync(LOCK, String(process.pid));
+process.on('exit', () => { try { fs.unlinkSync(LOCK); } catch (e) {} });
+
 const cities = await cityLookup();
 console.log('city lookup: ' + Object.keys(cities).length + ' entries');
 
@@ -401,9 +430,10 @@ console.log(`  ${vets.length} statewide vet outlets since 2025`);
 
 let dn = 0;
 for (const { r } of RUNSET) {
-  if (ck.det[r.ProjectNumber]) { dn++; continue; }
+  const prev = ck.det[r.ProjectNumber];
+  if (prev && !(prev.fail === 1)) { dn++; continue; }   // fail:1 = transient-era miss, retry once
   const d = await detail(r.ProjectNumber);
-  ck.det[r.ProjectNumber] = d || { fail: 1 };
+  ck.det[r.ProjectNumber] = d || { fail: (prev ? 2 : 1) };
   dn++;
   if (dn % 50 === 0) { writeAtomic(CKPT, JSON.stringify(ck)); console.log(`  ${dn}/${RUNSET.length}`); }
   if (dn % 500 === 0) flushOutput('detail ' + dn);
