@@ -9,7 +9,11 @@ There is no build step, no bundler, no framework. Edit `index.html` directly and
 ```
 vetmetric/
 ├── index.html       # Everything: HTML + CSS + JS (~2,900 lines)
-├── pe-data.js       # PE-owned VET CLINIC coordinates statewide (~852 TX clinics; refreshed 2026-07-08
+├── pe-data.js       # PE-owned VET CLINIC coordinates statewide (857 TX clinics; refreshed 2026-07-08
+│                    #   from a national PE list filtered to State==TX; 43 phantom duplicate coords
+│                    #   removed 2026-07-22 (Places-verified); +48 CityVet locations added 2026-07-24
+│                    #   (RiverGlade Capital / CityVet, PE since Apr 2019 — the source sheet missed the
+│                    #   whole brand; user caught it: "I know they aren't independent")
 │                    #   from a national PE list filtered to State==TX, deduped by name+coords, then
 │                    #   44 pet-boarding/grooming/resort businesses removed so competition scoring
 │                    #   counts only real clinics — PetSuites/Destination Pet/kennels etc.)
