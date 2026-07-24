@@ -682,6 +682,11 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
 .vf-vetalert.vf-approx{opacity:.72;border-style:dashed}
 .vf-crane{width:17px;height:17px;border-radius:50%;background:#d97706;border:1.6px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center}
 .vf-crane.vf-approx{opacity:.62;border-style:dashed}
+.vf-evalring{width:46px;height:46px;pointer-events:none}
+.vf-evalring svg{display:block;width:100%;height:100%;transform-origin:50% 50%;animation:vfEvalSpin 1.4s linear infinite}
+.vf-evalring.settled svg{animation:none}
+@keyframes vfEvalSpin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.vf-evalring svg{animation:none}}
 /* Land-play pin (design F, 2026-07-15): teal teardrop with a white SPROUT — growth that isn't
    built yet — plus a white corner rank badge. SVG-drawn in the divIcon; these classes only
    position the badge over it. */
@@ -2093,7 +2098,7 @@ function buildPopup(c) {
     <div class="popup-header">
       <div class="popup-name">${c.name}</div>
       <span class="vm-star ${_inWatch('target',key)?'on':''}" style="font-size:19px;align-self:center;padding:0 3px" title="Save clinic to watchlist" onclick="toggleWatchClinicKey('${key}',this)">★</span>
-      <button class="gear-btn" onclick="_evalClinicGo(${c.lat},${c.lon},'${encodeURIComponent(c.name||'Clinic')}')" title="Evaluate this clinic — catchment, winnable share, staffing headroom" aria-label="Evaluate this clinic" style="right:38px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"/></svg></button>
+      <button class="gear-btn" onclick="_evalClinicGo(${c.lat},${c.lon},'${encodeURIComponent(c.name||'Clinic')}')" title="Evaluate this clinic — catchment, winnable share, staffing headroom" aria-label="Evaluate this clinic" style="right:38px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="7.5"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><path d="M12 1.5v4M12 18.5v4M1.5 12h4M18.5 12h4"/></svg></button>
       <button class="gear-btn" onclick="openClinicEditor('${key}')" title="Edit this location" aria-label="Edit this location"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></button>
     </div>
     ${starHTML}${kindHTML}${multHTML}${addrHTML}${telHTML}${webHTML}${peHTML}${_staffPopupHTML(c)}${_svcPopupHTML(c)}${_analystPopupHTML(getOverrides()[key])}
@@ -7600,8 +7605,12 @@ const _RP_CSS=`
   .chip.acc{border-color:#c3d2e4;color:#24466e}
   .faint{font-size:11.5px;color:#6a7180}
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-  .card{background:#f4f5f7;border-radius:8px;padding:16px 20px;display:flex;flex-direction:column;gap:9px}
-  .card.acc{background:#fff;border:1px solid #c3d2e4}
+  .card{background:#f8f9fa;border:1px solid #dfe3e9;border-radius:8px;padding:16px 20px;display:flex;flex-direction:column;gap:0}
+  .card.acc{background:#fff;border:1px solid #c3d2e4;gap:12px}
+  .card .kv{padding:7px 0;border-bottom:1px solid #e9ebf0}
+  .card .kv:last-child,.card.acc .kv{border-bottom:0}
+  .card .rl{margin-bottom:4px}
+  .card .kvnote{padding-top:7px}
   .rl{display:flex;align-items:center;gap:10px;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:#6a7180}
   .rl i{font-style:normal;color:#9aa2b1;text-transform:none;letter-spacing:0}
   .rl b{flex:1;height:1px;background:linear-gradient(90deg,#d5d8df,transparent);font-weight:400}
@@ -8649,6 +8658,7 @@ function _evalComputeAndRender(){
   evalShowWeak=false;
   _evalRenderLayers();
   _evalRenderSidebar();
+  _evalRingSettle();                                // clinic mode: the evaluating spinner comes to rest
   if(evalSitePt) _updateSiteKpis();                 // site mode: KPI bar reads the radius around the pin
   // Screen popup (once per analysis): urge classifying the unverified competitors, or ignore.
   if(!evalSpeciesPrompted && !evalSpeciesIgnored && _speciesUnverified().length){ evalSpeciesPrompted=true; _speciesModalOpen(); }
@@ -9801,13 +9811,24 @@ function _siteMarkerPlace(lat,lon){
   // instead of dropping a star on top. Lives in the evalSiteMarker slot so every lifecycle
   // path (_siteClear / siteRemove / re-drop) treats it identically.
   if(_evalSubject && Math.abs(lat-_evalSubject.la)<0.0006 && Math.abs(lon-_evalSubject.lo)<0.0006){
-    evalSiteMarker=L.circleMarker([lat,lon],{radius:17,color:'#6d28d9',weight:3,dashArray:'5,4',fill:false,opacity:0.9,interactive:false}).addTo(map);
+    // Spinning comet ring = "evaluating this clinic"; settles to a steady crosshair ring when
+    // the analysis lands (_evalRingSettle). Pure stroke SVG + CSS rotate — compositor-only,
+    // no filters (the map-perf rule).
+    evalSiteMarker=L.marker([lat,lon],{interactive:false,zIndexOffset:1100,icon:L.divIcon({className:'',iconSize:[46,46],iconAnchor:[23,23],
+      html:'<div class="vf-evalring"><svg viewBox="0 0 46 46" fill="none"><circle cx="23" cy="23" r="19" stroke="rgba(109,40,217,.15)" stroke-width="2.5"/><path d="M23 4a19 19 0 0 1 16.4 9.5" stroke="#7c3aed" stroke-width="3" stroke-linecap="round"/><circle cx="39.4" cy="13.6" r="2.5" fill="#7c3aed"/></svg></div>'})}).addTo(map);
+    evalSiteMarker._ring=1;
     return;
   }
   const ic=L.divIcon({className:'', html:'<div class="vf-site-pin">★</div>', iconSize:[30,30], iconAnchor:[15,15]});
   evalSiteMarker=L.marker([lat,lon],{icon:ic, draggable:true, zIndexOffset:1200}).addTo(map);
   evalSiteMarker.bindTooltip('Your site — drag to re-evaluate', {direction:'top', offset:[0,-14]});
   evalSiteMarker.on('dragend', ()=>{ const pt=evalSiteMarker.getLatLng(); _siteDropCommit(pt.lat, pt.lng); });
+}
+function _evalRingSettle(){
+  if(!(evalSiteMarker&&evalSiteMarker._ring)||evalSiteMarker._settled) return;
+  evalSiteMarker._settled=1;
+  evalSiteMarker.setIcon(L.divIcon({className:'',iconSize:[46,46],iconAnchor:[23,23],
+    html:'<div class="vf-evalring settled"><svg viewBox="0 0 46 46" fill="none"><circle cx="23" cy="23" r="19" stroke="#6d28d9" stroke-width="2.5" opacity=".8"/><path d="M23 .8v5.4M23 39.8v5.4M.8 23h5.4M39.8 23h5.4" stroke="#6d28d9" stroke-width="2.5" stroke-linecap="round" opacity=".8"/></svg></div>'}));
 }
 function _siteClear(){
   evalSitePt=null; evalSiteCell=null; _evalSubject=null;
