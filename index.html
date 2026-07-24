@@ -540,6 +540,24 @@ body.vf-surface #zoom-msg{display:none!important;}
 .vm-rm:hover{color:#dc2626;}
 .gear-btn{background:none;border:none;cursor:pointer;padding:2px 6px;border-radius:var(--radius);color:var(--subtle);font-size:13px;line-height:1;flex-shrink:0;margin-left:8px;transition:all .15s;font-family:inherit;}
 .gear-btn:hover{background:var(--bg2);color:var(--text);}
+/* D3 popup (report-matched, 2026-07-24): hairline uppercase labels, kv rows, PE as accent row */
+.pp-rl{display:flex;align-items:center;gap:8px;font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;color:#6a7180;margin:9px 0 3px;font-weight:700}
+.pp-rl i{font-style:normal;color:#9aa2b1;text-transform:none;letter-spacing:0;font-weight:600}
+.pp-rl b{flex:1;height:1px;background:linear-gradient(90deg,#d5d8df,transparent);font-weight:400}
+.pp-kv{display:flex;justify-content:space-between;gap:10px;font-size:11.5px;padding:4px 0;border-bottom:1px solid #eef1f5}
+.pp-kv:last-of-type{border-bottom:0}
+.pp-kv .k{color:#6a7180;flex-shrink:0}
+.pp-kv .v{font-weight:600;text-align:right;min-width:0}
+.pp-kv .v .fnt{color:#9aa2b1;font-weight:500}
+.pp-contact{font-size:11px;color:#6a7180;margin-top:3px;line-height:1.5}
+.pp-contact a{color:#6a7180;text-decoration:none}
+.pp-contact a:hover{color:var(--navy);text-decoration:underline}
+.pp-actions{display:flex;gap:6px;margin-top:10px}
+.pp-actions button{font-size:11px;font-weight:700;padding:6px 8px;border-radius:8px;border:1px solid var(--border);background:#fff;color:var(--navy);cursor:pointer;font-family:inherit;transition:all .15s;line-height:1}
+.pp-actions button:hover{background:var(--bg2)}
+.pp-actions .primary{flex:1;background:var(--navy);border-color:var(--navy);color:#fff;display:flex;align-items:center;justify-content:center;gap:6px}
+.pp-actions .primary:hover{background:#1e3068}
+.pp-actions .vm-star{font-size:16px;padding:4px 9px;align-self:stretch;display:flex;align-items:center}
 /* Full-screen clinic editor (analyst location editor) */
 .cedit-overlay{position:fixed;inset:0;z-index:4000;background:rgba(15,23,42,.55);display:none;align-items:stretch;justify-content:stretch;padding:0;overflow:hidden;}
 .cedit-overlay.show{display:flex;}
@@ -1473,7 +1491,7 @@ function _svcPopupHTML(c){
   const more=(sv.c||[]).length>10?`<span style="font-size:10px;color:#64748b">+${sv.c.length-10}</span>`:'';
   const raw=(sv.r&&sv.r.length)?`<details style="margin-top:4px"><summary style="cursor:pointer;font-size:10.5px;font-weight:700;color:var(--navy)">Their services list (${sv.r.length})</summary><div style="font-size:10.5px;color:#475569;margin-top:3px;line-height:1.6">${sv.r.map(x=>_ceEsc(x)).join(' · ')}</div></details>`:'';
   return `<div style="margin-top:6px">
-    <div style="font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#64748b">Services <span style="font-weight:600;text-transform:none;letter-spacing:0">· site-read</span></div>
+    <div class="pp-rl">Services <i>· site-read</i><b></b></div>
     ${chips?`<div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:3px">${chips}${more}</div>`:''}
     ${raw}
   </div>`;
@@ -2063,25 +2081,9 @@ function buildPopup(c) {
         ${c.website.replace(/^https?:\/\/(www\.)?/,'').split('/')[0]}
        </a></div>`
     : `<div class="popup-no-web">No website listed</div>`;
-  const starHTML = (typeof c.rating==='number')
-    ? `<div class="popup-rating">★ ${c.rating.toFixed(1)} <span class="popup-rev">· ${(c.reviews||0).toLocaleString()} reviews${c.days?` · ${c.days} days/wk`:''}</span></div>`
-    : '';
-  const telHTML = c.tel ? `<div class="popup-contact"><a href="tel:${(''+c.tel).replace(/[^0-9+]/g,'')}">${c.tel}</a></div>` : '';
-  const addrHTML = c.addr ? `<div class="popup-addr">${c.addr.replace(/,?\s*USA\s*$/i,'')}</div>` : '';
   const _kind=_kindOf(c);
   const _ovK=_ovKindAt(key), _sp=_speciesAt(c.lat,c.lon);
-  const _src=_ovK?' · analyst':(_sp?' · site-verified':'');
-  const kindHTML = `<div style="display:inline-block;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:${_src?'var(--navy)':'#475569'};background:${_src?'#eef2fb':'#eef2f7'};${_src?'border:1px solid #dbe3f4;':''}border-radius:10px;padding:2px 8px;margin-top:5px" title="${_ovK?'Set by you in the clinic editor':_sp?'Read from the clinic\'s own website':'Inferred from the clinic name'}">${CLINIC_KIND_LABEL[_kind]||_kind}${_src}</div>`;
-
-  let peHTML;
-  if (!c.peChecked) {
-    peHTML = `<div class="popup-pe unk"><div class="popup-pe-body"><span class="popup-pe-owner">Verifying ownership status...</span></div></div>`;
-  } else if (c.pe) {
-    peHTML = `<div class="popup-pe owned"><div class="popup-pe-body"><span class="popup-pe-owner">PE / Corporate Owned</span>${c.pe.owner}${c.pe.brand&&c.pe.brand!==c.pe.owner?`<br><span style="opacity:.8">${c.pe.brand}</span>`:''}</div></div>`;
-  } else {
-    peHTML = `<div class="popup-pe indep"><div class="popup-pe-body"><span class="popup-pe-owner">Independent Practice</span></div></div>`;
-  }
-
+  const _src=_ovK?'analyst':(_sp?'site-verified':'');
   const peOwnerVal = c.pe && !c.pe.independent ? (c.pe.owner||'') : '';
   const safeName = c.name.replace(/"/g,'&quot;').replace(/'/g,'&#39;');
   const curMult = (c.mult!=null ? c.mult : 1);
@@ -2096,12 +2098,36 @@ function buildPopup(c) {
   return `<div class="popup">
     ${svHTML}
     <div class="popup-header">
-      <div class="popup-name">${c.name}</div>
-      <span class="vm-star ${_inWatch('target',key)?'on':''}" style="font-size:19px;align-self:center;padding:0 3px" title="Save clinic to watchlist" onclick="toggleWatchClinicKey('${key}',this)">★</span>
-      <button class="gear-btn" onclick="_evalClinicGo(${c.lat},${c.lon},'${encodeURIComponent(c.name||'Clinic')}')" title="Evaluate this clinic — catchment, winnable share, staffing headroom" aria-label="Evaluate this clinic" style="right:38px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="7.5"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><path d="M12 1.5v4M12 18.5v4M1.5 12h4M18.5 12h4"/></svg></button>
-      <button class="gear-btn" onclick="openClinicEditor('${key}')" title="Edit this location" aria-label="Edit this location"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></button>
+      <div class="popup-name" style="font-weight:500;font-size:15.5px;letter-spacing:-.01em">${c.name}</div>
     </div>
-    ${starHTML}${kindHTML}${multHTML}${addrHTML}${telHTML}${webHTML}${peHTML}${_staffPopupHTML(c)}${_svcPopupHTML(c)}${_analystPopupHTML(getOverrides()[key])}
+    ${(()=>{  // D3 report-matched body (user pick 2026-07-24): identity rows, PE as accent row
+      const domain=c.website?c.website.replace(/^https?:\/\/(www\.)?/,'').split('/')[0]:null;
+      const contact=[c.addr?_ceEsc(c.addr.replace(/,?\s*USA\s*$/i,'')):null,
+        c.tel?`<a href="tel:${(''+c.tel).replace(/[^0-9+]/g,'')}">${c.tel}</a>`:null,
+        domain?`<a href="${c.website}" target="_blank" rel="noopener">${domain}</a>`:null].filter(Boolean).join(' · ');
+      const rating=(typeof c.rating==='number')?`<span style="color:#dc2626;font-weight:800">★ ${c.rating.toFixed(1)}</span> · ${(c.reviews||0).toLocaleString()} reviews${c.days?` · ${c.days} days/wk`:''}`:null;
+      const own=!c.peChecked?`<span style="color:#94a3b8;font-weight:500">Verifying…</span>`
+        :c.pe?`<span style="color:#dc2626">PE — ${_ceEsc(c.pe.owner||'undisclosed')}</span>${c.pe.brand&&c.pe.brand!==c.pe.owner?` <span class="fnt">· ${_ceEsc(c.pe.brand)}</span>`:''}`
+        :`<span style="color:#2563eb">Independent</span>`;
+      const st=_vetStaffAt(c.lat,c.lon);
+      const kindL=(CLINIC_KIND_LABEL&&CLINIC_KIND_LABEL[_kind])||_kind||'—';
+      const prac=[st&&st.n?`${st.n} DVM${st.n>1?'s':''}`:null, kindL].filter(Boolean).join(' · ')
+        +(_src?` <span class="fnt">· ${_src}</span>`:'')
+        +((st&&st.vets&&st.vets.length)?` <details style="display:inline"><summary style="display:inline;cursor:pointer;color:var(--navy)">· roster</summary><div style="font-weight:500;color:#6a7180;margin-top:2px;text-align:right">${st.vets.slice(0,10).map(_ceEsc).join(' · ')}</div></details>`:'');
+      const mult=(c.mult!=null&&c.mult!=1)?`<div class="pp-kv"><span class="k">Competition ×</span><span class="v" style="color:#92400e">×${c.mult}</span></div>`:'';
+      return `<div class="pp-contact">${contact||'No contact listed'}</div>
+      <div class="pp-rl">Identity<b></b></div>
+      ${rating?`<div class="pp-kv"><span class="k">Rating</span><span class="v">${rating}</span></div>`:''}
+      <div class="pp-kv"><span class="k">Ownership</span><span class="v">${own}</span></div>
+      <div class="pp-kv"><span class="k">Practice</span><span class="v">${prac||'—'}</span></div>
+      ${mult}`;
+    })()}
+    ${_svcPopupHTML(c)}${_analystPopupHTML(getOverrides()[key])}
+    <div class="pp-actions">
+      <button class="primary" onclick="_evalClinicGo(${c.lat},${c.lon},'${encodeURIComponent(c.name||'Clinic')}')" title="Catchment, winnable share, staffing headroom"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="7.5"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><path d="M12 1.5v4M12 18.5v4M1.5 12h4M18.5 12h4"/></svg>Evaluate clinic</button>
+      <button class="vm-star ${_inWatch('target',key)?'on':''}" title="Save to watchlist" onclick="toggleWatchClinicKey('${key}',this)">★</button>
+      <button onclick="openClinicEditor('${key}')" title="Edit this location" aria-label="Edit">⚙</button>
+    </div>
     <div class="popup-disclaimer">Source: privateequityvet.org — Texas</div>
     <div class="settings-panel" id="sp-${key}">
       <div><div class="settings-label">Clinic name</div>
