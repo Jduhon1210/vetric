@@ -291,8 +291,15 @@ on map" once the radius read is in). No-roster clinics get a rose prompt pointin
 Verified live (Animal Hospital of Celina, 1 DVM, PE/Harvest, ★4.6·197): halo not star, subject
 absent from evalCompsCache, identity+practice blocks render, auto two-sided read "Understaffed
 ~957 visits ≈ 0.3 DVM headroom", future-demand 25 devs/20,656 units — all with zero clicks.
-**Clinic report (`clinicReport()`/`_clinicReportHTML()`, 2026-07-23, user ask: "professional looking
-site report for a clinic's evaluation")**: navy "Download clinic report (PDF)" button on the clinic-eval
+**Clinic report (`clinicReport()`/`_clinicReportHTML()`, 2026-07-23; REDESIGNED same day to the
+user's Claude-Design pick "direction 2a" — reference copy `research/report-design-2a.html`, pulled
+from his claude.ai/design project via Chrome since the design MCP wasn't connected)**: BOTH print
+reports (clinic + `siteReport`) now share the 2a language via `_RP_CSS`/`_rpShell`/`_rpKV`/`_rpL`/
+`_RP_FOOT` — calm white page (NO navy band), Inter 400/500/600 light weights, ink #1d222c / accent
+#24466e / faint #9aa2b1, uppercase hairline-rule section labels, soft-gray `.card` 2×2 grid, key
+numbers accent-600, the two-sided ceilings drawn as PROPORTIONAL BARS (widths = each/max), hairline
+competitor rows with faint provenance, single-line 9.5px footer, letter @page. Original content
+notes: navy "Download clinic report (PDF)" button on the clinic-eval
 card → print-window one-pager (same open-window+print pattern as `siteReport`), assembled ONLY from
 already-computed state (no new fetches): navy brand band w/ score/100, identity strip (PE·owner /
 Independent, ★reviews, DVMs, species), roster names, services line, two-column Practice-economics +
