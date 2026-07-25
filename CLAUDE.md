@@ -310,7 +310,16 @@ Independent, ★reviews, DVMs, species), roster names, services line, two-column
 Market-position | Catchment + Future-demand tables, the two-sided read w/ colored verdict box, top-6
 GP competitors, and a method-notes footer (AVMA derivation, margin = Vetric assumption, incumbent-share
 model, "screening artifact — verify in diligence"). GOTCHA fixed at review: `_siteKpis().pePct` is
-ALREADY a percentage (82, not 0.82) — don't ×100 again (the draft printed "8200%"). Fun fact surfaced
+ALREADY a percentage (82, not 0.82) — don't ×100 again (the draft printed "8200%").
+**Contested-share competitor ranking (2026-07-24, user ask)**: the report's competitor list is ranked
+by CONTESTED SHARE, not distance — each rival's pull at the subject's location using the engine's own
+formula (`_staffW × mult × _grav` over `_barrierDist`, `_revW`≡1), normalized against the
+incumbent-weighted subject attraction (`A_OWN × _staffW(dvm)`), so the listed shares + the subject's
+share are one coherent 100%. Each row: share% (accent) · ~visits/yr taken (share × catchment visits)
+· mi · DVMs. Also added "Market-supported revenue (visit model)" (= winnable × REV_PER_VISIT, accent)
+to the Practice-economics card beside the roster benchmark. Verified on Double Oak: the 4-DVM
+Shore-Capital sister practice at 1.0mi ranks #1 (16%) OVER 0.2mi solo Lantana (14%) — roster-weighted
+gravity beats raw proximity, which is the point. Fun fact surfaced
 by the report itself: Double Oak VMC is genuinely PE-owned (Shore Capital / Mission Pet Health) per
 pe-data — checkPE was right, not a false positive.
 **INCUMBENT SHARE FIX (2026-07-23, the Double Oak bug — user: "4 doctors but $600k revenue based

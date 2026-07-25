@@ -7679,7 +7679,21 @@ function _clinicReportHTML(){
   const today=new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'});
   const svcLine=(sv&&sv.c&&sv.c.length)?sv.c.slice(0,5).map(x=>_SVC_LABEL[x]||x).join(' · '):null;
   const vets=(st&&st.vets&&st.vets.length)?st.vets.slice(0,10).map(esc).join(' · '):null;
-  const comps=(evalCompsCache||[]).map(c=>({c,d:hav(g.la,g.lo,c.lat,c.lon)})).sort((a,b)=>a.d-b.d).slice(0,6);
+  // Competitors ranked by CONTESTED SHARE — each rival's pull at the subject's location, using
+  // the engine's own formula (_staffW × mult × _grav over barrier distance), normalized against
+  // the incumbent-weighted subject attraction. Ranking and the subject's share sum to 100%.
+  const Rm=evalRadiusMi*1609.344, aOwn=1.0*Math.pow(evalRadiusMi/3,2)*((sub.dvm&&_staffW)?_staffW(sub.dvm):1);
+  let pulls=[];
+  for(const c of (evalCompsCache||[])){
+    const draw=hav(g.la,g.lo,c.lat,c.lon);
+    const d=(typeof _barrierDist==='function')?_barrierDist(g.la,g.lo,c.lat,c.lon,draw):draw;
+    if(d<Rm){ pulls.push({c,d:draw,pull:_staffW(c.staffN)*(c.mult||1)*_grav(d,Rm)}); }
+  }
+  const totPull=pulls.reduce((t,x)=>t+x.pull,0), denom=aOwn+totPull;
+  pulls.forEach(x=>x.share=denom>0?x.pull/denom:0);
+  pulls.sort((a,b)=>b.share-a.share);
+  const subjShare=denom>0?aOwn/denom:0;
+  const comps=pulls.slice(0,7);
   let twoSided='';
   if(sub.dvm&&cs){
     const e2=_practiceEcon({dvm:sub.dvm,winnableVisits:cs.captured});
@@ -7719,6 +7733,7 @@ function _clinicReportHTML(){
     <div class="card">${_rpL('Practice economics','(modeled)')}
       ${_rpKV('Roster capacity',sub.dvm?('~'+(sub.dvm*DVM_VISIT_CAPACITY).toLocaleString()+' visits/yr'):null)}
       ${(re_&&re_.econ)?_rpKV('Modeled revenue (benchmark)',re_.txt):''}
+      ${cs?_rpKV('Market-supported revenue (visit model)',_fmtM(cs.captured*REV_PER_VISIT),true):''}
       ${(re_&&re_.econ)?_rpKV('Adj. EBITDA @ '+Math.round(re_.econ.margin*100)+'% margin',_fmtM(re_.econ.ebitda)):''}
       ${(re_&&re_.econ)?_rpKV(re_.econ.multAnalyst?('Indicative value @ '+re_.econ.multLo+'× (analyst)'):('Indicative value @ '+re_.econ.multLo+'–'+re_.econ.multHi+'×'),re_.econ.multAnalyst?_fmtM(re_.econ.valLo):(_fmtM(re_.econ.valLo)+' – '+_fmtM(re_.econ.valHi)),true):''}
     </div>
@@ -7743,8 +7758,9 @@ function _clinicReportHTML(){
   </div>
   ${twoSided}
   <div>
-    ${_rpL('Nearest competitors — GP only')}
-    <div style="margin-top:6px">${comps.map(x=>`<div class="comp"><span class="who">${esc(x.c.name||'Clinic')} <i>· ${x.c.pe?('PE — '+esc(x.c.owner||'undisclosed')):'independent'}</i></span><span class="d">${(x.d/1609.344).toFixed(1)} mi${x.c.staffN?' · '+x.c.staffN+' DVM':''}</span></div>`).join('')}</div>
+    ${_rpL('Top competitors — ranked by contested share','(gravity model; this clinic holds '+(subjShare*100).toFixed(0)+'%)')}
+    <div style="margin-top:6px">${comps.map(x=>`<div class="comp"><span class="who">${esc(x.c.name||'Clinic')} <i>· ${x.c.pe?('PE — '+esc(x.c.owner||'undisclosed')):'independent'}</i></span><span class="d"><span style="color:#24466e;font-weight:600">${(x.share*100).toFixed(0)}%</span>${cs?' · ~'+Math.round(cs.visits*x.share).toLocaleString()+' visits/yr':''} · ${(x.d/1609.344).toFixed(1)} mi${x.c.staffN?' · '+x.c.staffN+' DVM':''}</span></div>`).join('')}</div>
+    <div style="font-size:10px;color:#9aa2b1;margin-top:5px">Share of the modeled trade-area demand each competitor captures at this location — roster-weighted gravity over road-barrier distance; visits apply the share to the catchment's estimated total.</div>
   </div>
   <div class="np"><button onclick="window.print()">Print / save as PDF</button></div>
   <div class="foot">${_RP_FOOT}${today}</div>`;
