@@ -133,8 +133,10 @@ do 5"): `_metroRun = (bb.maxLa-bb.minLa)>0.9 || (bb.maxLo-bb.minLo)>1.1` in the 
 17.1mi apart min: E McKinney 96 / Rockwall 95 / NW Denton 95 / Grand Prairie 87 / W Fort Worth 85).
 Ordinary ZIP/draw evaluations are untouched (span far below the gate). **The button lives INSIDE
 `.opp-view-seg` as a third `button.metro` segment beside List | Communities (2026-07-25, user
-rejected the standalone pill via screenshot: "put it with Zip List and communities")** — purple
-text + hairline left divider (`.opp-view-seg button.metro` CSS); it's an ACTION, not a view:
+rejected the standalone pill via screenshot: "put it with Zip List and communities")** — brand-navy
+`#1e3a8a` text + a `::before` ◎ crosshair (the app's evaluate mark) + hairline left divider
+(`.opp-view-seg button.metro` CSS; the first pass was purple + ⚡, user: "not a fan of the lightning
+and purple text, i want this analyst sleek and modern"); it's an ACTION, not a view:
 clicking runs the evaluation rather than toggling `oppView`, so it never carries the `.on` state.
 Known rough edge (flagged, not yet requested): the unverified-species modal can list ~147 chips at
 metro scale.

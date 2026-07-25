@@ -247,8 +247,9 @@ input[type=search]::-webkit-search-cancel-button,input[type=search]::-webkit-sea
 .opp-view-seg{display:inline-flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;flex-shrink:0;}
 .opp-view-seg button{border:0;background:#fff;padding:5px 13px;font-size:12px;font-weight:700;color:#64748b;cursor:pointer;}
 .opp-view-seg button.on{background:#15803d;color:#fff;}
-.opp-view-seg button.metro{color:#6d28d9;border-left:1px solid var(--border);}
-.opp-view-seg button.metro:hover{background:#f5f3ff;}
+.opp-view-seg button.metro{color:#1e3a8a;border-left:1px solid var(--border);display:inline-flex;align-items:center;gap:6px;white-space:nowrap;}
+.opp-view-seg button.metro::before{content:'◎';font-size:13px;line-height:1;opacity:.75;}
+.opp-view-seg button.metro:hover{background:#eef3fb;}
 .opp-list-head{display:grid;grid-template-columns:30px 1fr 64px;gap:12px;padding:0 14px 10px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);position:sticky;top:0;background:var(--bg);}
 .opp-caret{display:inline-block;font-size:11px;color:#64748b;font-weight:700;transition:transform .15s;}
 .opp-caret.open{transform:rotate(180deg);}
@@ -6351,7 +6352,7 @@ function renderOppList(){
   const wrap=document.getElementById('opp-list-wrap');
   const tEl=document.getElementById('opp-title'); if(tEl) tEl.textContent='Opportunity Scores · '+oppRegion.name;
   // Two funnel stages, captioned the way PE runs them: market screen → site scoring
-  const seg=`<div><div class="opp-view-seg"><button class="${oppView==='list'?'on':''}" onclick="setOppView('list')">List</button><button class="${oppView==='mpc'?'on':''}" onclick="setOppView('mpc')">Communities</button><button class="metro" onclick="evaluateMetroplex()" title="Run the full site engine — zoning, retail corridors, capture model — across all of ${_ceEsc(oppRegion.name)} at ~3-mile screening grain. Takes a few minutes; returns the top 5 buildable sites.">⚡ Evaluate metroplex</button></div>`+
+  const seg=`<div><div class="opp-view-seg"><button class="${oppView==='list'?'on':''}" onclick="setOppView('list')">List</button><button class="${oppView==='mpc'?'on':''}" onclick="setOppView('mpc')">Communities</button><button class="metro" onclick="evaluateMetroplex()" title="Run the full site engine — zoning, retail corridors, capture model — across all of ${_ceEsc(oppRegion.name)} at ~3-mile screening grain. Takes a few minutes; returns the top 5 buildable sites.">Evaluate metroplex</button></div>`+
     `<div style="font-size:10.5px;color:#64748b;font-weight:600;margin-top:3px;letter-spacing:.02em">${oppView==='mpc'?'Master-planned communities · ranked':'ZIP ranking · four weighted factors'}</div></div>`;
   if(oppView==='mpc'){ _renderMpcList(wrap, seg); return; }
   document.getElementById('opp-sub').textContent=
