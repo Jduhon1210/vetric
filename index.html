@@ -193,7 +193,7 @@ body.dev-mode .kpi{background:var(--amber-light);}
 #city-eval-prompt .cep-go:hover{background:var(--navy-dark);}
 #city-eval-prompt .cep-x{border:none;background:none;color:var(--subtle);font-size:13px;cursor:pointer;padding:4px 6px;border-radius:6px;line-height:1;}
 #city-eval-prompt .cep-x:hover{color:var(--text);background:var(--bg2);}
-body.vf-opp #city-eval-prompt,body.vf-surface #city-eval-prompt{display:none!important;}
+body.vf-opp #city-eval-prompt{display:none!important;}
 
 /* Dev badge */
 .dev-badge{position:absolute;top:10px;left:50%;transform:translateX(-50%);background:var(--amber);color:#1a1a1a;font-size:10.5px;font-weight:700;padding:3px 12px;border-radius:20px;letter-spacing:.1em;text-transform:uppercase;z-index:1000;pointer-events:none;box-shadow:0 2px 8px rgba(217,119,6,.35);display:none;}
@@ -237,13 +237,6 @@ body.dev-mode .search-bar{background:var(--amber-light);border-bottom-color:#fec
 .opp-preset.active:hover{color:#fff;}
 .opp-divider{height:1px;background:var(--border);margin:6px 0 18px;}
 .opp-list-wrap{overflow-y:auto;padding:14px 18px 24px;}
-/* Hex opportunity surface — Surface view reveals the live map behind the panel */
-.opp-panel.surface-mode{background:transparent;pointer-events:none;}
-.opp-panel.surface-mode .opp-top{pointer-events:auto;}
-.opp-panel.surface-mode .opp-body{background:transparent;}
-.opp-panel.surface-mode .opp-controls{pointer-events:auto;}
-.opp-panel.surface-mode .opp-list-wrap{background:transparent;pointer-events:none;}
-.opp-panel.surface-mode .opp-list-wrap > *{pointer-events:auto;}
 .vf-site-pin{width:30px;height:30px;border-radius:50%;background:#7c3aed;border:2.5px solid #fff;box-shadow:0 3px 10px rgba(109,40,217,.5);color:#fff;font-size:15px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:grab;}
 .vf-site-pin:active{cursor:grabbing;}
 input[type=search]::-webkit-search-cancel-button,input[type=search]::-webkit-search-decoration{-webkit-appearance:none;}
@@ -254,20 +247,6 @@ input[type=search]::-webkit-search-cancel-button,input[type=search]::-webkit-sea
 .opp-view-seg{display:inline-flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;flex-shrink:0;}
 .opp-view-seg button{border:0;background:#fff;padding:5px 13px;font-size:12px;font-weight:700;color:#64748b;cursor:pointer;}
 .opp-view-seg button.on{background:#15803d;color:#fff;}
-.hex-card{background:#fff;border:1px solid var(--border);border-radius:12px;padding:12px 14px;box-shadow:0 6px 24px rgba(0,0,0,.14);max-width:300px;}
-.hex-card-h{font-weight:800;font-size:13px;margin-bottom:8px;}
-.hex-legbar{height:12px;border-radius:6px;margin:4px 0;background:linear-gradient(90deg,rgb(224,68,68),rgb(238,140,38),rgb(244,196,48),rgb(150,196,89),rgb(60,138,40));}
-.hex-top-h{font-size:11px;font-weight:700;color:#64748b;margin:9px 0 3px;}
-.hex-top-row{display:flex;gap:8px;align-items:center;font-size:12px;padding:3px 0;cursor:pointer;border-bottom:1px solid #f1f5f9;}
-.hex-top-row:hover{background:#f8fafc;}
-.hex-tip{font-size:12px;}
-body.vf-surface #zoom-msg{display:none!important;}
-.hex-strat-seg{display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;}
-.hex-strat-seg button{flex:1;border:0;border-right:1px solid var(--border);background:#fff;padding:6px 4px;font-size:11px;font-weight:700;color:#64748b;cursor:pointer;}
-.hex-strat-seg button:last-child{border-right:0;}
-.hex-strat-seg button.on{background:#334155;color:#fff;}
-.hex-strat-seg button.on.b{background:#15803d;}
-.hex-strat-seg button.on.l{background:#0d9488;}
 .opp-list-head{display:grid;grid-template-columns:30px 1fr 64px;gap:12px;padding:0 14px 10px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);position:sticky;top:0;background:var(--bg);}
 .opp-caret{display:inline-block;font-size:11px;color:#64748b;font-weight:700;transition:transform .15s;}
 .opp-caret.open{transform:rotate(180deg);}
@@ -1837,6 +1816,7 @@ function _vfRevealApp(){
 // Both are idempotent singletons / force-cached, so this just makes the first such interaction instant.
 let _vfWarmed=false;
 function _vfWarmCaches(){
+  setTimeout(()=>{ try{ _drawVetAlerts(); }catch(e){} }, 2500);   // always-on vet early-warning paws
   if(_vfWarmed) return; _vfWarmed=true;
   const warm=()=>{ try{ if(typeof loadZipGeometry==='function') loadZipGeometry().catch(()=>{}); }catch(_){} try{ if(typeof fetchIncomeBatch==='function') fetchIncomeBatch([]).catch(()=>{}); }catch(_){} };
   (window.requestIdleCallback||(f=>setTimeout(f,1500)))(warm,{timeout:4000});
@@ -1899,8 +1879,7 @@ function _applyPinZoomVisibility(){
   else if(!map.hasLayer(clusterGroup)) map.addLayer(clusterGroup);
   const zm=document.getElementById('zoom-msg');
   if(zm){
-    if(document.body.classList.contains('vf-surface')) zm.style.display='none';
-    else zm.style.display = (below && (hide || !(typeof clinics!=='undefined' && clinics.length))) ? 'block' : 'none';
+    zm.style.display = (below && (hide || !(typeof clinics!=='undefined' && clinics.length))) ? 'block' : 'none';
   }
 }
 map.on('zoomend', _applyPinZoomVisibility);
@@ -2438,14 +2417,14 @@ function saveClinicEditor(key){
   };
   setStore('vf_overrides',o);
   _applyClinicOverride(key);
-  _acqIndKey=''; _hexClinicIndex=null; _hexBuiltKey=''; _areaClinCache={key:null,n:0,dvm:0}; oppBaseRows=[];   // overrides feed acquisitions + surface competition + saturation + the opp list → invalidate
+  _acqIndKey=''; _areaClinCache={key:null,n:0,dvm:0}; oppBaseRows=[];   // overrides feed acquisitions + surface competition + saturation + the opp list → invalidate
   if(typeof evalActive!=='undefined' && evalActive && typeof _evalComputeAndRender==='function') _evalComputeAndRender();
   closeClinicEditor();
   vfToast && vfToast('Saved');
 }
 function resetClinicEditor(key){
   const o=getOverrides(); delete o[key]; setStore('vf_overrides',o);
-  _acqIndKey=''; _hexClinicIndex=null; _hexBuiltKey='';
+  _acqIndKey='';
   closeClinicEditor();
   if(typeof fetchClinics==='function') fetchClinics();   // refetch restores the original record
 }
@@ -3187,7 +3166,6 @@ async function fetchIncomeBatch(zips){
 }
 
 async function toggleIncomeLayer(on){
-  if(on && typeof _hexView!=='undefined' && _hexView) setOppView('list'); // single-fill: opening a choropleth drops the hex surface
   const status = document.getElementById('income-status');
   const legend = document.getElementById('income-legend');
   if(!on){
@@ -3303,7 +3281,6 @@ function dogColor(rate){
 }
 
 async function toggleDogLayer(on){
-  if(on && typeof _hexView!=='undefined' && _hexView) setOppView('list'); // single-fill: opening a choropleth drops the hex surface
   const status = document.getElementById('dog-status');
   const legend = document.getElementById('dog-legend');
   if(!on){
@@ -3456,7 +3433,6 @@ function growthColor(pct){
 }
 
 async function toggleGrowthLayer(on){
-  if(on && typeof _hexView!=='undefined' && _hexView) setOppView('list'); // single-fill: opening a choropleth drops the hex surface
   const status = document.getElementById('growth-status');
   const legend = document.getElementById('growth-legend');
   if(!on){
@@ -4311,7 +4287,7 @@ function selectSugg(i){const s=acI[i];if(!s)return;document.getElementById('loc'
 function closeSugg(){document.getElementById('sugg').classList.remove('open');acF=-1;}
 
 // ── "Evaluate this city" — after jumping to a searched place, offer to run the Evaluate
-// engine on a box around it (same spine as evaluateHexSpot / the Surface's "Evaluate this spot").
+// engine on a box around it (same spine as the old Surface's "Evaluate this spot").
 let _lastPlace=null;
 function showCityEval(name,lat,lon,bbox){
   _lastPlace={name:String(name||'this area').split(',')[0].trim(), lat, lon, bbox};
@@ -4338,7 +4314,6 @@ function evaluateCity(){
   if(!_lastPlace) return;
   const p=_lastPlace;
   dismissCityEval();
-  if(typeof _hexTeardown==='function') _hexTeardown();       // in case Surface was up
   const panel=document.getElementById('opp-panel'); if(panel) panel.classList.remove('show');
   if(selectedZips.size) clearZipSelection();                 // area + ZIP selection can't coexist
   drawnArea=_placeEvalBox(p);
@@ -4545,7 +4520,6 @@ function switchSection(s){
   if(acqMode && s!=='acquisitions') exitAcquisitions();
   if(watchMode && s!=='reports') exitWatchlist();
   document.querySelectorAll('.nav-link').forEach(n=>n.classList.toggle('active',n.dataset.section===s));
-  if(s!=='opportunity' && typeof _hexTeardown==='function') _hexTeardown(); // never strand the hex surface on nav-out
   const opp=document.getElementById('opp-panel');
   if(s==='map'){
     opp.classList.remove('show');
@@ -5029,11 +5003,7 @@ async function selectOppRegion(key){
   const r=OPP_REGIONS.find(x=>x.key===key); if(!r) return;
   oppRegion=r;
   oppRegionIndependents=[]; oppBaseRows=[]; oppScored=[]; _mpcBase=null; _mpcScored=[]; // force a full rebuild for the new region
-  hexBaseRows=[]; hexScored=[]; _hexBuiltKey=''; _hexClinicIndex=null; _hexZipBuckets=null; _hexView=false;
-  oppView='list'; hexStrategy='all'; document.body.classList.remove('vf-surface'); // land in List for the new region; re-entering Surface re-fits the map
-  { const _p=document.getElementById('opp-panel'); if(_p) _p.classList.remove('surface-mode'); }
-  _hexSelIdx=-1; _hexRegionIdx=null;
-  if(hexLayer){ map.removeLayer(hexLayer); hexLayer=null; }   // new region → rebuild geometry (pitch depends on lat)
+  oppView='list';                                   // land in List for the new region
   closeRegionPicker();
   switchSection('opportunity'); // openOpportunity re-runs (oppScored was reset) for the new region
 }
@@ -5081,7 +5051,6 @@ function onWeightChange(){
   document.getElementById('w-comp-val').textContent=Math.round(wc/sum*100)+'%';
   document.getElementById('w-growth-val').textContent=Math.round(wg/sum*100)+'%';
   rescoreAndRender();
-  if(oppView==='surface' && hexBaseRows.length) rescoreHexes(); // recolor the surface live (presets route through here too)
 }
 
 function oppPreset(kind){
@@ -5110,22 +5079,6 @@ let oppGrowthSnap = {};
 let oppConstructionSnap = {};
 let oppGeoSnap = null;
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   HEX OPPORTUNITY SURFACE — a continuous, region-wide generalization of the
-   Evaluate capture model (ABSOLUTE Huff share × demand), driven by the existing
-   Opportunity weight sliders. The ranked LIST is untouched; this is an alternate
-   "Surface" view of the same region. Built from the multi-agent design spec.
-   ═══════════════════════════════════════════════════════════════════════════ */
-const clamp01 = v => v<0?0:(v>1?1:v);
-// Constants — MIRROR Evaluate exactly (do NOT invent new values; see CLAUDE.md A_OWN gotcha)
-const HEX_RADIUS_MI = 3;
-const HEX_R    = HEX_RADIUS_MI * 1609.344;             // metres
-const HEX_AOWN = 1.0 * Math.pow(HEX_RADIUS_MI/3, 2);   // fair-fight entrant (=1 typical clinic) since 2026-07-16, radius-invariant
-const PE_NEAR_HARD = 700;        // m — within this of a PE clinic, share is hard-capped
-const HEX_PE_W = 1.0;            // PE competitor weight — REMOVED 2026-07-16 (user: PE and independent compete at equal per-DVM strength; roster size + analyst mult carry the differences)
-const HEX_MI = 1.0;              // column pitch, miles (~3,500 cells over DFW)
-const HEX_MI_PER_DEG_LAT = 69.0;
-const HEX_BUCKET = 0.02;         // spatial-index bucket size, degrees
 // Accurate open-water exclusion — REAL lake outlines (OSM) baked into dfw-water.json (88 polygons,
 // rings as [lon,lat]). A hex whose centroid sits inside any lake is NOT graded (renders transparent).
 // Replaces the old crude [s,w,n,e] boxes that over-excluded buildable land near irregular shorelines.
@@ -5168,306 +5121,9 @@ function _hexInWater(lat,lon){
   for(const wp of _hexWater){ if(lat<wp.s||lat>wp.n||lon<wp.w||lon>wp.e) continue; if(_pointInRing(lat,lon,wp.ring)) return true; }
   return false;
 }
-// Module state
-let oppView='list';              // 'list' | 'surface' | 'mpc' (Communities ranking)
-let hexStrategy='all';           // 'all' | 'developed' | 'emerging' — surface strategy filter
-let _hexSelIdx=-1, _hexRegionIdx=null;     // selected hex + the surrounding-hex "region" set
-const HEX_REGION_MI=1.4;                    // radius (mi) that captures the ring of immediate neighbors
-let hexBaseRows=[];              // per-hex precomputed records (heavy; built once)
-let hexScored=[];                // per-hex scored (index-aligned with hexBaseRows)
-let hexLayer=null;               // L.layerGroup of persistent canvas polygons
-let _hexCanvas=null;             // dedicated canvas renderer (ONE; never the shared SVG)
-let _hexView=false;              // surface currently painted on the map
-let hexHoverTip=null;            // single reusable tooltip
-let _hexHandlersOn=false;
-let _hexBuiltKey='';
-let _hexClinicIndex=null;        // "bi_bj" -> [competitor]
-let _hexZipBuckets=null;         // "bi_bj" -> [zip feature]
-let _hexCompMedRev=150;
-let _hexAxialIndex=new Map();    // "q_r" -> index into hexBaseRows
-let _hexLatMid, HEX_MI_PER_DEG_LON, hexColPitchLon, hexRowPitchLat, hexCircumLat, hexCircumLon;
-const _hexSig = () => oppRegion.key+':'+HEX_MI+':'+HEX_RADIUS_MI+':'+(_vfIncludeMobile()?'m1':'m0');
-
-// ── geometry ──────────────────────────────────────────────────────────────
-function _hexComputeSpacing(){
-  _hexLatMid=(oppRegion.s+oppRegion.n)/2;
-  HEX_MI_PER_DEG_LON=69.0*Math.cos(_hexLatMid*Math.PI/180);    // ~58 at lat 33
-  hexColPitchLon=HEX_MI/HEX_MI_PER_DEG_LON;
-  hexRowPitchLat=(HEX_MI*Math.sqrt(3)/2)/HEX_MI_PER_DEG_LAT;
-  hexCircumLat=(HEX_MI/Math.sqrt(3))/HEX_MI_PER_DEG_LAT;
-  hexCircumLon=(HEX_MI/Math.sqrt(3))/HEX_MI_PER_DEG_LON;
-}
-function _hexCornersLatLon(cLat,cLon){
-  const pts=[];
-  for(let k=0;k<6;k++){ const ang=Math.PI/180*(60*k-90); pts.push([cLat+hexCircumLat*Math.sin(ang), cLon+hexCircumLon*Math.cos(ang)]); }
-  return pts;
-}
-function buildHexGrid(){
-  _hexComputeSpacing();
-  const {s,n,w,e}=oppRegion; const rows=[]; _hexAxialIndex.clear(); let r=0;
-  for(let lat=s; lat<=n+hexRowPitchLat; lat+=hexRowPitchLat, r++){
-    const lonOffset=(r%2)?hexColPitchLon/2:0; let q=0;
-    for(let lon=w+lonOffset; lon<=e+hexColPitchLon; lon+=hexColPitchLon, q++){
-      rows.push({q,r,cLat:lat,cLon:lon,zip:null,ring:_hexCornersLatLon(lat,lon)});
-      _hexAxialIndex.set(q+'_'+r, rows.length-1);
-    }
-  }
-  hexBaseRows=rows;
-}
-
-// ── ZIP spatial index (lat/lon → containing ZIP feature) ────────────────────
-function _rawBBoxG(f){
-  const g=f&&f.geometry; if(!g) return null;
-  let minLat=Infinity,maxLat=-Infinity,minLon=Infinity,maxLon=-Infinity;
-  const scan=ring=>{ for(const c of ring){ const lo=c[0],la=c[1]; if(la<minLat)minLat=la; if(la>maxLat)maxLat=la; if(lo<minLon)minLon=lo; if(lo>maxLon)maxLon=lo; } };
-  if(g.type==='Polygon'){ for(const r of g.coordinates) scan(r); }
-  else if(g.type==='MultiPolygon'){ for(const poly of g.coordinates) for(const r of poly) scan(r); }
-  else return null;
-  return {minLat,maxLat,minLon,maxLon};
-}
-function _buildHexZipBuckets(geo){
-  _hexZipBuckets=new Map();
-  for(const f of geo.features){
-    const bb=_rawBBoxG(f); if(!bb) continue;
-    if(bb.maxLat<oppRegion.s-0.1||bb.minLat>oppRegion.n+0.1||bb.maxLon<oppRegion.w-0.1||bb.minLon>oppRegion.e+0.1) continue;
-    const bi0=Math.round(bb.minLat/HEX_BUCKET), bi1=Math.round(bb.maxLat/HEX_BUCKET);
-    const bj0=Math.round(bb.minLon/HEX_BUCKET), bj1=Math.round(bb.maxLon/HEX_BUCKET);
-    for(let bi=bi0;bi<=bi1;bi++) for(let bj=bj0;bj<=bj1;bj++){
-      const k=bi+'_'+bj; let arr=_hexZipBuckets.get(k); if(!arr){ arr=[]; _hexZipBuckets.set(k,arr); } arr.push(f);
-    }
-  }
-}
-function _hexZipAt(lat,lon){
-  if(!_hexZipBuckets) return null;
-  const arr=_hexZipBuckets.get(Math.round(lat/HEX_BUCKET)+'_'+Math.round(lon/HEX_BUCKET));
-  if(!arr) return null;
-  for(const f of arr){
-    const bb=_rawBBoxG(f);
-    if(lat<bb.minLat||lat>bb.maxLat||lon<bb.minLon||lon>bb.maxLon) continue;
-    if(pointInGeoJSON(lat,lon,f)) return f;
-  }
-  return null;
-}
-// ZIP land area in sq mi (cached) — for housing density → development stage
-const _zipAreaCache=new Map();
-function _zipAreaMi(feat){
-  const z=feat.properties.zip; if(_zipAreaCache.has(z)) return _zipAreaCache.get(z);
-  const g=feat.geometry; let aDeg=0;
-  const ringArea=ring=>{ let a=0; for(let i=0,j=ring.length-1;i<ring.length;j=i++){ a+=ring[j][0]*ring[i][1]-ring[i][0]*ring[j][1]; } return Math.abs(a/2); };
-  if(g.type==='Polygon'){ aDeg=ringArea(g.coordinates[0]); }
-  else if(g.type==='MultiPolygon'){ for(const poly of g.coordinates) aDeg+=ringArea(poly[0]); }
-  const bb=_rawBBoxG(feat); const latMid=bb?(bb.minLat+bb.maxLat)/2:31;
-  const areaMi=aDeg*69.0*(69.0*Math.cos(latMid*Math.PI/180));   // deg² → mi² at the ZIP's latitude
-  _zipAreaCache.set(z,areaMi); return areaMi;
-}
-// Development stage from housing density + new-construction share + growth trajectory. "Developed" means
-// genuinely BUILT-UP (a real density reading); a place that's still building out — high share of homes built
-// 2010+, or a hot growth trajectory — is "Emerging" even with substantial rooftops. Display-only (NOT scored).
-// IMPORTANT: unknown density (dens==null, e.g. a missing household reading) must NEVER fall through to
-// "Developed" — that bug tagged whole regions developed on a data gap. null density -> dev stays null.
-function _hexStage(dens, traj, cons){
-  const g   = traj!=null ? traj : 0.5;                          // blended growth trajectory 0..1
-  const nc  = cons!=null ? clamp01(cons) : null;               // new-construction share 0..1 (homes built 2010+)
-  const dev = dens!=null ? clamp01(dens/1400) : null;          // developed-ness 0..1; null = UNKNOWN (do NOT assume developed)
-  const dense = dev!=null && dev>=0.5;                          // genuinely built-up (~700+ households/mi²)
-  if(dense) return {key:'build', label:'Developed', color:'#15803d', land:dev>0.78?'Premium land':'Moderate land'};
-  // not (known-)dense: EMERGING if it's actively building out — lots of new homes, or a hot growth trajectory.
-  if((nc!=null && nc>=0.33) || g>=0.50) return {key:'emerge', label:'Emerging', color:'#0d9488', land:'Value land'};
-  // an established lower-density suburb that's stopped growing/building is still Developed (mature, not emerging).
-  if(dev!=null && dev>=0.25) return {key:'build', label:'Developed', color:'#15803d', land:'Moderate land'};
-  return {key:'quiet', label:'Rural / quiet', color:'#94a3b8', land:'Low-cost land'};
-}
-
-// ── clinic spatial index (deduped, PE-flagged, reviews-carrying) ────────────
-function buildHexClinicIndex(){
-  const overrides=getOverrides(), deleted=getDeleted(), byCell=new Map();
-  const add=(la,lo,pe,reviews,name)=>{
-    const k=Math.round(la*1000)+'_'+Math.round(lo*1000);    // 110m dedup — exactly _evalCompetitors
-    const _ov=overrides[k]; if(deleted[k]||(_ov&&_ov.exclude)||byCell.has(k)) return;
-    if(!_vfCountEquine() && _isLargeAnimalAt(name,la,lo)) return;
-    if(_isSpecialtyERAt(name,la,lo)) return;   // pure specialty/ER: not GP competition
-    byCell.set(k,{lat:la,lon:lo,pe:!!pe,reviews:(_ov&&_ov.reviewsOv!=null)?_ov.reviewsOv:(typeof reviews==='number'?reviews:null),mult:(_ov&&_ov.mult)||1,staffN:(_vetStaffAt(la,lo)||{}).n||null});
-  };
-  if(peLoaded && typeof PE_COORDS!=='undefined') for(const c of PE_COORDS){
-    const enr=_vetEnrichAt(c[0],c[1]);                       // MUST be 'enr' (TDZ guard, CLAUDE.md)
-    add(c[0],c[1],true, enr&&enr.reviews, c[4]||(enr&&enr.name));
-  }
-  for(const v of _activeVetClinics()){
-    add(v.lat,v.lon, !!checkPE(v.name,v.lat,v.lon,null,overrides), v.reviews, v.name);
-  }
-  const idx=new Map(), revs=[];
-  for(const c of byCell.values()){
-    const bk=Math.round(c.lat/HEX_BUCKET)+'_'+Math.round(c.lon/HEX_BUCKET);
-    let arr=idx.get(bk); if(!arr){ arr=[]; idx.set(bk,arr); } arr.push(c);
-    if(typeof c.reviews==='number'&&c.reviews>0) revs.push(c.reviews);
-  }
-  revs.sort((a,b)=>a-b);
-  _hexCompMedRev=revs.length?revs[Math.floor(revs.length/2)]:150;
-  _hexClinicIndex=idx;
-}
-
-// ── build pass (once per region/data load): ZIP join + competition join ─────
-async function buildHexBaseInputs(){
-  _loadTracts();                                             // community layer (display) — fire-and-forget
-  await loadZipGeometry();
-  await _loadHexWater();                                          // real lake outlines → skip grading open water
-  await _loadOppRetail();                                         // commercial-fabric nodes → hex-card "nearest retail" read
-  const geo=oppGeoSnap||incomeGeoData||_zipGeoCache;
-  if(!geo) throw new Error('no zip geometry');
-  _buildHexZipBuckets(geo);
-  buildHexClinicIndex();
-  buildHexGrid();
-  const incSrc=Object.keys(oppIncomeSnap).length?oppIncomeSnap:incomeData;
-  const dogSrc=oppDogSnap;
-  const growSrc=Object.keys(oppGrowthSnap).length?oppGrowthSnap:growthData;
-  const consSrc=Object.keys(oppConstructionSnap).length?oppConstructionSnap:constructionData;
-  const winB=Math.ceil(HEX_R/(HEX_BUCKET*HEX_MI_PER_DEG_LON*1609.344));
-  for(const h of hexBaseRows){
-    const f=_hexZipAt(h.cLat,h.cLon);
-    if(!f || _hexInWater(h.cLat,h.cLon)){ h.zip=null; continue; }   // outside TX ZIPs OR on a lake → don't grade
-    h.zip=f.properties.zip; h.feat=f; h.city=f.properties.city||f.properties.po_name||'';
-    const z=h.zip;
-    h.inc = incSrc[z]!=null?incSrc[z]:(incomeData[z]!=null?incomeData[z]:null);
-    h.dog = (dogSrc&&dogSrc[z]!=null)?dogSrc[z]:((dogData[z]&&dogData[z].est)!=null?dogData[z].est:null);
-    h.grow= growSrc[z]!=null?growSrc[z]:(growthData[z]!=null?growthData[z]:null);
-    h.cons= consSrc[z]!=null?consSrc[z]:(constructionData[z]!=null?constructionData[z]:null);
-    const _hh=(dogData[z]&&dogData[z].households)||null, _am=_zipAreaMi(f);
-    h.dens=(_hh!=null&&_am>0)?_hh/_am:null;                       // households per sq mi → development stage
-    let comp=0, nearPE=Infinity;
-    const bi=Math.round(h.cLat/HEX_BUCKET), bj=Math.round(h.cLon/HEX_BUCKET);
-    for(let di=-winB;di<=winB;di++) for(let dj=-winB;dj<=winB;dj++){
-      const arr=_hexClinicIndex.get((bi+di)+'_'+(bj+dj)); if(!arr) continue;
-      for(const c of arr){ const d=hav(h.cLat,h.cLon,c.lat,c.lon); if(d>=HEX_R) continue;
-        comp += (c.pe?HEX_PE_W:1)*_revW(c.reviews,_hexCompMedRev)*_staffW(c.staffN)*(c.mult||1)*_grav(_barrierDist(h.cLat,h.cLon,c.lat,c.lon,d),HEX_R);
-        if(c.pe && d<nearPE) nearPE=d; }
-    }
-    h.comp=comp; h.nearPE=nearPE;
-  }
-  _hexBuiltKey=_hexSig();
-}
-
-// ── reblend (every slider/preset change): pure arithmetic over baked records ─
-function rescoreHexes(){
-  if(!hexBaseRows.length){ hexScored=[]; return; }
-  const w=getOppWeights();
-  const wD=w.income+w.demand+w.growth||1;
-  const aInc=w.income/wD, aDog=w.demand/wD, aGro=w.growth/wD;
-  const shareExp=0.5+2.0*w.comp;                              // w-comp tunes competition decisiveness
-  hexScored=hexBaseRows.map(h=>{
-    if(!h.zip) return {...h, score:null, _color:null};
-    const spendIdx=h.inc!=null?clamp01((h.inc-30000)/90000):0.5;   // $30k→0, $120k→1
-    const volIdx  =h.dog!=null?clamp01(h.dog/6000):0.5;            // 6000 dog-HH→1
-    const popIdx  =h.grow!=null?clamp01((h.grow+0.10)/0.70):0.5;   // -10%→0, +60%→1
-    const consIdx =h.cons!=null?clamp01(h.cons):0.5;
-    const trajIdx =(h.grow!=null&&h.cons!=null)?0.6*popIdx+0.4*consIdx:(h.grow!=null?popIdx:(h.cons!=null?consIdx:0.5));
-    const demand=Math.pow(Math.max(spendIdx,1e-3),aInc)*Math.pow(Math.max(volIdx,1e-3),aDog)*Math.pow(Math.max(trajIdx,1e-3),aGro);
-    let share=HEX_AOWN/(HEX_AOWN+h.comp);                          // ABSOLUTE Huff (never min-max)
-    if(h.nearPE<PE_NEAR_HARD) share=Math.min(share,0.10);
-    let capTerm=Math.pow(share,shareExp);
-    if(h.nearPE<PE_NEAR_HARD) capTerm=Math.min(capTerm,0.20);      // hard-cap the contribution too — de-weighting competition can't revive a PE-adjacent site
-    const score=clamp01(demand*capTerm);                          // expected captured demand 0..1
-    const _stage=_hexStage(h.dens, trajIdx, h.cons);
-    return {...h, demand, share, spendIdx, volIdx, trajIdx, score, _stage, _color:_evalColor(Math.pow(score,0.7))};
-  });
-  redrawHexCanvas();
-  _fillLegend();
-}
-
-// ── render (dedicated canvas, persistent polygons, in-place restyle) ────────
-function _ensureHexCanvas(){ if(!_hexCanvas) _hexCanvas=L.canvas({padding:0.5}); }
-function buildHexPolys(){
-  _ensureHexCanvas();
-  if(hexLayer){ map.removeLayer(hexLayer); }
-  hexLayer=L.layerGroup();
-  for(const h of hexBaseRows){
-    h._poly=L.polygon(h.ring,{renderer:_hexCanvas, stroke:false, interactive:false, fillColor:'#9ca3af', fillOpacity:0.5});
-    hexLayer.addLayer(h._poly);
-  }
-  hexLayer.addTo(map);
-  if(hexLayer.bringToBack) hexLayer.bringToBack();
-}
-function _hexStageMatch(key){
-  if(hexStrategy==='all') return true;
-  if(hexStrategy==='developed') return key==='build';    // already-developed / built-up areas
-  if(hexStrategy==='emerging')  return key==='emerge';   // up-and-coming growth areas (absorbed the old land-bank)
-  return true;
-}
-function setHexStrategy(s){ hexStrategy=s; redrawHexCanvas(); _fillLegend(); }
-function redrawHexCanvas(){
-  if(!_hexView||!hexLayer) return;
-  for(let i=0;i<hexScored.length;i++){
-    const base=hexBaseRows[i]; const poly=base&&base._poly; if(!poly) continue;  // index-aligned (order-independent)
-    const h=hexScored[i];
-    if(h.score==null){ poly.setStyle({fillOpacity:0, stroke:false}); continue; }
-    if(i===_hexSelIdx) poly.setStyle({fillColor:h._color||'#7c3aed', fillOpacity:0.96, stroke:true, color:'#0f172a', weight:3.5}); // priority pick
-    else if(_hexRegionIdx&&_hexRegionIdx.has(i)) poly.setStyle({fillColor:h._color, fillOpacity:0.8, stroke:true, color:'#0f172a', weight:1.4}); // surrounding region
-    else if(_hexStageMatch(h._stage&&h._stage.key)) poly.setStyle({fillColor:h._color, fillOpacity:0.58, stroke:false});
-    else poly.setStyle({fillColor:'#94a3b8', fillOpacity:0.06, stroke:false});    // dim non-matching plays so the matches pop
-  }
-}
-
-// ── interaction (one throttled mousemove + one click; O(9) axial hit-test) ──
-function _hexAt(lat,lon){
-  if(!hexRowPitchLat) return null;
-  const r=Math.round((lat-oppRegion.s)/hexRowPitchLat); if(r<0) return null;
-  const lonOffset=(r%2)?hexColPitchLon/2:0;
-  const q=Math.round((lon-(oppRegion.w+lonOffset))/hexColPitchLon);
-  let best=null,bestD=Infinity;
-  for(let dr=-1;dr<=1;dr++) for(let dq=-1;dq<=1;dq++){
-    const i=_hexAxialIndex.get((q+dq)+'_'+(r+dr)); if(i==null) continue;
-    const h=hexScored[i]||hexBaseRows[i]; if(!h) continue;
-    const d=(h.cLat-lat)**2+(h.cLon-lon)**2; if(d<bestD){bestD=d;best=h;}
-  }
-  return best;
-}
-function _hexShowTip(latlng,h){
-  if(!hexHoverTip) hexHoverTip=L.tooltip({className:'hex-tip',direction:'top',offset:[0,-2],opacity:0.97});
-  const sc=h.score!=null?Math.round(h.score*100):'—';
-  hexHoverTip.setLatLng(latlng).setContent(`<b>${h.zip||'—'}${h.city?' · '+h.city:''}</b><br>Opportunity <b>${sc}</b>/100`);
-  if(!map.hasLayer(hexHoverTip)) hexHoverTip.addTo(map);
-}
-function _hexHideTip(){ if(hexHoverTip && map.hasLayer(hexHoverTip)) map.removeLayer(hexHoverTip); }
-function _hexInstallHandlers(){
-  if(_hexHandlersOn) return; _hexHandlersOn=true;
-  let raf=0, lastT=0;
-  map.on('mousemove', e=>{ if(!_hexView) return;
-    const now=performance.now(); if(now-lastT<40) return; lastT=now;
-    if(raf) return; raf=requestAnimationFrame(()=>{ raf=0;
-      const h=_hexAt(e.latlng.lat,e.latlng.lng);
-      if(!h||h.score==null){ _hexHideTip(); return; } _hexShowTip(e.latlng,h); }); });
-  map.on('click', e=>{ if(!_hexView) return;
-    const h=_hexAt(e.latlng.lat,e.latlng.lng); if(h&&h.zip) _hexFocus(h,false); });
-}
-
-// ── surface entry / view toggle / card / detail / handoff ───────────────────
-function renderHexSurface(){
-  if(_hexSig()!==_hexBuiltKey || !hexBaseRows.length){
-    const body=document.getElementById('hex-legend-body'); if(body) body.innerHTML='<div style="padding:10px 4px;color:#64748b;font-size:12px">Scoring ~10,000 one-mile sites across '+oppRegion.name+'…</div>';
-    const _sig=_hexSig();
-    buildHexBaseInputs().then(()=>{ if(oppView!=='surface' || _hexSig()!==_sig) return; /* user left / region changed mid-build — drop the result */ _hexView=true; buildHexPolys(); rescoreHexes(); _hexInstallHandlers(); })
-      .catch(err=>{ console.error('hex surface build failed',err); const b=document.getElementById('hex-legend-body'); if(b) b.innerHTML='<div style="padding:10px 4px;color:#b91c1c;font-size:12px">Could not build the surface — try reopening Opportunity.</div>'; });
-    return;
-  }
-  _hexView=true;
-  if(!hexLayer) buildHexPolys();
-  if(!hexScored.length) rescoreHexes(); else { redrawHexCanvas(); _fillLegend(); }
-  _hexInstallHandlers();
-}
+let oppView='list';              // 'list' | 'mpc' (Communities ranking)
 function setOppView(v){
   if(v===oppView) return; oppView=v;
-  const panel=document.getElementById('opp-panel');
-  if(v==='surface'){
-    _oppKillChoropleths();
-    if(panel) panel.classList.add('surface-mode');
-    document.body.classList.add('vf-surface');                  // hides the "zoom in to see clinics" pill
-    setTimeout(()=>{ map.invalidateSize(); try{ map.fitBounds([[oppRegion.s,oppRegion.w],[oppRegion.n,oppRegion.e]],{animate:false,padding:[18,18]}); }catch(e){ map.setView([oppRegion.lat,oppRegion.lon],10,{animate:false}); } },40);
-  } else {
-    _hexView=false; _hexClearSel();
-    if(hexLayer){ map.removeLayer(hexLayer); hexLayer=null; }
-    _hexHideTip();
-    if(panel) panel.classList.remove('surface-mode');
-    document.body.classList.remove('vf-surface');
-  }
   renderOppList();
 }
 // ── Communities (census tracts) fill layer — archetype-colored tract polygons ────────────────
@@ -5475,7 +5131,6 @@ function setOppView(v){
 // tract for its community profile — this is the "how precise are these tracts" inspection layer.
 let tractLayer=null;
 async function toggleTractLayer(on){
-  if(on && typeof _hexView!=='undefined' && _hexView) setOppView('list');
   const status=document.getElementById('tracts-status');
   const legend=document.getElementById('tracts-legend');
   if(!on){
@@ -5532,6 +5187,34 @@ function _loadCommercial(){
   return _commP;
 }
 const _PIPE_STATUS={uc:'Under construction',an:'Announced',co:'Conceptual'};
+/* Vet early-warning paws are ALWAYS visible (2026-07-25, user: "I want the red paw print markers
+   of clinics being built always to be visible") — they no longer wait for the Commercial-pipeline
+   toggle. Drawn once on idle after boot from dfw-commercial.json's vet-flagged TABS rows; the
+   toggle layer skips kind==='vet' so the pins never double. Green (Comptroller newly-open) paws
+   stay inside the toggle layer. */
+let _vetAlertLayer=null;
+async function _drawVetAlerts(){
+  if(_vetAlertLayer) return;
+  const d=await _loadCommercial();
+  if(!d||!d.list) return;
+  _vetAlertLayer=L.layerGroup();
+  for(const r of d.list){
+    if(r.kind!=='vet'||r.la==null) continue;
+    const m=L.marker([r.la,r.lo],{zIndexOffset:900,icon:L.divIcon({className:'',html:'<div class="vf-vetalert'+(r.approx?' vf-approx':'')+'">🐾</div>',iconSize:[22,22],iconAnchor:[11,11]})});
+    m.bindTooltip('Vet coming: '+(r.n||''),{direction:'top',offset:[0,-10]});
+    m.bindPopup(()=>`<div style="min-width:200px;max-width:250px">
+      <div style="display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#fff;background:#dc2626;border-radius:8px;padding:2px 9px">Vet clinic — pre-opening</div>
+      <div style="font-size:13px;font-weight:700;margin-top:6px">${_ceEsc(r.n||'')}</div>
+      <div style="font-size:10.5px;color:#64748b;margin:2px 0 6px">${_ceEsc(r.addr||'')}${r.city?' · '+_ceEsc(r.city):''}</div>
+      ${r.end?'<div style="font-size:11.5px;color:#334155">Est. completion <b>'+r.end+'</b></div>':''}
+      ${r.cost?'<div style="font-size:11px;color:#475569">'+(r.cost>=1e6?('$'+(r.cost/1e6).toFixed(1)+'M'):('$'+Math.round(r.cost/1e3)+'k'))+(r.sf?' · '+r.sf.toLocaleString()+' sf':'')+'</div>':''}
+      ${r.owner?'<div style="font-size:11px;color:#475569">Owner: '+_ceEsc(r.owner)+'</div>':''}
+      ${r.approx?'<div style="font-size:10.5px;color:#9f1239;background:#fff1f2;border:1px solid #fecdd3;border-radius:8px;padding:4px 8px;margin-top:5px">Location approximate (city level).</div>':''}
+      <div style="font-size:10px;color:#94a3b8;margin-top:6px">TDLR TABS ${r.id||''} · estimate, applicant-reported · always shown</div></div>`,{maxWidth:270});
+    _vetAlertLayer.addLayer(m);
+  }
+  _vetAlertLayer.addTo(map);
+}
 const _CRANE_SVG='<svg width="10" height="10" viewBox="0 0 10 10"><path d="M1.2 9h7.6M2.5 9V3.2L8 1.4M8 1.4v2.2M8 1.4 5.6 2.2m0 0v2.1" stroke="#fff" stroke-width="1.15" fill="none" stroke-linecap="round"/></svg>';
 // Analyst-ticket popup (user pick B4): dense label/value rows, tabular numerals, tenant block
 // as a <details> dropdown. Suppresses the facility line when it just repeats the project name.
@@ -5644,21 +5327,7 @@ async function toggleCommercialLayer(on){
   for(const r of d.list){
     if(r.la==null) continue;
     const isVet=r.kind==='vet';
-    if(isVet){
-      const m=L.marker([r.la,r.lo],{icon:L.divIcon({className:'',html:'<div class="vf-vetalert'+(r.approx?' vf-approx':'')+'">🐾</div>',iconSize:[22,22],iconAnchor:[11,11]})});
-      m.bindTooltip('Vet coming: '+(r.n||''),{direction:'top',offset:[0,-10]});
-      m.bindPopup(`<div style="min-width:200px;max-width:250px">
-        <div style="display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#fff;background:#dc2626;border-radius:8px;padding:2px 9px">Vet clinic — pre-opening</div>
-        <div style="font-size:13px;font-weight:700;margin-top:6px">${_ceEsc(r.n||'')}</div>
-        <div style="font-size:10.5px;color:#64748b;margin:2px 0 6px">${_ceEsc(r.addr||'')}${r.city?' · '+_ceEsc(r.city):''}</div>
-        ${r.end?'<div style="font-size:11.5px;color:#334155">Est. completion <b>'+r.end+'</b></div>':''}
-        ${r.cost?'<div style="font-size:11px;color:#475569">'+fmt$(r.cost)+(r.sf?' · '+r.sf.toLocaleString()+' sf':'')+'</div>':''}
-        ${r.owner?'<div style="font-size:11px;color:#475569">Owner: '+_ceEsc(r.owner)+'</div>':''}
-        ${r.approx?'<div style="font-size:10.5px;color:#9f1239;background:#fff1f2;border:1px solid #fecdd3;border-radius:8px;padding:4px 8px;margin-top:5px">Location approximate (city level) — the filing\'s address didn\'t street-geocode.</div>':''}
-        <div style="font-size:10px;color:#94a3b8;margin-top:6px">TDLR TABS ${r.id||''} · estimate, applicant-reported</div></div>`,{maxWidth:270});
-      commLayer.addLayer(m); nVet++; nPin++;
-      continue;
-    }
+    if(isVet) continue;                       // red paws are ALWAYS on via _vetAlertLayer — never doubled here
     // new construction — crane-glyph pin (user pick A2) + analyst-ticket popup (pick B4)
     const m=L.marker([r.la,r.lo],{icon:L.divIcon({className:'',html:'<div class="vf-crane'+(r.approx?' vf-approx':'')+'">'+_CRANE_SVG+'</div>',iconSize:[17,17],iconAnchor:[8,8]})});
     const tenants=r.fac?(byFac[r.fac.toLowerCase()]||[]):[];
@@ -5700,7 +5369,7 @@ async function toggleCommercialLayer(on){
   map.addLayer(commLayer);
   if(!window._commZoomHooked){ window._commZoomHooked=1; map.on('zoomend',_commZoomSync); }
   _commZoomSync();
-  if(status) status.textContent=nPin.toLocaleString()+' projects · '+nTen.toLocaleString()+' tenant spots (zoom ≥13) · '+nVet+' vet signals';
+  if(status) status.textContent=nPin.toLocaleString()+' projects · '+nTen.toLocaleString()+' tenant spots (zoom ≥13) · '+nVet+' newly-open vets (red paws always on)';
 }
 // ── Development signals (zoning & anchors) — curated point events, OVERLAY, display-only ────
 let _sigData=null,_sigP=null,sigLayer=null;
@@ -5992,64 +5661,6 @@ function _oppKillChoropleths(){
   off('toggle-growth', toggleGrowthLayer);
   off('toggle-tracts', toggleTractLayer);
 }
-function _hexTeardown(){
-  _hexView=false; oppView='list'; _hexClearSel();              // reset the view flag so re-entry lands clean (avoids opaque-panel-over-surface desync)
-  if(hexLayer){ map.removeLayer(hexLayer); hexLayer=null; }
-  _hexHideTip();
-  const panel=document.getElementById('opp-panel'); if(panel) panel.classList.remove('surface-mode');
-  document.body.classList.remove('vf-surface');
-}
-function _hexSurfaceCard(){
-  return `<div class="hex-card">
-    <div class="hex-card-h">Opportunity surface · ${oppRegion.name}</div>
-    <div id="hex-legend-body"></div>
-    <div id="hex-detail" style="display:none;margin-top:10px;padding-top:10px;border-top:1px dashed var(--border)"></div>
-    <div style="margin-top:10px;font-size:10.5px;color:#64748b;line-height:1.55">Each hex ≈ ${HEX_MI} mi across. Color = <b>opportunity</b> for that spot — darker is stronger. Adjust the sliders to reweight. Hover any hex; click for its breakdown.</div></div>`;
-}
-function _fillLegend(){
-  const body=document.getElementById('hex-legend-body'); if(!body) return;
-  const match=[...hexScored].filter(h=>h.score!=null && _hexStageMatch(h._stage&&h._stage.key)).sort((a,b)=>b.score-a.score);
-  const seen=new Set(), best=[];                                  // top DISTINCT ZIPs (one hex per ZIP)
-  for(const h of match){ if(seen.has(h.zip)) continue; seen.add(h.zip); best.push(h); if(best.length>=6) break; }
-  const top=best.map(h=>{ const st=h._stage||_hexStage(h.dens,h.trajIdx,h.cons); return `<div class="hex-top-row" onclick="_hexOpenDetailByCell(${h.q},${h.r})">`+
-       `<span style="color:${h._color};font-weight:800;min-width:22px;text-align:right">${Math.round(h.score*100)}</span>`+
-       `<span style="flex:1">${h.zip}${h.city?' · '+h.city:''}</span>`+
-       `<span style="font-size:10.5px;font-weight:700;color:${st.color};white-space:nowrap">${st.label}</span></div>`; }).join('');
-  const seg=`<div class="hex-strat-seg">`+
-    `<button class="${hexStrategy==='all'?'on':''}" onclick="setHexStrategy('all')">All</button>`+
-    `<button class="${hexStrategy==='developed'?'on b':''}" onclick="setHexStrategy('developed')">Developed</button>`+
-    `<button class="${hexStrategy==='emerging'?'on l':''}" onclick="setHexStrategy('emerging')">Emerging</button></div>`;
-  const nZ=new Set(match.map(h=>h.zip)).size;
-  const note = hexStrategy==='all' ? '' :
-    `<div style="font-size:10.5px;color:${hexStrategy==='emerging'?'#0d9488':'#15803d'};font-weight:600;margin:7px 0 0">${nZ} ${hexStrategy==='emerging'?'emerging':'developed'} ZIP${nZ!==1?'s':''} highlighted</div>`;
-  body.innerHTML=`${seg}${note}<div style="font-size:11px;color:#475569;margin-top:9px">Captured demand (low → high)</div>`+
-    `<div class="hex-legbar"></div>`+
-    `<div style="display:flex;justify-content:space-between;font-size:10.5px;color:#64748b;margin-top:1px"><span>low</span><span>high</span></div>`+
-    `<div class="hex-top-h">Top spots${hexStrategy==='all'?'':' · '+(hexStrategy==='emerging'?'Emerging':'Developed')}</div>${top||'<div style="font-size:11px;color:#64748b">No matching plays.</div>'}`;
-}
-function _hexOpenDetailByCell(q,r){ const i=_hexAxialIndex.get(q+'_'+r); if(i!=null && hexScored[i]) _hexFocus(hexScored[i], true); }
-function _hexClearSel(){ _hexSelIdx=-1; _hexRegionIdx=null; }
-// Focus the priority hex + its immediate surrounding hexes ("the region"): highlight the cluster,
-// zoom to frame just it, open the detail.
-function _hexFocus(h, doZoom){
-  if(!h) return;
-  const i=_hexAxialIndex.get(h.q+'_'+h.r); _hexSelIdx=(i==null?-1:i);
-  _hexRegionIdx=new Set();
-  if(_hexSelIdx>=0){
-    const mpdLon=69.0*Math.cos(h.cLat*Math.PI/180), R2=HEX_REGION_MI*HEX_REGION_MI;
-    for(let k=0;k<hexBaseRows.length;k++){ const b=hexBaseRows[k]; if(b.zip==null) continue;
-      const dx=(b.cLon-h.cLon)*mpdLon, dy=(b.cLat-h.cLat)*69.0;
-      if(dx*dx+dy*dy<=R2) _hexRegionIdx.add(k); }
-  }
-  redrawHexCanvas();                                                // applies priority + surrounding-region styling
-  if(doZoom){
-    let lats=[],lons=[]; _hexRegionIdx.forEach(k=>{ const b=hexBaseRows[k]; lats.push(b.cLat); lons.push(b.cLon); });
-    try{ if(lats.length){ const p=0.012; map.fitBounds([[Math.min(...lats)-p,Math.min(...lons)-p],[Math.max(...lats)+p,Math.max(...lons)+p]],{animate:false,maxZoom:14,paddingTopLeft:[540,40],paddingBottomRight:[60,60]}); } // left pad clears the controls + floating card
-         else map.setView([h.cLat,h.cLon],13,{animate:false}); }
-    catch(e){ try{ map.setView([h.cLat,h.cLon],13,{animate:false}); }catch(_){} }
-  }
-  _hexOpenDetail(h);
-}
 // ── Community layer (census tracts — Phase 1, display-only) ─────────────────
 // dfw-tracts.json: 1,730 DFW tracts (TIGERweb 2020 boundaries, server-generalized) with ACS 2024
 // demographics embedded per tract {g,inc,hh,own,sf,cons,age,pop}. A tract ≈ one community
@@ -6140,53 +5751,6 @@ function _communityHTML(lat,lon,opts){
 }
 // Nearest commercial-fabric node in miles (cell-indexed over _oppRetailPts; null if data absent or >4mi).
 let _retailIdx=null;
-function _nearRetailMi(lat,lon){
-  if(!_oppRetailPts||!_oppRetailPts.length) return null;
-  if(!_retailIdx){ _retailIdx=new Map(); for(const p of _oppRetailPts){ const k=Math.round(p[0]/0.02)+'_'+Math.round(p[1]/0.02); (_retailIdx.get(k)||_retailIdx.set(k,[]).get(k)).push(p); } }
-  const bi=Math.round(lat/0.02), bj=Math.round(lon/0.02); let best=Infinity;
-  for(let di=-4;di<=4;di++) for(let dj=-4;dj<=4;dj++){
-    const arr=_retailIdx.get((bi+di)+'_'+(bj+dj)); if(!arr) continue;
-    for(const p of arr){ const d=hav(lat,lon,p[0],p[1]); if(d<best) best=d; }
-  }
-  return best===Infinity?null:best*0.000621371;   // metres → miles
-}
-function _hexOpenDetail(h){
-  const box=document.getElementById('hex-detail'); if(!box) return;
-  box.style.display='block';
-  const st=h._stage||_hexStage(h.dens,h.trajIdx,h.cons);
-  const bar=(lbl,v,col)=>`<div style="display:flex;align-items:center;gap:6px;margin:2px 0"><span style="width:96px;font-size:10.5px;color:#64748b">${lbl}</span><div style="flex:1;height:7px;background:#eef2f7;border-radius:4px;overflow:hidden"><i style="display:block;height:100%;width:${Math.round(clamp01(v)*100)}%;background:${col}"></i></div></div>`;
-  box.innerHTML=`<div style="font-weight:800;font-size:13px">${h.zip}${h.city?' · '+h.city:''}
-      <span style="font-size:10.5px;font-weight:700;color:#fff;background:${st.color};padding:1px 7px;border-radius:10px;margin-left:4px;vertical-align:1px">${st.label}</span></div>
-    <div style="font-size:10.5px;color:${st.color};font-weight:600;margin-top:3px">${st.land}${h.dens!=null?` · ~${Math.round(h.dens).toLocaleString()} homes/mi²`:''}</div>
-    ${(()=>{const d=_nearRetailMi(h.cLat,h.cLon); if(d==null&&!_oppRetailPts) return ''; return `<div style="font-size:10.5px;color:#64748b;margin-top:2px">${d==null?'No retail within 4 miles; likely a land play or served from nearby':d<0.4?'Commercial corridor at this spot':'Nearest commercial corridor about '+d.toFixed(1)+' mi'}</div>`;})()}
-    ${_communityHTML(h.cLat,h.cLon)}
-    <div style="font-size:11px;color:#475569;margin:6px 0">Income ${_fmtMoney(h.inc)} · Growth '21→'24 ${_fmtPct(h.grow)} · New construction ${h.cons!=null?Math.round(h.cons*100)+'%':'—'}</div>
-    ${(()=>{const cE=(typeof dogData!=='undefined'&&dogData[h.zip]&&dogData[h.zip].catEst!=null)?dogData[h.zip].catEst:null;
-      const v=h.dog!=null?Math.round(h.dog*OPP_VISITS_PER_DOGHH+(cE||0)*OPP_VISITS_PER_CATHH):null;
-      let band='';
-      if(v!=null && h.share!=null){ const cap=v*Math.min(h.share,0.95)/OPP_VISITS_PER_DVM;
-        band = cap<1.3?'a solo practice':cap<2.5?'a ~2-doctor practice':cap<3.6?'a ~3-doctor practice':'a 4+ doctor hospital'; }
-      return `<div style="font-size:11px;color:#475569;margin:0 0 6px">${h.dog!=null?Math.round(h.dog).toLocaleString():'—'} dog${cE!=null?' + '+Math.round(cE).toLocaleString()+' cat':''} households → est. <b>${v!=null?('~'+v.toLocaleString()):'—'}</b> vet visits/yr → a new clinic captures est. <b>${h.share!=null?'~'+Math.min(95,Math.round(h.share*100))+'%':'—'}</b>${band?' → enough for <b>'+band+'</b>':''}</div>`;})()}
-    ${bar('Spend power',h.spendIdx||0,'#15803d')}${bar('Pet volume',h.volIdx||0,'#4338ca')}${bar('Growth trajectory',h.trajIdx||0,'#0d9488')}${bar('Market capture',h.share||0,'#b45309')}
-    <div style="margin:8px 0 6px;font-size:12px">Opportunity score <b style="color:${h._color}">${Math.round((h.score||0)*100)}</b> <span style="font-size:10.5px;color:#64748b">demand × est. market capture</span></div>
-    <button class="eval-btn" style="width:100%" onclick="evaluateHexSpot(${h.cLat.toFixed(5)},${h.cLon.toFixed(5)})">Evaluate this spot →</button>`;
-}
-function evaluateHexSpot(lat,lon){
-  _hexTeardown();                                              // resets oppView + surface CSS + layer
-  const panel=document.getElementById('opp-panel'); if(panel) panel.classList.remove('show');
-  // Evaluate a ~2-mile box around the hex (not just the 1-mile cell) so the engine can find the
-  // nearest commercial pad — a growth exurb's retail corridor is often a mile or two from the hex.
-  const dLat=2.0/69.0, dLon=2.0/(69.0*Math.cos(lat*Math.PI/180));
-  drawnArea={ type:'poly', points:[{lat:lat-dLat,lng:lon-dLon},{lat:lat-dLat,lng:lon+dLon},{lat:lat+dLat,lng:lon+dLon},{lat:lat+dLat,lng:lon-dLon}] };
-  switchSection('map');
-  setTimeout(()=>{
-    map.invalidateSize();
-    map.setView([lat,lon],12,{animate:false});
-    try{ captureAreaClinics(); }catch(e){}
-    openEvaluateArea();
-  },60);
-}
-
 // New-construction signal: share of a ZIP's homes built 2010 or later (ACS B25034).
 // Forward-ish proxy for new rooftops → future pet demand. Fetched once, cached.
 let constructionData = {}; // zip -> 0..1
@@ -6464,7 +6028,7 @@ let oppBaseRows=[];
 // Normalize 0–100 across the regional set, apply weights, sort, render
 function rescoreAndRender(){
   if(!oppBaseRows.length){
-    if(oppView!=='surface') document.getElementById('opp-list-wrap').innerHTML='<div class="opp-empty">No ZIP data in the '+oppRegion.name+' region yet.</div>'; // don't stomp the surface card
+    document.getElementById('opp-list-wrap').innerHTML='<div class="opp-empty">No ZIP data in the '+oppRegion.name+' region yet.</div>'; // don't stomp the surface card
     return;
   }
   const w=getOppWeights();
@@ -6546,9 +6110,7 @@ function rescoreAndRender(){
     for(const r of oppScored) r.score=5+90*(r.score-sMn)/sRng;
   }
 
-  // In Surface view, the card is already built (by setOppView) and recolored by rescoreHexes —
-  // don't rebuild #opp-list-wrap here (that would wipe an open hex-detail and double the work).
-  if(oppView==='surface') _oppKpiTop(); else renderOppList();
+  renderOppList();
 }
 
 // Single-hue green intensity ramp — darker = stronger opportunity (white text stays WCAG-legible on all buckets).
@@ -6768,16 +6330,9 @@ function renderOppList(){
   const wrap=document.getElementById('opp-list-wrap');
   const tEl=document.getElementById('opp-title'); if(tEl) tEl.textContent='Opportunity Scores · '+oppRegion.name;
   // Two funnel stages, captioned the way PE runs them: market screen → site scoring
-  const seg=`<div><div class="opp-view-seg"><button class="${oppView==='list'?'on':''}" onclick="setOppView('list')">List</button><button class="${oppView==='surface'?'on':''}" onclick="setOppView('surface')">Surface</button><button class="${oppView==='mpc'?'on':''}" onclick="setOppView('mpc')">Communities</button></div>`+
-    `<div style="font-size:10.5px;color:#64748b;font-weight:600;margin-top:3px;letter-spacing:.02em">${oppView==='surface'?'Site scoring · one-mile hexes':(oppView==='mpc'?'Future demand · master-planned buildouts':'Market screen · ranked ZIPs')}</div></div>`;
+  const seg=`<div><div class="opp-view-seg"><button class="${oppView==='list'?'on':''}" onclick="setOppView('list')">List</button><button class="${oppView==='mpc'?'on':''}" onclick="setOppView('mpc')">Communities</button></div>`+
+    `<div style="font-size:10.5px;color:#64748b;font-weight:600;margin-top:3px;letter-spacing:.02em">${oppView==='mpc'?'Master-planned communities · ranked':'ZIP ranking · four weighted factors'}</div></div>`;
   if(oppView==='mpc'){ _renderMpcList(wrap, seg); return; }
-  if(oppView==='surface'){
-    document.getElementById('opp-sub').textContent=`${oppScored.length} ZIPs scored across ${oppRegion.name} · opportunity surface showing the best buildable spots`;
-    wrap.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">${seg}${oppScored.length?_exportBtn('exportOppCSV()','Export ZIP rankings'):''}</div>${_hexSurfaceCard()}`;
-    renderHexSurface();
-    _oppKpiTop();
-    return;
-  }
   document.getElementById('opp-sub').textContent=
     `${oppScored.length} ZIPs scored across ${oppRegion.name} · ranked best to worst`;
   const rows=oppScored.map((r,i)=>{
