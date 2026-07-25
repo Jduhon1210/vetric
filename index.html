@@ -8260,8 +8260,12 @@ function _evalComputeAndRender(){
   for(const g of grid) g.scoreRel=(g.score-sMin)/sRange;
   const sorted=[...grid].sort((a,b)=>b.score-a.score);
   const minSep=Math.max(bb.maxLa-bb.minLa, bb.maxLo-bb.minLo)*0.16;
+  // Region-scale runs (Evaluate Metroplex) surface 5 sites — 3 across ~7,000 sq mi leaves whole
+  // corridors unexamined (user, 2026-07-25). Normal ZIP/area evaluations keep the preferred 3.
+  const _metroRun=(bb.maxLa-bb.minLa)>0.9||(bb.maxLo-bb.minLo)>1.1;
+  const TOPN=_metroRun?5:EVAL_TOP_N;
   const top=[];
-  for(const g of sorted){ if(g.forced) continue; if(top.every(t=>Math.hypot(t.la-g.la,t.lo-g.lo)>minSep)){ top.push(g); if(top.length===EVAL_TOP_N) break; } }
+  for(const g of sorted){ if(g.forced) continue; if(top.every(t=>Math.hypot(t.la-g.la,t.lo-g.lo)>minSep)){ top.push(g); if(top.length===TOPN) break; } }
   evalTop=top;
   for(const g of evalTop) g.tier = _evalStrongOK(g)?'strong' : g.score>=EVAL_FLOOR?'fair' : 'weak';
   const _bestG2=evalTop.length?evalTop[0]:null;
