@@ -140,6 +140,25 @@ and purple text, i want this analyst sleek and modern"); it's an ACTION, not a v
 clicking runs the evaluation rather than toggling `oppView`, so it never carries the `.on` state.
 Known rough edge (flagged, not yet requested): the unverified-species modal can list ~147 chips at
 metro scale.
+**Metro pins SNAP to commercial ground + per-area REFINE (2026-07-25, user: "when i evaluate dfw
+it is putting the sites in neighborhoods")**: ~3-mi cells pin at the CELL CENTER (usually a
+subdivision street even when the cell won on commercial strength) AND the zoning/parcel fetches are
+CAPPED at a metro bbox so the residential gate barely fires there. Fix, all gated on `_metroRun`:
+(1) `evalMetroRun` global (reset in `_evalResetState`); (2) `_metroSnapSites()` — after the site
+pick, each pin moves to the nearest commercial anchor ≤2.2mi (a `_oppRetailPts` fabric point, else
+a dfw-land vacant-commercial parcel; skips if already ≤120m; `_cellLa/_cellLo` keep the original,
+`g.snapMi` recorded; `evaluateMetroplex` warms `_loadOppRetail()`+`_loadLand()`); mutating
+`g.la/lo` is deliberate so pins/cards/links/catchments stay coherent — verified live: all 5 DFW
+sites snapped 0.19–1.9mi; (3) cards title "Area N" + a screening banner + a snap disclosure +
+**⌖ Refine this area** (`metroRefine(la,lo)` = the drop-site 2-mi box through the unchanged
+engine, where small-bbox zoning/parcels load COMPLETE and the residential gate actually bites —
+verified: refine on the McKinney area returns parcel-grade sites); popup carries the same
+grain note + refine link. The metro pass is explicitly a SCREENER; refine is the siting pass.
+**Print reports are PAPER SHEETS on screen (2026-07-25, user: "look like a pdf document, there
+are no borders")**: `_RP_CSS` body backdrop `#e9ebf0`, `.rp` = bounded white page (1px `#d3d8e0`
+border + soft shadow + `min-height:1100px` letter proportion, margin 26px auto); `@media print`
+strips backdrop/border/shadow so saved PDFs stay clean. Applies to BOTH clinic + site reports
+(shared shell).
 
 ## Sensors / gotchas
 
@@ -362,7 +381,11 @@ wording now reads as a UTILIZATION flag with the established-base caveat, never 
 and the two-sided block shows BOTH revenue ceilings, market-supported AND at-capacity, instead of
 silently collapsing to min). **Clinic mode also hides all de novo output** (user ask): no site pins,
 no land-play pins, no Sites/Land tabs or cards, memo replaced with a clinic-mode line; evalTab
-coerced off the hidden panes. (The specialty/ER residual noted here was APPLIED same-day — see the bullet below.)
+coerced off the hidden panes. **2026-07-25 additions to the same rule**: no suitability HEATMAP
+(`_evalRenderLayers` heat build, `_evalHeatTip`, the Layers heat chip and the legend gradient all
+gate on `!_evalSubject` — the subject is the clinic, not the dirt around it) and no Crexi/LoopNet
+lease/land links on the clinic card (`${_evalSubject?'':_leaseBlock(g)}`); dropped-site evaluations
+keep both. (The specialty/ER residual noted here was APPLIED same-day — see the bullet below.)
 
 ## Catchment future-demand block (2026-07-23, user ask: "new residential development... as part of future demand with all the same pet algorithm calculations")
 `_evalCatchmentStats` runs a pipeline pass: NCTCOG residential projects (`dfw-pipeline.json`, `cl==='R'`,
@@ -451,9 +474,12 @@ The top search box searches **clinic names AND veterinarian (DVM) names** in add
 read as a SUN and users missed it), ★ watchlist toggle, ⚙ editor. `_staffPopupHTML` is no longer
 called by the popup (absorbed into the Practice row) but stays defined. The old `starHTML/kindHTML/
 peHTML` builders were removed; `.pp-*` CSS classes carry the design. The legacy `settings-panel` block
-+ Street View wrap are untouched. Same-day companions: the purple dashed eval halo is now a SPINNING
-comet ring (`.vf-evalring`, CSS-rotate-only per the map-perf rule, reduced-motion safe) that settles
-to a crosshair ring via `_evalRingSettle()` at compute end; report cards gained borders + kv hairlines.
++ Street View wrap are untouched. Same-day companions: report cards gained borders + kv hairlines. The eval ring went purple-dashed →
+spinning comet → **breathing NAVY halo (2026-07-25, user picked F off a 6-concept board — "still not
+a fan of the purple spinning"; board at /tmp/vetapp_preview/ring-options.html pattern)**:
+`.vf-evalring` scale/opacity breathe (`vfEvalBreathe`, transform/opacity only per the map-perf rule,
+reduced-motion → static), settling to a thin navy crosshair ring via `_evalRingSettle()`. No purple
+anywhere in the indicator.
 
 ## Editing clinics (Dev Mode removed)
 The "Dev Mode" toggle was removed. Editing is first-class: **click any pin → popup gear (⚙, `openClinicEditor(key)`) → a FULL-SCREEN analyst editor modal** (`.cedit-overlay`, takes over the screen). Sections: **Identity** (name, pipeline `status` Operating/Prospect/Target/LOI/In-diligence/Acquired/Closed, practice `size`), **Ownership & competition** (PE firm w/ `<datalist>` of real `PE_COORDS` owners, clinic type, competition × `mult`, **`exclude` = mute from all analysis**), **Market data** (`ratingOv`/`reviewsOv` overrides, `revenue`, EBITDA `multiple`), **Contact** (addr/tel/web), **Analyst notes** (`tags`, `notes`). `saveClinicEditor(key)` writes the FULL object `vf_overrides[key] = {name,pe,mult,kind,status,size,exclude,staffOv,ratingOv,reviewsOv,revenue,multiple,addr,tel,web,tags,notes}`; `_applyClinicOverride(key)` applies all of it live; `resetClinicEditor` deletes the override + refetches. **`exclude`** is wired into ALL THREE competition models (`_evalCompetitors`, `buildHexClinicIndex`, `_areaClinicCount` — skip the cell key) and dims the pin; `ratingOv`/`reviewsOv` flow into the popup (competition is NO LONGER review-weighted — `_revW`≡1 since 2026-07-08). Analyst metadata renders in the pin popup via `_analystPopupHTML(getOverrides()[key])` (reads the override store, so it survives refetch). The old cramped inline `saveSettings`/`toggleSettings` path is kept but no longer reachable from the gear. `fetchClinics` still re-applies name/pe/mult/`_kind` on every commit so those persist across pans/refetch. The **competition multiplier** flows into Evaluate's capture model — `_evalCompetitors` carries `mult` (looked up from `overrides` by cell key) and the comp loop multiplies `(c.mult||1)` alongside the PE-weight and `_revW`. The **clinic-type override** sets `c._kind` (wins over the name heuristic) and respects the type filter. The old `devMode` flag stays `false` (its add-clinic/add-property-via-map-click paths are now dead code, left harmless). `getDeleted()`/`getOverrides()` still read/write `vf_`-prefixed localStorage.

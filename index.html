@@ -682,9 +682,9 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
 .vf-crane{width:17px;height:17px;border-radius:50%;background:#d97706;border:1.6px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center}
 .vf-crane.vf-approx{opacity:.62;border-style:dashed}
 .vf-evalring{width:46px;height:46px;pointer-events:none}
-.vf-evalring svg{display:block;width:100%;height:100%;transform-origin:50% 50%;animation:vfEvalSpin 1.4s linear infinite}
+.vf-evalring svg{display:block;width:100%;height:100%;transform-origin:50% 50%;animation:vfEvalBreathe 2.4s ease-in-out infinite}
 .vf-evalring.settled svg{animation:none}
-@keyframes vfEvalSpin{to{transform:rotate(360deg)}}
+@keyframes vfEvalBreathe{0%,100%{transform:scale(.9);opacity:.45}50%{transform:scale(1.06);opacity:.95}}
 @media (prefers-reduced-motion:reduce){.vf-evalring svg{animation:none}}
 /* Land-play pin (design F, 2026-07-15): teal teardrop with a white SPROUT — growth that isn't
    built yet — plus a white corner rank badge. SVG-drawn in the divIcon; these classes only
@@ -7210,8 +7210,12 @@ async function _evalFillStrips(){
    proportional ceiling bars, hairline competitor rows, single-line faint footer. Letter-size. */
 const _RP_CSS=`
   *{-webkit-print-color-adjust:exact;print-color-adjust:exact;box-sizing:border-box}
-  body{margin:0;background:#fff}
-  .rp{max-width:850px;margin:0 auto;background:#fff;color:#1d222c;font-family:Inter,system-ui,sans-serif;padding:44px 56px 30px;display:flex;flex-direction:column;gap:19px;font-size:12.5px;line-height:1.5;min-height:96vh}
+  /* On screen the report reads as a PAPER SHEET in a viewer — gray backdrop, bounded white page
+     with an edge + soft shadow, letter proportions (user 2026-07-25: "look like a pdf document,
+     there are no borders"). Print/PDF output strips the chrome back to a clean page. */
+  body{margin:0;background:#e9ebf0}
+  .rp{max-width:850px;margin:26px auto;background:#fff;border:1px solid #d3d8e0;box-shadow:0 3px 22px rgba(15,23,42,.12);color:#1d222c;font-family:Inter,system-ui,sans-serif;padding:44px 56px 30px;display:flex;flex-direction:column;gap:19px;font-size:12.5px;line-height:1.5;min-height:1100px}
+  @media print{body{background:#fff}.rp{margin:0 auto;border:0;box-shadow:none;min-height:96vh}}
   .eyebrow{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#24466e;margin-bottom:8px}
   h1{font-size:29px;font-weight:500;line-height:1.15;letter-spacing:-.015em;margin:0}
   .meta{font-size:12px;color:#6a7180;margin-top:6px}
@@ -8437,7 +8441,7 @@ function _evalRenderLayers(){
   // dots are drawn — never during the loading window. (Idempotent; safe on every re-render.)
   if(evalActive) markers.forEach(m=>setMarkerVisible(m,false));
   _evalClearLayers();
-  if(evalShow.heat){
+  if(evalShow.heat && !_evalSubject){   // clinic evaluations show NO suitability heatmap (user 2026-07-25) — the subject is the clinic, not the dirt around it
     const heat=L.layerGroup();
     for(const g of evalCells)
       L.rectangle([[g.la-g.stepLa/2,g.lo-g.stepLo/2],[g.la+g.stepLa/2,g.lo+g.stepLo/2]],
@@ -8517,7 +8521,7 @@ function _evalRenderLayers(){
 // interactive:false for performance; we hit-test evalCells on a throttled map mousemove.
 let _evalHeatTipEl=null, _evalHeatTipT=0;
 function _evalHeatTip(e){
-  if(!evalActive || !evalShow.heat || !evalCells.length){ if(_evalHeatTipEl){ _evalHeatTipEl.style.display='none'; } return; }
+  if(!evalActive || !evalShow.heat || !evalCells.length || _evalSubject){ if(_evalHeatTipEl){ _evalHeatTipEl.style.display='none'; } return; }
   const now=Date.now(); if(now-_evalHeatTipT<45) return; _evalHeatTipT=now;
   const la=e.latlng.lat, lo=e.latlng.lng;
   let best=null, bd=Infinity;
@@ -8559,7 +8563,7 @@ function _evalRenderLegend(){
   }
   el.innerHTML=`
     <div class="legend-title">Placement suitability</div>
-    ${evalShow.heat?`<div class="legend-grad"></div><div class="legend-grad-lbl"><span>${_evalDisp(0.30)}</span><span>${_evalDisp(0.20)}</span><span>${_evalDisp(0.12)}</span><span>${_evalDisp(0.05)}</span></div><div style="font-size:10.5px;color:var(--muted);margin:-6px 0 8px;display:flex;justify-content:space-between"><span>Winnable</span><span>Saturated</span></div>`:''}
+    ${(evalShow.heat&&!_evalSubject)?`<div class="legend-grad"></div><div class="legend-grad-lbl"><span>${_evalDisp(0.30)}</span><span>${_evalDisp(0.20)}</span><span>${_evalDisp(0.12)}</span><span>${_evalDisp(0.05)}</span></div><div style="font-size:10.5px;color:var(--muted);margin:-6px 0 8px;display:flex;justify-content:space-between"><span>Winnable</span><span>Saturated</span></div>`:''}
     ${rows.join('')}`;
   el.classList.add('show');
 }
@@ -8848,7 +8852,7 @@ function _evalRenderSidebar(){
         ${vd.k==='land' ? '' : _communityHTML(g.la,g.lo,{small:true})}
         ${(()=>{ const sw=_mpcSweetNear(g.la,g.lo); if(!sw) return '';
           return `<div style="margin-top:6px;font-size:10.5px;color:#334155;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:6px 9px"><span style="font-weight:800;color:#0f766e">⚡ ${_ceEsc(sw.m.n)}</span> is ${sw.mi.toFixed(1)} mi away, in its pad-engagement window.</div>`; })()}
-        ${_leaseBlock(g)}
+        ${_evalSubject?'':_leaseBlock(g)}
         <div style="display:flex;align-items:center;gap:7px;margin-top:9px;flex-wrap:wrap" onclick="event.stopPropagation()">
           <button class="vm-export-btn" style="background:var(--navy);color:#fff;border-color:var(--navy)" onclick="saveSitePlacement(this)">${_inWatch('site',sid)?'Update saved placement':'Save placement'}</button>
           <button class="vm-export-btn" onclick="siteRemove()">Remove pin</button>
@@ -8873,7 +8877,7 @@ function _evalRenderSidebar(){
       <div class="eval-slider-row"><span>Competitor range</span><span id="eval-range-val">${evalRadiusMi.toFixed(1)} mi</span></div>
       <input type="range" min="1" max="6" step="0.5" value="${evalRadiusMi}" oninput="onEvalRadius(this.value)"/>
     </div>
-    <div class="eval-toggle-row">${chip('heat','Heatmap')}${chip('hoods','Neighborhoods')}${chip('retail','Retail')}${chip('comp','Competitor range')}${chip('zoning','Zoning map')}<span class="eval-chip ${evalZoning?'on':''}" onclick="evalToggleZoning()">Zoning filter</span><span class="eval-chip ${evalFuture?'on':''}" onclick="evalToggleFuture()">⚡ Announced homes</span></div>
+    <div class="eval-toggle-row">${_evalSubject?'':chip('heat','Heatmap')}${chip('hoods','Neighborhoods')}${chip('retail','Retail')}${chip('comp','Competitor range')}${chip('zoning','Zoning map')}<span class="eval-chip ${evalZoning?'on':''}" onclick="evalToggleZoning()">Zoning filter</span><span class="eval-chip ${evalFuture?'on':''}" onclick="evalToggleFuture()">⚡ Announced homes</span></div>
     ${zoneLine}`)}
     ${_pane('data', `${evalSat?`<div class="eval-grade" style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="font-weight:800;font-size:18px;color:${evalSat.grade.c};border:2px solid ${evalSat.grade.c};border-radius:8px;padding:2px 10px">${evalSat.grade.l}</span><span style="font-weight:700;color:${evalSat.grade.c}">${evalSat.grade.t}</span></div><div class="eval-verdict">${evalSat.capCeil<0.15?'<span class="eval-strong">No strong placement in this ZIP — market is saturated.</span> ':''}Best winnable score ${_evalDisp(evalSat.capCeil)}/100 · median share ${evalSat.medShare.toFixed(2)} · ${evalSat.peInRange} PE + ${evalSat.indInRange} independent in range · ${evalSat.pctInCatch}% of buildable land inside a competitor catchment.${evalHiddenWeak?` ${evalHiddenWeak} weak spot${evalHiddenWeak!==1?'s':''} scored under ${_evalDisp(EVAL_FLOOR)}/100 and ${evalHiddenWeak!==1?'are':'is'} hidden.`:''}${warn}</div>`:`<div class="eval-verdict"><span class="eval-strong">${strongN} recommended site${strongN!==1?'s':''}${strongN<evalTop.length?` · ${evalTop.length-strongN} below the bar`:''}${evalHiddenWeak?` · ${evalHiddenWeak} weak spot${evalHiddenWeak!==1?'s':''} hidden`:''}.</span> ${evalCells.length} commercially-siteable cells scored; subdivision interiors &amp; rural land excluded.${warn}</div>`}
     <div class="eval-note">Neighborhood demand is weighted at census-tract grain — rooftops in higher pet-ownership communities pull sites harder than senior or renter-heavy pockets. Sites are limited to commercial land — either zoned/parceled commercial, or (where that's unavailable) within a real retail/commercial area; residential, civic and rural parcels are excluded, and arterial frontage alone is not enough. Coverage is layered: municipal zoning in the 16 mapped cities, county appraisal-district parcels (Collin / Denton / Dallas) for the exurbs, and OpenStreetMap land-use elsewhere. Road visibility is weighted by TxDOT traffic counts (AADT), so a busier frontage scores higher${hasAADT?'':' (traffic data unavailable here — using road class)'}. Competition counts every clinic within range, including ones just over the ZIP border. A recommended site can sit just past the boundary (within ~0.5&nbsp;mi) where the market actually peaks — catchments don't stop at the line.</div>`)}
@@ -9488,11 +9492,12 @@ function _siteMarkerPlace(lat,lon){
   // instead of dropping a star on top. Lives in the evalSiteMarker slot so every lifecycle
   // path (_siteClear / siteRemove / re-drop) treats it identically.
   if(_evalSubject && Math.abs(lat-_evalSubject.la)<0.0006 && Math.abs(lon-_evalSubject.lo)<0.0006){
-    // Spinning comet ring = "evaluating this clinic"; settles to a steady crosshair ring when
-    // the analysis lands (_evalRingSettle). Pure stroke SVG + CSS rotate — compositor-only,
-    // no filters (the map-perf rule).
+    // Breathing navy halo = "evaluating this clinic" (user pick F from the 2026-07-25 concepts
+    // board — the purple spinning comet is gone); settles to a steady navy crosshair ring when
+    // the analysis lands (_evalRingSettle). Transform/opacity only — compositor-safe, no filters
+    // (the map-perf rule); reduced-motion shows the ring static.
     evalSiteMarker=L.marker([lat,lon],{interactive:false,zIndexOffset:1100,icon:L.divIcon({className:'',iconSize:[46,46],iconAnchor:[23,23],
-      html:'<div class="vf-evalring"><svg viewBox="0 0 46 46" fill="none"><circle cx="23" cy="23" r="19" stroke="rgba(109,40,217,.15)" stroke-width="2.5"/><path d="M23 4a19 19 0 0 1 16.4 9.5" stroke="#7c3aed" stroke-width="3" stroke-linecap="round"/><circle cx="39.4" cy="13.6" r="2.5" fill="#7c3aed"/></svg></div>'})}).addTo(map);
+      html:'<div class="vf-evalring"><svg viewBox="0 0 46 46" fill="none"><circle cx="23" cy="23" r="19" stroke="#1e3a8a" stroke-width="2.5"/></svg></div>'})}).addTo(map);
     evalSiteMarker._ring=1;
     return;
   }
@@ -9505,7 +9510,7 @@ function _evalRingSettle(){
   if(!(evalSiteMarker&&evalSiteMarker._ring)||evalSiteMarker._settled) return;
   evalSiteMarker._settled=1;
   evalSiteMarker.setIcon(L.divIcon({className:'',iconSize:[46,46],iconAnchor:[23,23],
-    html:'<div class="vf-evalring settled"><svg viewBox="0 0 46 46" fill="none"><circle cx="23" cy="23" r="19" stroke="#6d28d9" stroke-width="2.5" opacity=".8"/><path d="M23 .8v5.4M23 39.8v5.4M.8 23h5.4M39.8 23h5.4" stroke="#6d28d9" stroke-width="2.5" stroke-linecap="round" opacity=".8"/></svg></div>'}));
+    html:'<div class="vf-evalring settled"><svg viewBox="0 0 46 46" fill="none"><circle cx="23" cy="23" r="19" stroke="#1e3a8a" stroke-width="2" opacity=".65"/><path d="M23 .8v5.4M23 39.8v5.4M.8 23h5.4M39.8 23h5.4" stroke="#1e3a8a" stroke-width="2" stroke-linecap="round" opacity=".65"/></svg></div>'}));
 }
 function _siteClear(){
   evalSitePt=null; evalSiteCell=null; _evalSubject=null;
