@@ -9496,8 +9496,8 @@ function _siteMarkerPlace(lat,lon){
     // board — the purple spinning comet is gone); settles to a steady navy crosshair ring when
     // the analysis lands (_evalRingSettle). Transform/opacity only — compositor-safe, no filters
     // (the map-perf rule); reduced-motion shows the ring static.
-    evalSiteMarker=L.marker([lat,lon],{interactive:false,zIndexOffset:1100,icon:L.divIcon({className:'',iconSize:[46,46],iconAnchor:[23,23],
-      html:'<div class="vf-evalring"><svg viewBox="0 0 46 46" fill="none"><circle cx="23" cy="23" r="19" stroke="#1e3a8a" stroke-width="2.5"/></svg></div>'})}).addTo(map);
+    evalSiteMarker=L.marker([lat,lon],{interactive:false,zIndexOffset:-600,icon:L.divIcon({className:'',iconSize:[46,46],iconAnchor:[23,23],
+      html:'<div class="vf-evalring"><svg viewBox="0 0 46 46" fill="none"><circle cx="23" cy="23" r="19" stroke="#1e3a8a" stroke-width="2.5"/></svg></div>'})}).addTo(map);   // negative z = halo sits BEHIND the clinic pin (user 2026-07-25)
     evalSiteMarker._ring=1;
     return;
   }
