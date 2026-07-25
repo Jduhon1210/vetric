@@ -681,6 +681,32 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
 .vf-vetalert.vf-approx{opacity:.72;border-style:dashed}
 .vf-crane{width:17px;height:17px;border-radius:50%;background:#d97706;border:1.6px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center}
 .vf-crane.vf-approx{opacity:.62;border-style:dashed}
+/* Clinic-evaluation dossier card (user pick A, 2026-07-25) — the 2a report language in the sidebar */
+.cdx-eye{font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:#24466e}
+.cdx-name{font-size:15.5px;font-weight:600;letter-spacing:-.01em;line-height:1.2;margin-top:2px}
+.cdx-score{font-size:30px;font-weight:500;line-height:1;letter-spacing:-.02em;text-align:right;color:#1d222c}
+.cdx-score span{font-size:13px;color:#9aa2b1}
+.cdx-strack{width:80px;height:3px;background:#e6e8ec;border-radius:2px;margin:7px 0 0 auto}
+.cdx-sfill{display:block;height:100%;background:#24466e;border-radius:2px}
+.cdx-chips{display:flex;flex-wrap:wrap;gap:6px;margin:9px 0 2px;font-size:10.5px}
+.cdx-chip{border:1px solid #dde0e6;border-radius:6px;padding:2.5px 8px;color:#3f4654;font-weight:600}
+.cdx-rl{display:flex;align-items:center;gap:9px;font-size:9.5px;letter-spacing:.13em;text-transform:uppercase;color:#6a7180;margin:13px 0 3px;font-weight:700}
+.cdx-rl i{font-style:normal;color:#9aa2b1;text-transform:none;letter-spacing:0;font-weight:500}
+.cdx-rl b{flex:1;height:1px;background:linear-gradient(90deg,#d5d8df,transparent);font-weight:400}
+.cdx-kv{display:flex;justify-content:space-between;gap:10px;font-size:11.5px;padding:5px 0;border-bottom:1px solid #eef0f4}
+.cdx-kv:last-child{border-bottom:0}
+.cdx-kv .k{color:#6a7180}
+.cdx-kv .v{font-weight:600;text-align:right;color:#1d222c}
+.cdx-kv .v.acc{color:#24466e;font-weight:700}
+.cdx-note{font-size:10px;color:#9aa2b1;line-height:1.5;margin-top:4px}
+.cdx-bar{display:flex;align-items:center;gap:8px;font-size:10.5px;margin:4px 0}
+.cdx-bar .bk{width:150px;color:#6a7180;flex-shrink:0}
+.cdx-bar .bt{flex:1;height:5px;background:#e6e8ec;border-radius:3px}
+.cdx-bar .bf{display:block;height:100%;border-radius:3px;background:#24466e}
+.cdx-bar .bv{width:84px;text-align:right;font-weight:600}
+.cdx-vgood{font-size:11px;color:#15803d;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:6px 9px;margin-top:7px;line-height:1.5;font-weight:600}
+.cdx-vbal{font-size:11px;color:#24466e;background:#f0f4fa;border:1px solid #c9d4e8;border-radius:8px;padding:6px 9px;margin-top:7px;line-height:1.5;font-weight:600}
+.cdx-vflag{font-size:11px;color:#9f1239;background:#fff1f2;border:1px solid #fecdd3;border-radius:8px;padding:6px 9px;margin-top:7px;line-height:1.5;font-weight:600}
 .vf-evalring{width:46px;height:46px;pointer-events:none}
 .vf-evalring svg{display:block;width:100%;height:100%;transform-origin:50% 50%;animation:vfEvalBreathe 2.4s ease-in-out infinite}
 .vf-evalring.settled svg{animation:none}
@@ -8555,8 +8581,9 @@ function _evalRenderLegend(){
   let el=document.getElementById('eval-legend');
   if(!el){ el=document.createElement('div'); el.id='eval-legend'; el.className='eval-legend'; (document.querySelector('.main')||document.body).appendChild(el); }
   const rows=[];
-  if(evalSitePt) rows.push(`<div class="eval-leg-row"><span class="eval-sym"><span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#7c3aed;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.3)"></span></span>Your dropped site</div>`);
-  rows.push(`<div class="eval-leg-row"><span class="eval-sym"><span class="eval-sym-pin"></span></span>Recommended site (top ${evalTop.length||5})</div>`);
+  if(_evalSubject) rows.push(`<div class="eval-leg-row"><span class="eval-sym"><span style="display:inline-block;width:12px;height:12px;border-radius:50%;border:2px solid #1e3a8a"></span></span>Clinic under evaluation</div>`);
+  else if(evalSitePt) rows.push(`<div class="eval-leg-row"><span class="eval-sym"><span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#7c3aed;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.3)"></span></span>Your dropped site</div>`);
+  if(!_evalSubject) rows.push(`<div class="eval-leg-row"><span class="eval-sym"><span class="eval-sym-pin"></span></span>Recommended site (top ${evalTop.length||5})</div>`);
   rows.push(`<div class="eval-leg-row"><span class="eval-sym"><span class="eval-sym-comp-ind"></span></span>Independent clinic</div>`);
   rows.push(`<div class="eval-leg-row"><span class="eval-sym"><span class="eval-sym-comp"></span></span>PE / corporate clinic</div>`);
   if(evalShow.comp) rows.push(`<div class="eval-leg-row"><span class="eval-sym"><span class="eval-sym-ring"></span></span>Competitor reach (${evalRadiusMi.toFixed(1)} mi)</div>`);
@@ -8777,7 +8804,7 @@ function _evalRenderSidebar(){
   const _pane=(id,html)=>`<div style="display:${evalTab===id?'block':'none'}">${html}</div>`;
   sb.innerHTML=`
     <div class="area-header">
-      <span class="area-title">Placement analysis · ${evalZip||(evalSitePt?'dropped site':'drawn area')}</span>
+      <span class="area-title">${_evalSubject?('Clinic evaluation · '+_ceEsc(_evalSubject.name)):('Placement analysis · '+(evalZip||(evalSitePt?'dropped site':'drawn area')))}</span>
       <span style="display:flex;gap:8px;align-items:center">${evalTop.length?_exportBtn('exportEvalCSV()','Export'):''}<button class="clear-area-btn" onclick="clearEvaluate()">Clear</button></span>
     </div>
     <div class="eval-scroll">
@@ -8808,6 +8835,75 @@ function _evalRenderSidebar(){
       const sid=g.la.toFixed(4)+','+g.lo.toFixed(4);
       const cn=_evalCannib(g);
       const _sstat=(v,l)=>`<div style="flex:1;text-align:center;padding:7px 4px;min-width:0"><div style="font-size:13.5px;font-weight:800;color:#0f172a;letter-spacing:-.01em">${v}</div><div style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#64748b;margin-top:1px">${l}</div></div>`;
+      // ── CLINIC-MODE DOSSIER CARD (user pick A, 2026-07-25) — the 2a report language in the
+      // sidebar. Every data element of the pre-dossier card is preserved (user condition); the
+      // dropped-site card below is untouched. Drill-down bars, warns, slider, community, MPC and
+      // action rows reuse the exact same expressions/handlers as the site card.
+      if(_evalSubject){ const sub=_evalSubject;
+        const kv=(k,v,acc)=>`<div class="cdx-kv"><span class="k">${k}</span><span class="v${acc?' acc':''}">${v}</span></div>`;
+        const re_=_revEst({lat:sub.la,lon:sub.lo,name:sub.name});
+        const vets=(sub.vets||[]).slice(0,10);
+        const sv=_svcAt(sub.la,sub.lo); const svLs=(sv&&sv.c&&sv.c.length)?sv.c.map(x=>_SVC_LABEL[x]||x):null;
+        const sid2=g.la.toFixed(4)+','+g.lo.toFixed(4), cs2=_siteCatch[sid2];
+        if(!cs2) _evalAutoCatch(g);
+        const sm=(key,label,v,on)=>{ const open=_siteMetricOpen.has(key);
+          return `<div style="cursor:pointer" onclick="event.stopPropagation();_siteMetricToggle('${key}')" title="Click for the data behind this score">
+            <div style="display:flex;align-items:center;gap:4px">${bar(label,v,on).replace('class="eval-bar"','class="eval-bar" style="flex:1;margin-bottom:0"').replace('</div>','')}<span id="smc-${key}" style="font-size:10.5px;color:#64748b;transition:transform .15s;${open?'transform:rotate(180deg)':''}">▼</span></div></div>
+            <div id="smx-${key}" style="display:${open?'block':'none'};font-size:10.5px;background:#f8fafc;border:1px solid #eef2f7;border-radius:8px;padding:7px 10px;margin:2px 0 6px;line-height:1.55" onclick="event.stopPropagation()">${_siteMetricHTML(key,g)}</div>`; };
+        return `<div class="eval-card" style="cursor:default;border:1px solid #d7def0;background:#fff;margin:8px 0;box-shadow:0 2px 10px rgba(30,58,138,.07);padding:14px 15px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+          <div style="min-width:0"><div class="cdx-eye">Vetric · Clinic evaluation</div>
+            <div class="cdx-name">${_ceEsc(sub.name)}</div></div>
+          <div style="flex-shrink:0"><div class="cdx-score">${sc}<span>/100</span></div><div class="cdx-strack"><span class="cdx-sfill" style="width:${sc}%"></span></div></div>
+        </div>
+        <div class="cdx-chips">${chipS}
+          <span class="cdx-chip">${sub.pe?('<span style="color:#dc2626">PE'+(sub.owner?' — '+_ceEsc(sub.owner):'')+'</span>'):'<span style="color:#2563eb">Independent</span>'}</span>
+          ${sub.rating?`<span class="cdx-chip">★${sub.rating}${sub.reviews!=null?' · '+Number(sub.reviews).toLocaleString():''}</span>`:''}
+          ${sub.dvm?`<span class="cdx-chip">${sub.dvm} DVM${sub.dvm>1?'s':''}</span>`:''}
+        </div>
+        <div class="cdx-rl">Market position<b></b></div>
+        ${kv('Capture share (incumbent-weighted)',(g.share*100).toFixed(0)+'%',true)}
+        ${kv('Competitors within '+evalRadiusMi+' mi',String(g.nComp)+(g.nPE?' ('+g.nPE+' PE)':''))}
+        ${kv('Nearest clinic',isFinite(g.nearC)?(g.nearC/1609.344).toFixed(1)+' mi':'—')}
+        <div class="cdx-rl">Practice<b></b></div>
+        ${sub.dvm?kv('Roster · capacity',sub.dvm+' DVM'+(sub.dvm>1?'s':'')+' · ~'+(sub.dvm*DVM_VISIT_CAPACITY).toLocaleString()+' visits/yr')
+                 :`<div class="cdx-vflag">No DVM roster scraped — set the count in the clinic editor (⚙) for the two-sided read.</div>`}
+        ${vets.length?`<details style="font-size:10.5px;margin:3px 0"><summary style="cursor:pointer;color:var(--navy);font-weight:700">Roster names</summary><div style="margin-top:3px;color:#64748b;line-height:1.6">${vets.map(_ceEsc).join(' · ')}</div></details>`:''}
+        ${svLs?`<div class="cdx-note">Offers: ${svLs.slice(0,8).join(' · ')}${svLs.length>8?' · +'+(svLs.length-8)+' more':''} <span style="color:#c4c9d4">· site-read</span></div>`:''}
+        ${(re_&&re_.econ)?`<div class="cdx-rl">Practice economics <i>(modeled)</i><b></b></div>
+        ${kv('Modeled revenue (benchmark)',re_.txt,true)}
+        ${kv('Adj. EBITDA @ '+Math.round(re_.econ.margin*100)+'%','~'+_fmtM(re_.econ.ebitda))}
+        ${kv(re_.econ.multAnalyst?('Indicative value @ '+re_.econ.multLo+'× analyst'):('Indicative value @ '+re_.econ.multLo+'–'+re_.econ.multHi+'×'),re_.econ.multAnalyst?_fmtM(re_.econ.valLo):(_fmtM(re_.econ.valLo)+' – '+_fmtM(re_.econ.valHi)),true)}`:''}
+        <div style="display:flex;gap:7px;margin:12px 0 8px" onclick="event.stopPropagation()">
+          <button class="vm-export-btn" style="flex:1;justify-content:center;background:var(--navy);border-color:var(--navy);color:#fff;font-weight:700" onclick="clinicReport()">↓ Clinic report</button>
+          <button class="vm-export-btn" style="flex:1;justify-content:center;color:var(--navy);border-color:#c9d4e8;font-weight:700" onclick="evalDriveTime(-2,this)">${cs2?(cs2.src==='drive'?'Hide 10-min drive area':'True 10-min drive area'):'Computing catchment…'}</button>
+        </div>
+        <div id="evd--2">${cs2?_evalCatchHTML(cs2):''}</div>
+        ${warns.map(w=>`<div class="cdx-vflag" style="font-weight:500">${w}</div>`).join('')}
+        <div class="cdx-rl">Location factors<b></b></div>
+        ${sm('demand','Neighborhood demand',g.demandN,true)}
+        ${sm('comp','Low competition',g.lowComp,true)}
+        ${sm('retail','Retail access',g.retailN,hasRetail)}
+        ${sm('road','Road visibility',g.accessN,hasRoads||hasAADT)}
+        ${cn?`<div class="cdx-vflag" style="font-weight:500">${cn}</div>`:''}
+        <div style="display:flex;align-items:center;gap:8px;margin-top:10px;padding-top:9px;border-top:1px solid #eef0f4" onclick="event.stopPropagation()">
+          <span class="cdx-rl" style="margin:0;flex-shrink:0">Market context</span>
+          <input type="range" min="1" max="6" step="0.5" value="${_siteCtxMi}" oninput="_onSiteCtx(this.value)" style="flex:1;min-width:0"/>
+          <span id="site-ctx-val" style="font-size:10.5px;font-weight:700;color:#334155;width:44px;text-align:right;flex-shrink:0">${_siteCtxMi.toFixed(1)} mi</span>
+        </div>
+        <div class="cdx-note">Drives the KPI bar above — clinics, PE penetration, growth and saturation around this clinic.</div>
+        <div style="display:flex;gap:10px;align-items:center;margin-top:6px;font-size:10.5px" onclick="event.stopPropagation()">
+          <a href="https://www.google.com/maps/search/?api=1&query=${g.la},${g.lo}" target="_blank" rel="noopener" style="color:var(--navy);font-weight:700;text-decoration:none">Maps ↗</a>
+          <span style="color:#9aa2b1;font-family:'JetBrains Mono',monospace">${sid}</span>
+        </div>
+        ${vd.k==='land' ? '' : _communityHTML(g.la,g.lo,{small:true})}
+        ${(()=>{ const sw=_mpcSweetNear(g.la,g.lo); if(!sw) return '';
+          return `<div style="margin-top:6px;font-size:10.5px;color:#334155;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:6px 9px"><span style="font-weight:800;color:#0f766e">⚡ ${_ceEsc(sw.m.n)}</span> is ${sw.mi.toFixed(1)} mi away, in its pad-engagement window.</div>`; })()}
+        <div style="display:flex;align-items:center;gap:7px;margin-top:10px;flex-wrap:wrap" onclick="event.stopPropagation()">
+          <button class="vm-export-btn" style="background:var(--navy);color:#fff;border-color:var(--navy)" onclick="saveSitePlacement(this)">${_inWatch('site',sid)?'Update saved placement':'Save placement'}</button>
+          <button class="vm-export-btn" onclick="siteRemove()">Clear evaluation</button>
+        </div>
+      </div>`; }
       return `<div class="eval-card" style="cursor:default;border:1px solid #d7def0;background:#fff;margin:8px 0;box-shadow:0 2px 10px rgba(30,58,138,.07)">
         <div class="eval-card-head" style="margin-bottom:5px"><span class="eval-rank" style="background:#6d28d9;font-size:11px">${_evalSubject?'🩺':'★'}</span><span class="eval-card-title" style="font-size:13px">${_evalSubject?('Clinic evaluation — '+_ceEsc(_evalSubject.name)):'Your site'}</span><span class="eval-score" style="color:var(--navy);font-size:19px;letter-spacing:-.02em">${sc}<span style="font-size:10.5px;font-weight:600;color:#64748b"> /100</span></span></div>
         <div style="margin:0 0 8px">${chipS}</div>
@@ -9160,38 +9256,38 @@ function _evalHideDrive(){ if(evalDriveLayer){ map.removeLayer(evalDriveLayer); 
 function _evalClearDrive(){ _evalHideDrive(); _evalDriveIdx=-1; _evalDriveRing=null; _evalClearOverlap(); }
 // Shared catchment readout — used by the drive-time button AND the clinic-card auto-run.
 function _evalCatchHTML(cs){
-  return `<div style="background:#f8f6ff;border:1px solid #ddd0f7;border-radius:9px;padding:8px 11px;line-height:1.7">
-      <div style="font-size:10.5px;font-weight:800;letter-spacing:.06em;color:#7c3aed">${cs.src==='drive'?'10-MIN CATCHMENT':'~3.5 MI RADIUS (drive-time unavailable)'} · ~${cs.areaMi} mi²</div>
-      <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:#64748b">Households you'd serve</span><b>${cs.hhIn.toLocaleString()}</b></div>
-      <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:#64748b">Pet households</span><b>${cs.dogIn.toLocaleString()} dog · ${cs.catIn.toLocaleString()} cat</b></div>
-      <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:#64748b">Est. vet visits in catchment</span><b>~${cs.visits.toLocaleString()}/yr</b></div>
-      <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:#64748b">Competing clinics inside</span><b>${cs.pe+cs.ind} (${cs.pe} PE · ${cs.ind} indep)</b></div>
-      <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:#64748b">Winnable at ${(cs.share*100).toFixed(0)}% share</span><b>~${cs.captured.toLocaleString()} visits/yr</b></div>
-      <div style="margin-top:4px;font-size:11px;font-weight:700;color:#5b21b6">Supports a ${cs.size} practice · est. revenue ${_fmtM(cs.rev)} <span style="font-weight:500;color:#64748b">(modeled)</span></div>
-      <div style="margin-top:2px;font-size:11px;color:#475569">Adj. EBITDA ~<b>${_fmtM(cs.econ.ebitda)}</b> at ${Math.round(cs.econ.margin*100)}% margin · at ${cs.econ.multLo}–${cs.econ.multHi}× ⇒ <b>${_fmtM(cs.econ.valLo)}–${_fmtM(cs.econ.valHi)}</b></div>
-      <div style="margin-top:2px;font-size:10.5px;color:#64748b;line-height:1.45">Revenue = winnable visits × $${Math.round(REV_PER_VISIT)}/visit (AVMA-derived). Margin is a Vetric model assumption from the AAHA/VMG cost structure, not a published benchmark — no neutral size-segmented margin data exists.</div>
+  // Dossier language (user pick A, 2026-07-25): hairline uppercase section labels + kv rows.
+  // Every data row from the pre-dossier card is preserved — restyle only.
+  const kv=(k,v,acc)=>`<div class="cdx-kv"><span class="k">${k}</span><span class="v${acc?' acc':''}">${v}</span></div>`;
+  return `<div style="line-height:1.5">
+      <div class="cdx-rl">Catchment demand <i>· ${cs.src==='drive'?'10-min drive-time':'~3.5 mi radius (drive-time unavailable)'} · ~${cs.areaMi} mi²</i><b></b></div>
+      ${kv("Households you'd serve",cs.hhIn.toLocaleString())}
+      ${kv('Pet households',cs.dogIn.toLocaleString()+' dog · '+cs.catIn.toLocaleString()+' cat')}
+      ${kv('Est. vet visits in catchment','~'+cs.visits.toLocaleString()+'/yr')}
+      ${kv('Competing clinics inside',(cs.pe+cs.ind)+' ('+cs.pe+' PE · '+cs.ind+' indep)')}
+      ${kv('Winnable at '+(cs.share*100).toFixed(0)+'% share','~'+cs.captured.toLocaleString()+' visits/yr',true)}
+      ${kv('Supports · est. revenue <span style="color:#9aa2b1">(modeled)</span>',cs.size+' practice · '+_fmtM(cs.rev),true)}
+      ${kv('Adj. EBITDA @ '+Math.round(cs.econ.margin*100)+'% · '+cs.econ.multLo+'–'+cs.econ.multHi+'×','~'+_fmtM(cs.econ.ebitda)+' ⇒ '+_fmtM(cs.econ.valLo)+'–'+_fmtM(cs.econ.valHi))}
+      <div class="cdx-note">Revenue = winnable visits × $${Math.round(REV_PER_VISIT)}/visit (AVMA-derived). Margin is a Vetric model assumption from the AAHA/VMG cost structure, not a published benchmark — no neutral size-segmented margin data exists.</div>
       ${(_evalSubject&&_evalSubject.dvm)?(()=>{const e2=_practiceEcon({dvm:_evalSubject.dvm,winnableVisits:cs.captured});const cap=_evalSubject.dvm*DVM_VISIT_CAPACITY;const hr=e2.headroom;const hire=hr>0?(hr/DVM_VISIT_CAPACITY):0;
-        return `<div style="margin-top:8px;padding:7px 9px;background:#eef4ff;border:1px solid #d7e3fa;border-radius:9px">
-        <div style="font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--navy)">Two-sided practice read — ${_ceEsc(_evalSubject.name)}</div>
-        <div style="display:flex;justify-content:space-between;font-size:11px;margin-top:4px"><span style="color:#64748b">Demand ceiling (winnable)</span><b>~${cs.captured.toLocaleString()} visits/yr</b></div>
-        <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:#64748b">Capacity ceiling (${_evalSubject.dvm} DVM × ${DVM_VISIT_CAPACITY.toLocaleString()})</span><b>~${cap.toLocaleString()} visits/yr</b></div>
-        <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:#64748b">Binding side</span><b>${e2.bound==='demand'?'Demand — market-limited':'Capacity — doctor-limited'}</b></div>
-        <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:#64748b">Market-supported revenue (share model)</span><b>${_fmtM(cs.captured*REV_PER_VISIT)}</b></div>
-        <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:#64748b">At-capacity revenue (AVMA benchmark)</span><b>${_fmtM(_evalSubject.dvm*REV_PER_DVM)}</b></div>
-        ${Math.abs(hire)<0.35?`<div style="margin-top:5px;font-size:11px;font-weight:700;color:var(--navy)">Balanced: the market supports ~${Math.round(100*cs.captured/cap)}% of capacity — this roster is sized to its trade area.</div>`
-          :hr>0?`<div style="margin-top:5px;font-size:11px;font-weight:700;color:#047857">Understaffed: ~${hr.toLocaleString()} winnable visits/yr beyond current capacity ≈ ${hire.toFixed(1)} DVM of headroom — revenue growth without fighting for a point of share.</div>`
-              :`<div style="margin-top:5px;font-size:11px;font-weight:700;color:#9f1239">Utilization flag: the share model supports ~${cs.captured.toLocaleString()} of their ${cap.toLocaleString()}-visit capacity (~${Math.abs(hire).toFixed(1)} DVM over). An established base often out-earns the model — read this as competitive pressure on growth, not current revenue.</div>`}
-        <div style="font-size:10px;color:#64748b;margin-top:4px">Roster from website scrape (override in the clinic editor if wrong). Winnable = catchment visits × modeled share; the clinic is excluded from its own competition.</div>
-      </div>`;})():''}
-      ${cs.fut?`<div style="margin-top:8px;padding:7px 9px;background:#f0fdfa;border:1px dashed #99f6e4;border-radius:9px">
-        <div style="font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#0d9488">⚡ Future demand — new residential in catchment</div>
-        <div style="display:flex;justify-content:space-between;font-size:11px;margin-top:4px"><span style="color:#64748b">Developments · units coming</span><b>${cs.fut.n} · ${cs.fut.u.toLocaleString()}</b></div>
-        <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:#64748b">Status</span><b>${cs.fut.uc.toLocaleString()} under construction · ${(cs.fut.u-cs.fut.uc).toLocaleString()} announced</b></div>
-        <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:#64748b">Pet households at buildout</span><b>+${cs.fut.dog.toLocaleString()} dog · +${cs.fut.cat.toLocaleString()} cat</b></div>
-        <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:#64748b">Added vet visits</span><b>+~${cs.fut.vis.toLocaleString()}/yr</b></div>
-        <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:#64748b">Winnable at ${(cs.share*100).toFixed(0)}% share</span><b>+~${cs.fut.cap.toLocaleString()} visits/yr · +${_fmtM(cs.fut.cap*REV_PER_VISIT)}</b></div>
-        <div style="font-size:10px;color:#64748b;margin-top:4px;line-height:1.4">${cs.fut.names.map(x=>_ceEsc(x.n)+' ('+x.u.toLocaleString()+')').join(' · ')}${cs.fut.n>3?' · +'+(cs.fut.n-3)+' more':''} — NCTCOG pipeline; young-family profile (0.55 dog / 0.25 cat HH per home), full buildout.</div>
-      </div>`:''}
+        const mx=Math.max(cs.captured,cap);
+        return `<div class="cdx-rl">Two-sided practice read<b></b></div>
+        <div class="cdx-bar"><span class="bk">Demand ceiling (winnable)</span><span class="bt"><span class="bf" style="width:${Math.round(100*cs.captured/mx)}%"></span></span><span class="bv">~${cs.captured.toLocaleString()} /yr</span></div>
+        <div class="cdx-bar"><span class="bk">Capacity (${_evalSubject.dvm} DVM × ${DVM_VISIT_CAPACITY.toLocaleString()})</span><span class="bt"><span class="bf" style="width:${Math.round(100*cap/mx)}%;background:#9aa2b1"></span></span><span class="bv">~${cap.toLocaleString()} /yr</span></div>
+        ${kv('Binding side',e2.bound==='demand'?'Demand — market-limited':'Capacity — doctor-limited')}
+        ${kv('Market-supported revenue (share model)',_fmtM(cs.captured*REV_PER_VISIT),true)}
+        ${kv('At-capacity revenue (AVMA benchmark)',_fmtM(_evalSubject.dvm*REV_PER_DVM))}
+        ${Math.abs(hire)<0.35?`<div class="cdx-vbal"><b>Balanced</b> — the market supports ~${Math.round(100*cs.captured/cap)}% of capacity; this roster is sized to its trade area.</div>`
+          :hr>0?`<div class="cdx-vgood"><b>Understaffed</b> — ~${hr.toLocaleString()} winnable visits/yr beyond current capacity ≈ ${hire.toFixed(1)} DVM of headroom; revenue growth without fighting for a point of share.</div>`
+              :`<div class="cdx-vflag"><b>Utilization flag</b> — the share model supports ~${cs.captured.toLocaleString()} of their ${cap.toLocaleString()}-visit capacity (~${Math.abs(hire).toFixed(1)} DVM over). An established base often out-earns the model — read this as competitive pressure on growth, not current revenue.</div>`}
+        <div class="cdx-note">Roster from website scrape (override in the clinic editor if wrong). Winnable = catchment visits × modeled share; the clinic is excluded from its own competition.</div>`;})():''}
+      ${cs.fut?`<div class="cdx-rl" style="color:#0f766e">⚡ Future demand — pipeline <i>· new residential in catchment</i><b></b></div>
+        ${kv('Developments · units coming',cs.fut.n+' · '+cs.fut.u.toLocaleString())}
+        ${kv('Status',cs.fut.uc.toLocaleString()+' under construction · '+(cs.fut.u-cs.fut.uc).toLocaleString()+' announced')}
+        ${kv('Pet households at buildout','+'+cs.fut.dog.toLocaleString()+' dog · +'+cs.fut.cat.toLocaleString()+' cat')}
+        ${kv('Added vet visits','+~'+cs.fut.vis.toLocaleString()+'/yr')}
+        ${kv('Winnable at '+(cs.share*100).toFixed(0)+'% share','+~'+cs.fut.cap.toLocaleString()+' visits/yr · +'+_fmtM(cs.fut.cap*REV_PER_VISIT),true)}
+        <div class="cdx-note">${cs.fut.names.map(x=>_ceEsc(x.n)+' ('+x.u.toLocaleString()+')').join(' · ')}${cs.fut.n>3?' · +'+(cs.fut.n-3)+' more':''} — NCTCOG pipeline; young-family profile (0.55 dog / 0.25 cat HH per home), full buildout.</div>`:''}
     </div>`;
 }
 async function evalDriveTime(i, btn){

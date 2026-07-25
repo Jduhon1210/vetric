@@ -385,7 +385,20 @@ coerced off the hidden panes. **2026-07-25 additions to the same rule**: no suit
 (`_evalRenderLayers` heat build, `_evalHeatTip`, the Layers heat chip and the legend gradient all
 gate on `!_evalSubject` — the subject is the clinic, not the dirt around it) and no Crexi/LoopNet
 lease/land links on the clinic card (`${_evalSubject?'':_leaseBlock(g)}`); dropped-site evaluations
-keep both. (The specialty/ER residual noted here was APPLIED same-day — see the bullet below.)
+keep both.
+**DOSSIER CARD (2026-07-25, user picked A off a 5-concept board; condition: "as long as its not
+removing any information")**: the clinic-mode card is an early-return branch in the vd-card IIFE
+rendering the 2a report language in the sidebar — `.cdx-*` CSS (eyebrow/name/score+track, chips,
+hairline uppercase `.cdx-rl` section labels, `.cdx-kv` rows, `.cdx-bar` proportional ceiling bars,
+`.cdx-vbal/-vgood/-vflag` verdict boxes). Sections: Market position / Practice (roster+capacity,
+roster-names details, services) / Practice economics / buttons (navy Clinic report + ghost drive) /
+`evd--2` catchment / warns / Location factors (the SAME `sm()` drill-down bars) / cannibalization /
+Market-context slider / Maps+coords / community / MPC / Save+Clear. `_evalCatchHTML` was restyled
+to the same language (SHARED with dropped-site cards — kv rows + two-sided ceiling BARS; every
+pre-dossier data row preserved, verified live: 7 sections, 22 kv rows, 2 bars, verdict box). The
+dropped-site card template is UNTOUCHED (the old `_evalSubject` gates inside it are now dead code,
+left harmless). Legend + area-title are clinic-aware ("Clinic under evaluation" ring row instead of
+dropped-site/top-N rows; title "Clinic evaluation · name"). The purple 🩺 badge is gone. (The specialty/ER residual noted here was APPLIED same-day — see the bullet below.)
 
 ## Catchment future-demand block (2026-07-23, user ask: "new residential development... as part of future demand with all the same pet algorithm calculations")
 `_evalCatchmentStats` runs a pipeline pass: NCTCOG residential projects (`dfw-pipeline.json`, `cl==='R'`,
