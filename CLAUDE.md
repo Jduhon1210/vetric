@@ -100,7 +100,7 @@ let lastIndependents = []; // Cache of last good Overpass result (Overpass fallb
 - KPI bar switches to draw-area mode when active, reverts on `clearArea()`
 
 ### Opportunity scoring (DFW region)
-- `DFW_BOUNDS` / `OPP_REGIONS[0]`: the FULL DFW metroplex `[32.25, -97.95]` to `[33.50, -96.20]` (Cleburne/Weatherford SW → Collin/Rockwall NE). This one region drives BOTH the ranked list (`buildOppBaseInputs`, ~261 ZIPs) and the hex surface grid (~10,350 hexes). Was the tighter `[32.55,-97.55]`–`[33.45,-96.55]`; expanded so the honeycomb covers the whole metroplex.
+- `DFW_BOUNDS` / `OPP_REGIONS[0]`: the FULL DFW metroplex `[32.25, -97.95]` to `[33.50, -96.20]` (Cleburne/Weatherford SW → Collin/Rockwall NE). This one region drives the ranked list (`buildOppBaseInputs`, ~261 ZIPs) and the Evaluate-metroplex run. Was the tighter `[32.55,-97.55]`–`[33.45,-96.55]`; expanded to cover the whole metroplex.
 - `openOpportunity()`: auto-loads all three data layers, snapshots each into `oppIncomeSnap`, `oppDogSnap`, `oppGrowthSnap`, then tears down all choropleth fills so landing on a ZIP shows the plain base map
 - `buildOppBaseInputs()`: iterates TX GeoJSON features, uses `rawBBox()` for cheap bbox (no Leaflet objects), DFW region reject before any polygon math
 - `rescoreAndRender()`: min-max normalizes each factor 0–100, blends by weights, sorts descending. **A missing factor scores NEUTRAL 50, not 0** (was worst-percentile — a ZIP missing one Census variable sank dozens of ranks on a data gap; mirrors the Surface's null→0.5). All-null ZIPs are already skipped in `buildOppBaseInputs`, so 50s can't float junk into the list.
@@ -116,10 +116,28 @@ let lastIndependents = []; // Cache of last good Overpass result (Overpass fallb
 The one-mile-hex Surface view (List | Surface toggle, ~10,350-hex canvas, buildHexBaseInputs/
 rescoreHexes/redrawHexCanvas, strategy filter, hex detail card, evaluateHexSpot handoff) is GONE —
 revive from git history before 2026-07-25 if ever wanted. Opportunity is now **List | Communities**
-only. KEPT because they were shared, NOT hex-specific: `_loadHexWater`/`_hexInWater` + dfw-water.json
-(drop-a-site "in open water" checks), `_barrierDist` (Evaluate water-crossing decay), `_evalColor`
-(Evaluate heatmap), the tract/community system, `ensureConstructionData`. The `oppView` flag remains
-('list' | 'mpc'). The w-comp slider no longer drives any shareExp.
+(+ the Evaluate-metroplex button in the same segmented control — see below). KEPT because they were
+shared, NOT hex-specific: `_loadHexWater`/`_hexInWater` + dfw-water.json (drop-a-site "in open
+water" checks), `_barrierDist` (Evaluate water-crossing decay), `_evalColor` (Evaluate heatmap),
+the tract/community system, `ensureConstructionData`. The `oppView` flag remains ('list' | 'mpc').
+The w-comp slider no longer drives any shareExp.
+
+### Evaluate Metroplex (2026-07-25, user ask — the hex surface's replacement)
+`evaluateMetroplex()`: sets `drawnArea` to the full `oppRegion` bounds rect and routes through the
+UNCHANGED `openEvaluateArea` engine — the fixed `cellsAcross=36` grid self-adapts to ~3-mile cells
+at metro scale, so this is the whole site pipeline (zoning gate, retail corridors, capture model,
+land plays) run region-wide as a screening pass (~7 min live; disclosed in the button title).
+**Metro runs return 5 sites, not 3** (user: "if we are doing a whole metroplex evaluation we should
+do 5"): `_metroRun = (bb.maxLa-bb.minLa)>0.9 || (bb.maxLo-bb.minLo)>1.1` in the site pick;
+`TOPN=_metroRun?5:EVAL_TOP_N` and min-separation `0.16×span` (~19mi at DFW scale — verified picks
+17.1mi apart min: E McKinney 96 / Rockwall 95 / NW Denton 95 / Grand Prairie 87 / W Fort Worth 85).
+Ordinary ZIP/draw evaluations are untouched (span far below the gate). **The button lives INSIDE
+`.opp-view-seg` as a third `button.metro` segment beside List | Communities (2026-07-25, user
+rejected the standalone pill via screenshot: "put it with Zip List and communities")** — purple
+text + hairline left divider (`.opp-view-seg button.metro` CSS); it's an ACTION, not a view:
+clicking runs the evaluation rather than toggling `oppView`, so it never carries the `.on` state.
+Known rough edge (flagged, not yet requested): the unverified-species modal can list ~147 chips at
+metro scale.
 
 ## Sensors / gotchas
 
@@ -234,10 +252,14 @@ with every verified endpoint: `research/development-pipeline-sources.md`.
   est. start→delivery dates, cost, sqft, owner; popup rolls up COMMITTED TENANTS at the same
   FacilityName (finish-out registrations carry the tenant's actual name). RED paw divIcon = vet project
   in TABS (pre-opening, months of warning); GREEN paw = Comptroller-confirmed newly-open vet (first-sales
-  date). **RED paws are ALWAYS-ON (2026-07-25, user ask)**: `_drawVetAlerts()` draws them ~2.5s
-  after boot (idle, via `_vfWarmCaches`) into `_vetAlertLayer`, independent of the Commercial-pipeline
-  toggle; the toggle layer SKIPS kind==='vet' so pins never double (its status counts only the green
-  newly-open vets). ALL dates are applicant estimates — disclosed in every popup. Build is polite + checkpointed
+  date). **RED paws are TOGGLE-INDEPENDENT but ride the clinic-pin ZOOM GATE (2026-07-25, two user
+  asks same day: "always visible" then "load in and out with the pins" — he saw 19 paws floating
+  alone over DFW at statewide zoom)**: `_drawVetAlerts()` builds `_vetAlertLayer` ~2.5s after boot
+  (idle, via `_vfWarmCaches`) but attaches it via `_applyPinZoomVisibility()`, which now
+  adds/removes the paw layer ALONGSIDE `clusterGroup` (same MIN_ZOOM + `vf_hidepins` + watchMode
+  rules) — so paws appear exactly when clinic pins do, at every zoomend. Independent of the
+  Commercial-pipeline toggle; the toggle layer SKIPS kind==='vet' so pins never double (its status
+  counts only the green newly-open vets). ALL dates are applicant estimates — disclosed in every popup. Build is polite + checkpointed
   (`.tabs-checkpoint.json`/`.tabs-geocache.json`, git-ignored): 400ms between TABS detail fetches,
   1.15s Nominatim spacing (their hard limit), identifying UA; cold run ~2h, warm reruns minutes (only
   new registrations fetch). Refresh: `node build-tabs.mjs`, bump `?v=`, VF_DATASETS cadence 14d.
