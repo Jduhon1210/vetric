@@ -284,9 +284,12 @@ input[type=search]::-webkit-search-cancel-button,input[type=search]::-webkit-sea
 .eval-load-title{font-size:15px;font-weight:800;color:var(--text);letter-spacing:-.01em;}
 .eval-load-sub{font-size:12.5px;color:var(--muted);min-height:18px;animation:evalSubPulse 1.7s ease-in-out infinite;}
 @keyframes evalSubPulse{0%,100%{opacity:.5}50%{opacity:1}}
-.eval-load-bar{width:174px;height:4px;background:var(--border2);border-radius:3px;overflow:hidden;margin-top:3px;}
-.eval-load-bar>i{display:block;width:42%;height:100%;background:var(--navy);border-radius:3px;animation:evalBar 1.15s ease-in-out infinite;}
-@keyframes evalBar{0%{margin-left:-45%}100%{margin-left:100%}}
+/* Determinate progress bar (user 2026-07-25) — fill width = pipeline milestone %, smooth
+   transition, with a sliding sheen on the fill so minute-long stages still read as alive. */
+.eval-load-bar{width:230px;height:9px;background:var(--border2);border-radius:6px;overflow:hidden;margin-top:5px;}
+.eval-load-bar>i{display:block;width:5%;height:100%;background:linear-gradient(100deg,var(--navy) 40%,#3b5bb5 50%,var(--navy) 60%);background-size:200% 100%;border-radius:6px;transition:width .6s cubic-bezier(.3,.7,.3,1);animation:evalSheen 1.6s linear infinite;}
+.eval-load-pct{font-size:10.5px;font-weight:700;color:var(--muted);margin-top:2px;letter-spacing:.03em;}
+@keyframes evalSheen{from{background-position:100% 0}to{background-position:-100% 0}}
 .opp-overlay .opp-load-zip{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:15px;font-weight:700;color:var(--navy);}
 .opp-overlay .opp-load-sub{font-size:12.5px;color:var(--muted);}
 
@@ -8076,18 +8079,32 @@ function _cellAffl(la,lo){
   }
   return evalZipAffluence; // cell not inside any data ZIP — neutral fallback
 }
-// Animated "evaluating…" loader in the sidebar. Builds the spinner once, then just swaps the step text
-// on later calls so the spinner/bar don't restart. `title` = what we're doing, `msg` = the current step.
+// Animated "evaluating…" loader in the sidebar. Builds the spinner once, then just swaps the step
+// text + advances the bar on later calls. The bar is DETERMINATE (user 2026-07-25: "a loading bar
+// instead of that line") — each pipeline milestone maps to a %, monotonic so out-of-order stage
+// messages can never walk it backwards; unknown stages nudge it forward. A sheen animates on the
+// fill so long stages (metro scoring runs minutes) never look frozen.
+const _EVAL_STAGE_PCT=[['starting',5],['demograph',12],['clinics, retail',38],['road network',55],['road traffic',66],['zoning',78],['scoring',92]];
+let _evalStagePct=0;
 function _evalStage(sb, title, msg){
   if(!sb || !evalActive) return;
   if(document.body.classList.contains('vf-sbhide')) toggleSidebarHidden(false);   // an evaluation renders INTO the sidebar — never run it blind
   if(!sb.classList.contains('eval-wide')){ sb.classList.add('eval-wide'); setTimeout(()=>map.invalidateSize(),200); }
   const cap = msg ? msg.charAt(0).toUpperCase()+msg.slice(1) : '';
+  const hit=_EVAL_STAGE_PCT.find(s=>(msg||'').toLowerCase().includes(s[0]));
+  _evalStagePct=Math.min(96, Math.max(_evalStagePct, hit?hit[1]:_evalStagePct+7));
   const sub = sb.querySelector('.eval-load-sub');
-  if(sub){ sub.textContent=cap; return; }
+  if(sub){
+    sub.textContent=cap;
+    const f=sb.querySelector('.eval-load-bar>i'); if(f) f.style.width=_evalStagePct+'%';
+    const p=sb.querySelector('.eval-load-pct'); if(p) p.textContent=_evalStagePct+'%';
+    return;
+  }
+  _evalStagePct=hit?hit[1]:5;   // fresh loader = fresh run — reset the bar
   sb.innerHTML=`<div class="eval-loading"><div class="eval-load-spin"></div>`
     +`<div class="eval-load-title">${title}</div><div class="eval-load-sub">${cap}</div>`
-    +`<div class="eval-load-bar"><i></i></div></div>`;
+    +`<div class="eval-load-bar"><i style="width:${_evalStagePct}%"></i></div>`
+    +`<div class="eval-load-pct">${_evalStagePct}%</div></div>`;
 }
 async function openEvaluateArea(){
   if(typeof dismissCityEval==='function') dismissCityEval();  // any evaluate supersedes a stale search prompt
