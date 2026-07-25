@@ -403,26 +403,16 @@ ships it), **County record ↗ deep link** (Collin/Denton esearch — bot-block 
 real browsers, same links the clinic editor uses; Dallas AcctDetailCom; TAD /property?account=),
 and a not-a-listing disclosure. VF_DATASETS cadence 90d. Refresh: `python3 build-land.py`, bump `?v=`.
 
-## Listed-properties layer (2026-07-25, Option B of the land/listings ask)
-`tx-listings.json` (~360KB, 1,013 statewide / ~90 DFW) — REAL sale/lease listings from the **State
-of Texas Industrial & Commercial Sites and Buildings database** (texassitesearch.com, GIS Planning /
-ZoomProspector — the state's free public site-selection service; broker/EDC-submitted, so honest
-coverage is THIN vs Crexi but every pin is a real listing). Built by **`build-listings.mjs`** (~5s:
-3 paged POSTs of 500). GOTCHA: the search POST returns **0 rows if the body is trimmed** — mirror
-the captured full field set (incl. GUID-shaped SessionID/RequestID, `SubsetToken:'texas'`, the
-`subsetid` GUID, `StartRowID/EndRowID` paging); body captured 2026-07-25 via a fetch/XHR patch in
-the browser pane. Detail endpoint `/api/properties/property/{SiteID}` exists but is consistently
-EMPTY for imported listings (broker/price live in RealMassive/Catylist source systems) — the build
-deliberately ships from the list call alone; the **deep link `?p={SiteID}`** (verified 200) is where
-flyers/contacts live. Frontend: "Listed properties (state site database)" Layers toggle
-(`toggle-listings`/`toggleListingsLayer`/`_loadListings` `?v=1`), overlay-canvas circleMarkers —
-amber = land, navy = building, white ring; stale listings (`mod<'2024'`, `_listStale`) render dimmed
-+ rose "verify it's still available" popup note (mirrors the pipeline stale pattern). Popup: name,
-type · size (land ≥0.25ac shows acres), address, photo (onerror-hidden), View listing ↗, credit +
-updated date. **Metro-limited pilot accounts get bbox-filtered pins** (`_vfMetroLimited`/
-`_vfInLicense` guard in the draw loop — the file is statewide). VF_DATASETS cadence 30d. Refresh:
-`node build-listings.mjs`, bump `?v=`. Crexi/LoopNet remain deep-link-only (no free API, anti-bot,
-ToS) — that's the `_leaseBlock` handoff, unchanged.
+## Listed-properties layer — REMOVED same day (2026-07-25, user call after seeing it)
+Option B (tx-listings.json / build-listings.mjs / toggle-listings, from the state site database
+texassitesearch.com) shipped and was removed hours later — statewide inventory was only 1,013
+listings (~90 DFW) and 552 were last edited pre-2024; too thin/stale to earn a layer. Revive from
+commit f3f7c0d if ever wanted — it encodes the working API knowledge (search POST returns 0 rows
+unless the FULL captured field set incl. GUID-shaped SessionID/RequestID + subsetid is mirrored;
+detail endpoint `/api/properties/property/{SiteID}` exists but is empty for imported listings;
+deep link `?p={SiteID}`). Real listings data is paid (CoStar/Crexi) — see the research answer in
+session history; the free stack stays: off-market land layer (A) + TABS shells + Crexi/LoopNet
+deep-link handoffs.
 
 ## Development-signals layer (2026-07-14, user ask off the sweep)
 `dfw-signals.json` (curated, 7 entries; same 60-day sweep cadence as MPCs, registered in VF_DATASETS) = point events where commercial development is landing: rezonings, grocery-anchor commitments, retail waves, mixed-use approvals. Layers-panel toggle `toggle-signals`/`toggleSignalsLayer`/`sigLayer` (`_loadSignals` force-cache singleton, `?v=`) draws DIAMOND divIcon pins (`.vf-sig`, rotated square) colored by type via `_SIG_COLOR`: teal anchor / purple rezone / navy retail / slate mixed. Tooltip + sourced popup (type chip, city+ETA, note, source). DISPLAY-ONLY overlay, combinable with any fill (NOT in the single-fill exclusion). Refresh = run the news/zoning sweep (research/mpc-sweep-*.md pattern), hand-edit the JSON, bump `?v=`, update VF_DATASETS. Flagship entry: Kroger Marketplace + Custer Frontier (Custer & Laud Howell, McKinney/Prosper border) with six pad sites incl. medical uses, opens Mar 2027.
