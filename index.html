@@ -7215,7 +7215,14 @@ const _RP_CSS=`
      there are no borders"). Print/PDF output strips the chrome back to a clean page. */
   body{margin:0;background:#e9ebf0}
   .rp{max-width:850px;margin:26px auto;background:#fff;border:1px solid #d3d8e0;box-shadow:0 3px 22px rgba(15,23,42,.12);color:#1d222c;font-family:Inter,system-ui,sans-serif;padding:44px 56px 30px;display:flex;flex-direction:column;gap:19px;font-size:12.5px;line-height:1.5;min-height:1100px}
-  @media print{body{background:#fff}.rp{margin:0 auto;border:0;box-shadow:none;min-height:96vh}}
+  /* Multi-page is fine; CUT sections are not (user 2026-07-25): every section block keeps
+     together, a section label can never be orphaned from its rows, and competitor rows break
+     only at row boundaries. The .rp flex column becomes BLOCK flow in print (margins replace
+     gap) because Chrome honors break-inside:avoid unreliably on flex children. */
+  .card,.chips,.keep{break-inside:avoid;page-break-inside:avoid}
+  .rl{break-after:avoid;page-break-after:avoid}
+  .comp{break-inside:avoid;page-break-inside:avoid}
+  @media print{body{background:#fff}.rp{margin:0 auto;border:0;box-shadow:none;min-height:96vh;display:block}.rp>*+*{margin-top:19px}}
   .eyebrow{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#24466e;margin-bottom:8px}
   h1{font-size:29px;font-weight:500;line-height:1.15;letter-spacing:-.015em;margin:0}
   .meta{font-size:12px;color:#6a7180;margin-top:6px}
@@ -7355,7 +7362,7 @@ function _clinicReportHTML(){
     </div>`:''}
   </div>
   ${twoSided}
-  <div>
+  <div class="keep">
     ${_rpL('Top competitors — ranked by contested share','(gravity model; this clinic holds '+(subjShare*100).toFixed(0)+'%)')}
     <div style="margin-top:6px">${comps.map(x=>`<div class="comp"><span class="who">${esc(x.c.name||'Clinic')} <i>· ${x.c.pe?('PE — '+esc(x.c.owner||'undisclosed')):'independent'}</i></span><span class="d"><span style="color:#24466e;font-weight:600">${(x.share*100).toFixed(0)}%</span>${cs?' · ~'+Math.round(cs.visits*x.share).toLocaleString()+' visits/yr':''} · ${(x.d/1609.344).toFixed(1)} mi${x.c.staffN?' · '+x.c.staffN+' DVM':''}</span></div>`).join('')}</div>
     <div style="font-size:10px;color:#9aa2b1;margin-top:5px">Share of the modeled trade-area demand each competitor captures at this location — roster-weighted gravity over road-barrier distance; visits apply the share to the catchment's estimated total.</div>
@@ -7419,7 +7426,7 @@ function siteReport(i){
       ${_rpKV('Indicative value @ '+cs.econ.multLo+'–'+cs.econ.multHi+'×',_fmtM(cs.econ.valLo)+' – '+_fmtM(cs.econ.valHi),true)}
     </div>`:''}
   </div>
-  <div>
+  <div class="keep">
     ${_rpL('Nearest competitors — GP only')}
     <div style="margin-top:6px">${comps.map(x=>`<div class="comp"><span class="who">${esc(x.c.name||'Clinic')} <i>· ${x.c.pe?('PE — '+esc(x.c.owner||'undisclosed')):'independent'}</i></span><span class="d">${(x.d/1609.344).toFixed(1)} mi${x.c.staffN?' · '+x.c.staffN+' DVM':''}</span></div>`).join('')}</div>
   </div>
