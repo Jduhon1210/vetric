@@ -676,7 +676,6 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
 .vf-demo-pill{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#be123c;background:#fff1f2;border:1px solid #fecdd3;border-radius:9px;padding:3px 9px;margin-right:10px;white-space:nowrap;}
 .vf-stg-pill{display:inline-flex;align-items:center;gap:6px;font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:9px;padding:3px 9px;margin-right:10px;white-space:nowrap;}
 .vf-stg-pill::before{content:'';width:7px;height:7px;border-radius:50%;background:#f59e0b;}
-.vf-sig{width:13px;height:13px;transform:rotate(45deg);border:2px solid #fff;border-radius:3px;box-shadow:0 1px 5px rgba(15,23,42,.35);}
 .vf-vetalert{width:22px;height:22px;border-radius:50%;background:#dc2626;border:2px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;font-size:11px;line-height:1}
 .vf-vetalert.vf-vetopen{background:#047857}
 .vf-vetalert.vf-approx{opacity:.72;border-style:dashed}
@@ -1210,19 +1209,6 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
     <div class="layer-item">
       <div class="layer-row">
         <div>
-          <div class="layer-name">Development signals (zoning &amp; anchors)</div>
-          <div class="layer-desc">Curated point events where commercial development is landing: rezonings, grocery-anchor commitments, retail waves. Diamond pins — teal = anchor committed, purple = rezoning, navy = retail wave, slate = mixed-use. From the periodic news/zoning sweep; display-only, combinable with any fill.</div>
-        </div>
-        <label class="toggle">
-          <input type="checkbox" id="toggle-signals" onchange="toggleSignalsLayer(this.checked)"/>
-          <span class="toggle-slider"></span>
-        </label>
-      </div>
-      <div class="layer-status" id="signals-status">Off</div>
-    </div>
-    <div class="layer-item">
-      <div class="layer-row">
-        <div>
           <div class="layer-name">Available Properties</div>
           <div class="layer-desc">Curated lease / sale / lot listings</div>
         </div>
@@ -1245,19 +1231,6 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
         </label>
       </div>
       <div class="layer-status" id="traffic-status">Off</div>
-    </div>
-    <div class="layer-item">
-      <div class="layer-row">
-        <div>
-          <div class="layer-name">Competition Strength on Pins</div>
-          <div class="layer-desc">Size each clinic pin by its Google review volume — bigger = busier, stronger incumbent. Spot dominant practices vs. weak ones while scanning. Ownership colors stay (navy = independent, red = PE).</div>
-        </div>
-        <label class="toggle" style="margin-left:12px">
-          <input type="checkbox" id="toggle-strength" onchange="toggleStrengthPins(this.checked)"/>
-          <span class="toggle-slider"></span>
-        </label>
-      </div>
-      <div class="layer-status" id="strength-status">Off</div>
     </div>
   </div>
   <div class="income-legend" id="income-legend">
@@ -1923,9 +1896,11 @@ function makeIcon(color, tier){ const k=color+(tier==null?'':'_t'+tier); return 
 function pinColor(c){ if(c._pinc) return c._pinc; return c.pe ? RED : (c.peChecked ? NAVY : AMBER); }  // _pinc = analyst pin-color override (vf_overrides[key].pinc)
 // Optional competition-strength encoding (default OFF, session-only so the ownership
 // view is the default). Pin inner-dot size = Google review-volume tier; colors unchanged.
-let STRENGTH_PINS=false;
+// Competition-strength pin encoding REMOVED 2026-07-25 (user ask) — the toggle UI + function are
+// gone; the flag is frozen false so pinTier() always returns null and the tier plumbing through
+// the marker-diff engine stays provably inert (devMode precedent: don't operate on the hot path).
+const STRENGTH_PINS=false;
 function pinTier(c){ if(!STRENGTH_PINS) return null; const rev=(c&&c.reviews)||0; return rev>=500?3:rev>=150?2:rev>=30?1:0; }
-function toggleStrengthPins(on){ STRENGTH_PINS=!!on; const st=document.getElementById('strength-status'); if(st) st.textContent=on?'On — pin size = review volume':'Off'; refreshPins(); }
 
 // ── Clinic-type classification (name heuristic) + show/hide filter ──────────────
 // Google's data has no large/small/specialty tag, so infer from the name: equine/livestock
@@ -5145,6 +5120,7 @@ let oppView='list';              // 'list' | 'mpc' (Communities ranking)
    that's ~3-mile cells — a regional screen, the same run the user validated manually. */
 function evaluateMetroplex(){
   const r=oppRegion;
+  try{ _loadOppRetail(); _loadLand(); }catch(e){}   // warm the snap anchors — loaded long before the ~7-min compute ends
   const panel=document.getElementById('opp-panel'); if(panel) panel.classList.remove('show');
   switchSection('map');
   setTimeout(()=>{
@@ -5462,36 +5438,7 @@ async function toggleCommercialLayer(on){
   _commZoomSync();
   if(status) status.textContent=nPin.toLocaleString()+' projects · '+nTen.toLocaleString()+' tenant spots (zoom ≥13) · '+nVet+' newly-open vets (red paws always on)';
 }
-// ── Development signals (zoning & anchors) — curated point events, OVERLAY, display-only ────
-let _sigData=null,_sigP=null,sigLayer=null;
-function _loadSignals(){ if(_sigData) return Promise.resolve(_sigData); if(_sigP) return _sigP;
-  _sigP=fetch('dfw-signals.json?v=1',{cache:'force-cache'}).then(r=>r.ok?r.json():null).then(d=>(_sigData=(d&&d.list&&d.list.length)?d:null)).catch(()=>null);
-  return _sigP; }
-const _SIG_COLOR={anchor:'#0d9488', rezone:'#7c3aed', retail:'#1e3a8a', mixed:'#475569'};
-const _SIG_LABEL={anchor:'Anchor committed', rezone:'Rezoning', retail:'Retail wave', mixed:'Mixed-use'};
-async function toggleSignalsLayer(on){
-  const status=document.getElementById('signals-status');
-  if(!on){ if(sigLayer){ map.removeLayer(sigLayer); sigLayer=null; } if(status) status.textContent='Off'; return; }
-  if(status) status.textContent='Loading…';
-  const d=await _loadSignals();
-  if(!d){ if(status) status.textContent='Data unavailable'; const cb=document.getElementById('toggle-signals'); if(cb) cb.checked=false; return; }
-  if(sigLayer){ map.removeLayer(sigLayer); }
-  sigLayer=L.layerGroup();
-  for(const g of d.list){
-    const col=_SIG_COLOR[g.t]||'#475569';
-    const m=L.marker([g.lat,g.lon],{icon:L.divIcon({className:'',html:`<div class="vf-sig" style="background:${col}"></div>`,iconSize:[17,17],iconAnchor:[8,8]})});
-    m.bindTooltip(g.n,{direction:'top',offset:[0,-8]});
-    m.bindPopup(`<div style="min-width:210px;max-width:250px">
-      <div style="display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#fff;background:${col};border-radius:8px;padding:2px 8px">${_SIG_LABEL[g.t]||g.t}</div>
-      <div style="font-size:13px;font-weight:700;margin-top:6px;line-height:1.35">${g.n}</div>
-      <div style="font-size:10.5px;color:#64748b;margin:2px 0 6px">${g.city}${g.eta&&g.eta!=='—'?' · '+g.eta:''}</div>
-      <div style="font-size:11.5px;color:#334155;line-height:1.5">${g.note}</div>
-      <div style="font-size:10.5px;color:#64748b;margin-top:6px">${g.src}</div></div>`,{maxWidth:270});
-    sigLayer.addLayer(m);
-  }
-  map.addLayer(sigLayer);
-  if(status) status.textContent=d.list.length+' signals shown';
-}
+// (Development-signals layer REMOVED 2026-07-25, user ask — dfw-signals.json + toggle in git history.)
 // ── Developing communities (master-planned) — OVERLAY, combinable with any fill ─────────────
 // dfw-mpc.json: curated list of DFW's major MPCs (developer announcements + RCLCO rankings).
 // Circles sized by announced homes; popup carries buildout estimates: residents ≈ homes × 3.0
@@ -6631,7 +6578,6 @@ const VF_DATASETS=[
  {name:'Species verdicts',        file:'vet-species.js',    src:'clinic-website crawl',       how:'node build-species.mjs --all', last:'2026-07-09', every:180, why:'practice focus changes slowly'},
  {name:'Services offered',        file:'vet-services.js',   src:'clinic-website crawl',       how:'node build-services.mjs --all', last:'2026-07-23', every:180, why:'service mix changes slowly; drives ancillary-revenue reads'},
  {name:'Master-planned communities', file:'dfw-mpc.json',   src:'curated (news + RCLCO)',     how:'hand-edit JSON, bump ?v=', last:'2026-07-14', every:60,  why:'announcements and phase openings move fast'},
- {name:'Development signals',     file:'dfw-signals.json',  src:'curated (news/zoning sweep)', how:'sweep + hand-edit JSON, bump ?v=', last:'2026-07-14', every:60,  why:'rezonings and anchor signings move fast'},
  {name:'Development pipeline',    file:'dfw-pipeline.json', src:'NCTCOG Development Monitoring', how:'node build-pipeline.mjs, bump ?v=', last:'2026-07-22', every:30,  why:'NCTCOG maintains continuously — cheap one-call refresh'},
  {name:'Commercial pipeline (TABS)', file:'dfw-commercial.json', src:'TDLR TABS + Comptroller',  how:'node build-tabs.mjs, bump ?v= (checkpointed, ~1h cold / mins warm)', last:'2026-07-23', every:14, why:'new registrations land daily; vet early-warning depends on freshness'},
  {name:'Off-market land (vacant commercial)', file:'dfw-land.json', src:'county CAD services + TxGIO StratMap', how:'python3 build-land.py, bump ?v= (~1 min warm)', last:'2026-07-25', every:90, why:'ownership and vacancy change slowly; appraisal rolls update annually'},
@@ -7238,6 +7184,7 @@ let evalZoning=true;        // zoning FILTER on by default — drop residential/
 // MPC = top of the pet-ownership range — same 0.55 dog-HH profile the MPC popup uses) so the
 // tract pass can't zero them out on today's empty-pasture demographics. Toggleable (evalFuture).
 let evalFuture=true, _evalFutInfo=null, evalLandPlays=[], evalHiddenWeak=0;
+let evalMetroRun=false;   // true while the on-screen analysis is a region-scale screening pass (Evaluate Metroplex)
 let evalTab='sites';
 function evalSetTab(t){ evalTab=t; _evalRenderSidebar(); }
 // Per-site card state (mockup-2 redesign): active pill per card + cached catchment stats keyed
@@ -8349,12 +8296,45 @@ function _evalComputeAndRender(){
   evalHiddenWeak=0;
   if(evalTopMode!=='none'){ const _keep=evalTop.filter(g=>g.tier!=='weak'); evalHiddenWeak=evalTop.length-_keep.length; evalTop=_keep; }
   evalShowWeak=false;
+  evalMetroRun=_metroRun;
+  if(_metroRun) _metroSnapSites();   // ~3-mi cells: move each pin off the cell center onto commercial ground (see fn)
   _evalRenderLayers();
   _evalRenderSidebar();
   _evalRingSettle();                                // clinic mode: the evaluating spinner comes to rest
   if(evalSitePt) _updateSiteKpis();                 // site mode: KPI bar reads the radius around the pin
   // Screen popup (once per analysis): urge classifying the unverified competitors, or ignore.
   if(!evalSpeciesPrompted && !evalSpeciesIgnored && _speciesUnverified().length){ evalSpeciesPrompted=true; _speciesModalOpen(); }
+}
+// Metro screening cells are ~3 mi wide, so the raw cell CENTER usually lands on a subdivision
+// street even when the cell won on real commercial strength — and at a metro-wide bbox the
+// zoning/parcel fetches hit their per-request caps, so the residential gate barely bites
+// (user, 2026-07-25: "when i evaluate dfw it is putting the sites in neighborhoods").
+// Snap each winning pin to the nearest commercial anchor inside its cell: a dfw-retail fabric
+// point, else a vacant-commercial parcel from dfw-land.json. The score is the CELL's read at
+// this grain either way; the card, popup and banner disclose the snap + steer to Refine.
+function _metroSnapSites(){
+  const land=(typeof _landData!=='undefined'&&_landData&&_landData.list)?_landData.list:null;
+  for(const g of evalTop){
+    const kx=111320*Math.cos(g.la*Math.PI/180);
+    let best=null;
+    const probe=(la,lo)=>{ const d=Math.hypot((la-g.la)*110540,(lo-g.lo)*kx); if(d<3540 && (!best||d<best.d)) best={la,lo,d}; };  // ≤2.2 mi = stay inside the cell
+    if(_oppRetailPts) for(const p of _oppRetailPts) probe(p[0],p[1]);
+    if(!best && land) for(const r of land) probe(r.la,r.lo);
+    if(!best || best.d<120) continue;           // nothing to snap to, or already on commercial ground
+    g._cellLa=g.la; g._cellLo=g.lo;
+    g.la=best.la; g.lo=best.lo; g.snapMi=best.d/1609.344;
+  }
+}
+// Full-resolution pass on ONE winning screening area: the same 2-mi context box the drop-site
+// flow uses, through the unchanged engine. The small bbox means the zoning/parcel fetches load
+// COMPLETE (they're capped at metro scale), so the residential-exclude gate actually bites and
+// the resulting sites are parcel-grade, not area markers.
+function metroRefine(la,lo){
+  const dLat=2.0/69.0, dLon=2.0/(69.0*Math.cos(la*Math.PI/180));
+  drawnArea={type:'poly', points:[{lat:la-dLat,lng:lo-dLon},{lat:la-dLat,lng:lo+dLon},{lat:la+dLat,lng:lo+dLon},{lat:la+dLat,lng:lo-dLon}]};
+  try{ captureAreaClinics(); }catch(e){}
+  map.setView([la,lo], Math.max(map.getZoom(),12), {animate:false});
+  openEvaluateArea();
 }
 // Plain-language reasons why this area has no strong site — read off the best cell + the
 // saturation diagnostics. Used by the honest-verdict banner.
@@ -8415,8 +8395,9 @@ function _evalSitePopup(g,i){
   const z=g.zone?`<br>Zoning: ${g.zone}${g.zcity?' ('+g.zcity+')':''}`:'';
   const cannib=_evalCannib(g);
   return `<div style="font-size:12.5px;min-width:180px">
-    <b>${g.tier==='strong'?'Recommended site':'Site'} ${i+1}</b> · score ${_evalDisp(g.score)}/100${g.tier!=='strong'?' · <span style="color:#be123c;font-weight:700">below the recommendation bar</span>':''}<br>
+    <b>${g.tier==='strong'?(evalMetroRun?'Recommended area':'Recommended site'):(evalMetroRun?'Area':'Site')} ${i+1}</b> · score ${_evalDisp(g.score)}/100${g.tier!=='strong'?' · <span style="color:#be123c;font-weight:700">below the recommendation bar</span>':''}<br>
     <span style="color:#64748b">${near}${z}</span>
+    ${evalMetroRun?`<br><span style="color:#475569;font-size:11px">~3-mi screening grain${g.snapMi?' · pin on the nearest commercial corridor':''} — </span><span style="cursor:pointer;font-size:11px;color:var(--navy);font-weight:700" onclick="metroRefine(${g.la},${g.lo})">Refine this area</span>`:''}
     ${cannib?`<br><span style="color:#be123c;font-weight:600">${cannib}</span>`:''}
     <div style="margin-top:7px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
       <a href="https://www.google.com/maps/search/?api=1&query=${g.la},${g.lo}" target="_blank" rel="noopener" style="font-size:11px;color:var(--navy);font-weight:700;text-decoration:none">Open in Maps ↗</a>
@@ -8696,14 +8677,17 @@ function _evalRenderSidebar(){
         ${_leaseBlock(g)}
       </div>`;
     }
+    const metroNote=evalMetroRun?`<div style="font-size:10.5px;color:#475569;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:5px 9px;margin:6px 0 2px">~3-mile screening area${g.snapMi?` — pin placed on the nearest commercial corridor (${g.snapMi.toFixed(1)} mi off the cell center)`:''}. <b>Refine</b> runs the full parcel-level analysis here.</div>`:'';
     return `<div class="eval-card" onclick="evalFlyTo(${i})"${g.tier!=='strong'?' style="opacity:.92"':''}>
-      <div class="eval-card-head"><span class="eval-rank"${g.tier!=='strong'?' style="background:#94a3b8"':''}>${i+1}</span><span class="eval-card-title">Site ${i+1}</span>${chipT}<span class="eval-score"${g.tier!=='strong'?' style="color:#64748b"':''}>${headline}</span></div>
+      <div class="eval-card-head"><span class="eval-rank"${g.tier!=='strong'?' style="background:#94a3b8"':''}>${i+1}</span><span class="eval-card-title">${evalMetroRun?'Area':'Site'} ${i+1}</span>${chipT}<span class="eval-score"${g.tier!=='strong'?' style="color:#64748b"':''}>${headline}</span></div>
       <div class="eval-why">${nearStr}${roadStr?' · '+roadStr:''}</div>
+      ${metroNote}
       ${strip}
       <div style="display:flex;gap:5px;margin-bottom:8px" onclick="event.stopPropagation()">${pill('ov','Overview')}${pill('ca','Catchment')}${pill('co','Community')}${pill('lk','Links')}</div>
       <div id="evcb-${i}">${body}</div>
       <div style="display:flex;gap:7px;margin-top:9px;align-items:center" onclick="event.stopPropagation()">
-        <button class="vm-export-btn" style="flex:1;justify-content:center;background:var(--navy);color:#fff;border-color:var(--navy)" onclick="siteReport(${i})">↓ Site report</button>
+        ${evalMetroRun?`<button class="vm-export-btn" style="flex:1;justify-content:center;background:var(--navy);color:#fff;border-color:var(--navy)" onclick="metroRefine(${g.la},${g.lo})">⌖ Refine this area</button><button class="vm-export-btn" style="justify-content:center" onclick="siteReport(${i})">↓ Report</button>`
+                     :`<button class="vm-export-btn" style="flex:1;justify-content:center;background:var(--navy);color:#fff;border-color:var(--navy)" onclick="siteReport(${i})">↓ Site report</button>`}
         <span class="vm-star ${_inWatch('site',sid)?'on':''}" style="font-size:16px;padding:0 4px" title="Save site to watchlist" onclick="toggleWatchSite(${g.la},${g.lo},${headline},this)">★</span>
       </div>
     </div>`;
@@ -8873,7 +8857,7 @@ function _evalRenderSidebar(){
       </div>`; })()}
     ${speciesPrompt}
     <div class="eval-tabs">${_evalSubject?'':_tabBtn('sites','Sites',evalTop.length)+_tabBtn('land','Land',evalLandPlays.length)}${_tabBtn('layers','Layers',null)}${_tabBtn('data','Data',null)}</div>
-    ${_pane('sites', `${verdictBanner}<div class="eval-cards">${hideCards?'':cards}</div>`)}
+    ${_pane('sites', `${evalMetroRun?`<div style="background:#f8fafc;border:1px solid #dbe3f0;border-radius:10px;padding:9px 12px;margin:8px 0"><div style="font-size:11.5px;font-weight:800;color:#1e3a8a">Metroplex screening pass · ~3-mile grain</div><div style="font-size:11px;color:#475569;margin-top:3px;line-height:1.5">Each pin marks the best <b>area</b>, placed on the nearest commercial corridor — not a specific parcel. <b>⌖ Refine this area</b> on a card re-runs the full engine there with complete zoning + parcel data for parcel-level sites.</div></div>`:''}${verdictBanner}<div class="eval-cards">${hideCards?'':cards}</div>`)}
     ${_pane('land', `${_evalFutInfo?`<div style="font-size:11px;color:#0f766e;background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;padding:7px 10px;margin:8px 0 2px;line-height:1.5">⚡ Demand includes ~${_evalFutInfo.reduce((t,x)=>t+Math.round(x.rem*x.conf),0).toLocaleString()} confidence-discounted announced homes (${_evalFutInfo.map(x=>x.n).join(', ')}). Toggle “Announced homes” off for today-only demand.</div>`:''}
     ${evalLandPlays.length?`<div style="border:1.5px dashed #0d9488;background:#f0fdfa;border-radius:10px;padding:10px 12px;margin:8px 0 2px">
       <div style="font-size:12px;font-weight:800;color:#0f766e">⚡ Land plays — ranked like sites, retail fabric assumed</div>
@@ -9578,7 +9562,7 @@ function _siteDropCommit(lat,lon){
 }
 function _evalResetState(){
   evalActive=false; evalAreaMode=false; evalAreaZips=null; evalSat=null; evalZoneStat=null; evalZoneCities=[]; evalParcelCounties=[];
-  evalTopMode=null; evalShowWeak=false; evalSpeciesIgnored=false; evalSpeciesPrompted=false; _speciesModalClose();
+  evalTopMode=null; evalShowWeak=false; evalMetroRun=false; evalSpeciesIgnored=false; evalSpeciesPrompted=false; _speciesModalClose();
   _evalClearLayers(); _evalHideLegend(); _evalClearDrive();
   evalData={vets:[], retail:[], resid:[], roads:[], aadt:[], zoning:[], osmLU:[], parcels:[]}; evalDataOk={retail:false,roads:false,resid:false,aadt:false,zoning:false,parcels:false};
   evalCells=[]; evalTop=[]; evalCompsCache=[]; evalLandPlays=[]; _evalFutInfo=null; evalHiddenWeak=0; evalTab='sites'; _siteCardTabs={};
