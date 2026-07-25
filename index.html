@@ -684,14 +684,24 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
 .vf-vetalert.vf-approx{opacity:.72;border-style:dashed}
 .vf-crane{width:17px;height:17px;border-radius:50%;background:#d97706;border:1.6px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center}
 .vf-crane.vf-approx{opacity:.62;border-style:dashed}
+/* Collapsible clinic list (2026-07-25, user ask): the ⟩ button left of "Clinics in view" hides
+   the sidebar; a slim ⟨ List handle on the map's right edge brings it back. Persisted in
+   vf_sbhide; flows that render INTO the sidebar (evaluations, Acquisitions, Watchlist) auto-
+   reveal it. The width transition already on .sidebar makes it slide. */
+.sb-hide{width:22px;height:22px;border:1px solid var(--border2);border-radius:7px;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:#64748b;cursor:pointer;margin-right:8px;flex-shrink:0;background:#fff;}
+.sb-hide:hover{background:#f1f5f9;color:#0f172a;}
+body.vf-sbhide .sidebar{width:0!important;min-width:0!important;border-left:none;overflow:hidden;}
+body.vf-sbhide .sb-grip{display:none;}
+#sb-reopen{position:absolute;top:calc(50% - 30px);right:0;z-index:900;display:none;background:#fff;border:1px solid var(--border2);border-right:none;border-radius:10px 0 0 10px;padding:12px 9px 12px 11px;cursor:pointer;box-shadow:-2px 2px 12px rgba(15,23,42,.12);font-size:12px;color:var(--navy);font-weight:800;white-space:nowrap;}
+#sb-reopen:hover{background:#f1f5f9;}
+body.vf-sbhide #sb-reopen{display:block;}
 /* Evaluation lock (2026-07-25, user ask): while an evaluation is RUNNING the map is frozen and a
    red cancel button sits bottom-right; both clear when results land or the run is cancelled. */
-/* right:426px = the map's bottom-right corner — the eval-wide sidebar (400px) is always up when
-   this button is visible. Narrow screens collapse the sidebar, so fall back to the screen edge. */
-#eval-cancel-btn{position:absolute;bottom:26px;right:426px;z-index:1300;display:none;background:#dc2626;color:#fff;border:none;border-radius:12px;padding:12px 22px;font-size:13.5px;font-weight:800;font-family:inherit;letter-spacing:.01em;cursor:pointer;box-shadow:0 8px 26px rgba(220,38,38,.42);}
+/* Bottom-right of the LIST column (user 2026-07-25: "fit the list view") — the eval sidebar is
+   sparse while loading, so the button owns its corner instead of straddling the map/list seam. */
+#eval-cancel-btn{position:absolute;bottom:26px;right:26px;z-index:1300;display:none;background:#dc2626;color:#fff;border:none;border-radius:12px;padding:12px 22px;font-size:13.5px;font-weight:800;font-family:inherit;letter-spacing:.01em;cursor:pointer;box-shadow:0 8px 26px rgba(220,38,38,.42);}
 #eval-cancel-btn:hover{background:#b91c1c;}
 #eval-cancel-btn.show{display:block;}
-@media (max-width:1000px){#eval-cancel-btn{right:26px;}}
 body.vf-evallock .leaflet-control-zoom{pointer-events:none;opacity:.45;}
 /* Clinic-evaluation dossier card (user pick A, 2026-07-25) — the 2a report language in the sidebar */
 .cdx-eye{font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:#24466e}
@@ -1381,6 +1391,7 @@ body.vf-evallock .leaflet-control-zoom{pointer-events:none;opacity:.45;}
   </div>
   <div id="zoom-msg">Zoom in to see clinics<br><span style="font-size:12px;opacity:.75">Search a city above</span></div>
   <button id="eval-cancel-btn" onclick="clearEvaluate()">✕ Cancel evaluation</button>
+  <div id="sb-reopen" onclick="toggleSidebarHidden(false)" title="Show the clinic list">⟨ List</div>
   <div class="spov" id="species-overlay" onclick="if(event.target===this)_speciesModalClose()">
   <div class="spmod">
     <div class="spmod-head"><span id="spmod-title">Competitors missing species data</span><button class="settings-close" onclick="_speciesModalClose()" aria-label="Close">✕</button></div>
@@ -1404,7 +1415,7 @@ body.vf-evallock .leaflet-control-zoom{pointer-events:none;opacity:.45;}
   <div class="sb-grip" id="sb-grip" title="Drag to resize"></div>
   <div class="sidebar">
     <div class="sb-head">
-      <span class="sb-title">Clinics in view</span>
+      <span style="display:flex;align-items:center;min-width:0"><span class="sb-hide" onclick="toggleSidebarHidden(true)" title="Hide the list">⟩</span><span class="sb-title">Clinics in view</span></span>
       <span class="badge" id="badge">0</span>
     </div>
     <div class="legend">
@@ -1898,6 +1909,14 @@ map.addLayer(clusterGroup);
 // so without this a far-out view shows a stale clump. We DETACH the whole layer below MIN_ZOOM (O(1), no
 // per-marker work) and re-attach on zoom-in. Toggle OFF to keep pins at every zoom.
 function _vfHidePins(){ try{ return localStorage.getItem('vf_hidepins')!=='0'; }catch(_){ return true; } }
+// Collapsible clinic list (user 2026-07-25). Hide persists; reveal is also called by flows that
+// render INTO the sidebar (evaluations, Acquisitions, Watchlist) so they can never open blind.
+function toggleSidebarHidden(hide){
+  try{ localStorage.setItem('vf_sbhide', hide?'1':'0'); }catch(e){}
+  document.body.classList.toggle('vf-sbhide', !!hide);
+  setTimeout(()=>{ try{ map.invalidateSize(); }catch(e){} }, 220);
+}
+try{ if(localStorage.getItem('vf_sbhide')==='1'){ document.body.classList.add('vf-sbhide'); setTimeout(()=>{ try{ map.invalidateSize(); }catch(e){} }, 300); } }catch(e){}
 function _applyPinZoomVisibility(){
   if(typeof clusterGroup==='undefined') return;
   const paws=(typeof _vetAlertLayer!=='undefined')?_vetAlertLayer:null;   // vet early-warning paws ride the same gate as the pins (user 2026-07-25: "load in and out with the pins")
@@ -1908,7 +1927,8 @@ function _applyPinZoomVisibility(){
   else { if(!map.hasLayer(clusterGroup)) map.addLayer(clusterGroup); if(paws&&!map.hasLayer(paws)) map.addLayer(paws); }
   const zm=document.getElementById('zoom-msg');
   if(zm){
-    zm.style.display = (below && (hide || !(typeof clinics!=='undefined' && clinics.length))) ? 'block' : 'none';
+    const evalOn = typeof evalActive!=='undefined' && evalActive;   // an active analysis owns the map — never nag "zoom in" over it (user 2026-07-25)
+    zm.style.display = (below && !evalOn && (hide || !(typeof clinics!=='undefined' && clinics.length))) ? 'block' : 'none';
   }
 }
 map.on('zoomend', _applyPinZoomVisibility);
@@ -2835,7 +2855,7 @@ function renderNormalSidebar(){
   if(sidebar && sidebar.classList.contains('eval-wide')){ sidebar.classList.remove('eval-wide'); setTimeout(()=>map.invalidateSize(),200); }
   sidebar.innerHTML=`
     <div class="sb-head">
-      <span class="sb-title">Clinics in view</span>
+      <span style="display:flex;align-items:center;min-width:0"><span class="sb-hide" onclick="toggleSidebarHidden(true)" title="Hide the list">⟩</span><span class="sb-title">Clinics in view</span></span>
       <span class="badge" id="badge">0</span>
     </div>
     <div class="legend">
@@ -4543,6 +4563,8 @@ function renderWatchlist(){
 }
 
 function switchSection(s){
+  // Acquisitions + Watchlist render INTO the sidebar — auto-reveal a collapsed list for them.
+  if(s!=='map' && document.body.classList.contains('vf-sbhide')) toggleSidebarHidden(false);
   // Opportunity takes the full canvas: hide the KPI strip while the tab is active (the panel/surface
   // covers that space), and let Leaflet re-measure whenever the map area grows/shrinks because of it.
   const _wasOpp=document.body.classList.contains('vf-opp');
@@ -8058,6 +8080,7 @@ function _cellAffl(la,lo){
 // on later calls so the spinner/bar don't restart. `title` = what we're doing, `msg` = the current step.
 function _evalStage(sb, title, msg){
   if(!sb || !evalActive) return;
+  if(document.body.classList.contains('vf-sbhide')) toggleSidebarHidden(false);   // an evaluation renders INTO the sidebar — never run it blind
   if(!sb.classList.contains('eval-wide')){ sb.classList.add('eval-wide'); setTimeout(()=>map.invalidateSize(),200); }
   const cap = msg ? msg.charAt(0).toUpperCase()+msg.slice(1) : '';
   const sub = sb.querySelector('.eval-load-sub');
@@ -9696,6 +9719,7 @@ function _siteDropCommit(lat,lon){
 function _evalResetState(){
   try{ _evalLockMap(false); }catch(e){}
   evalActive=false; evalAreaMode=false; evalAreaZips=null; evalSat=null; evalZoneStat=null; evalZoneCities=[]; evalParcelCounties=[];
+  try{ _applyPinZoomVisibility(); }catch(e){}   // evalActive just flipped — restore the zoom-toast rules
   evalTopMode=null; evalShowWeak=false; evalMetroRun=false; evalSpeciesIgnored=false; evalSpeciesPrompted=false; _speciesModalClose();
   _evalClearLayers(); _evalHideLegend(); _evalClearDrive();
   evalData={vets:[], retail:[], resid:[], roads:[], aadt:[], zoning:[], osmLU:[], parcels:[]}; evalDataOk={retail:false,roads:false,resid:false,aadt:false,zoning:false,parcels:false};
@@ -9711,6 +9735,7 @@ function _evalLockMap(on){
     ['dragging','scrollWheelZoom','touchZoom','doubleClickZoom','keyboard'].forEach(k=>{ if(map[k]){ on?map[k].disable():map[k].enable(); } });
     document.body.classList.toggle('vf-evallock', !!on);
     const b=document.getElementById('eval-cancel-btn'); if(b) b.classList.toggle('show', !!on);
+    _applyPinZoomVisibility();   // re-decide the "zoom in" toast — it must never show over an active analysis
   }catch(e){}
 }
 function clearEvaluate(){
