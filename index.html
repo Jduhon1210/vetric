@@ -47,8 +47,11 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg)
 header{background:linear-gradient(150deg,#1e3a8a 0%,#1e3068 55%,#172554 100%);border-bottom:none;padding:0 24px;height:54px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;box-shadow:0 2px 16px rgba(15,23,42,.22);}
 .logo{width:34px;height:34px;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.22);border-radius:9px;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 18px rgba(10,18,48,.35);}
 .logo svg{width:20px;height:20px;}
-.brand{font-size:16px;font-weight:800;margin-left:11px;letter-spacing:-.03em;color:#fff;}
-.brand span{color:#93c5fd;}
+/* W4-white lockup (user pick 2026-07-25): solid-white "Vetric" over a letterspaced tagline;
+   the light-blue accent retires from the wordmark (it lives in the MARK). */
+.brand{display:flex;flex-direction:column;justify-content:center;margin-left:11px;line-height:1.12;font-size:16.5px;font-weight:800;letter-spacing:-.015em;color:#fff;}
+.brand span{color:#fff;}
+.brand .tag{font-size:7px;font-weight:700;letter-spacing:.26em;color:#7c8fc9;text-transform:uppercase;white-space:nowrap;}
 .hdr-left{display:flex;align-items:center;}
 .hdr-status{font-size:11px;color:#8fa1cc;letter-spacing:.01em;}
 .toolbar{display:flex;align-items:center;gap:8px;}
@@ -913,7 +916,7 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
       <rect x="13.6" y="6" width="3.4" height="15" rx="1.2" fill="#fff"/>
       <path d="M2.5 9.5h3l1.6-4 2.2 7 1.8-3.5 1.4 2h7.5" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" opacity="0.95"/>
     </svg></div>
-    <div class="brand">Vet<span>ric</span></div>
+    <div class="brand"><span>Vetric</span><span class="tag">Veterinary Market Intelligence</span></div>
     <nav class="nav-links">
       <button class="nav-link active" data-section="map" onclick="switchSection('map')">Map</button>
       <button class="nav-link" data-section="opportunity" onclick="switchSection('opportunity')">Opportunity</button>
