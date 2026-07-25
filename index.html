@@ -247,6 +247,9 @@ input[type=search]::-webkit-search-cancel-button,input[type=search]::-webkit-sea
 .opp-view-seg{display:inline-flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;flex-shrink:0;}
 .opp-view-seg button{border:0;background:#fff;padding:5px 13px;font-size:12px;font-weight:700;color:#64748b;cursor:pointer;}
 .opp-view-seg button.on{background:#15803d;color:#fff;}
+.opp-metro-btn{display:flex;align-items:center;gap:7px;margin-top:8px;width:100%;border:1px solid #c4b5fd;background:#f5f3ff;color:#6d28d9;font-weight:700;font-size:12px;padding:7px 12px;border-radius:9px;cursor:pointer;font-family:inherit;transition:all .15s}
+.opp-metro-btn:hover{background:#ede9fe}
+.opp-metro-btn .sub{font-weight:500;font-size:10.5px;color:#7c6aa8;margin-left:auto;text-align:right}
 .opp-list-head{display:grid;grid-template-columns:30px 1fr 64px;gap:12px;padding:0 14px 10px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);position:sticky;top:0;background:var(--bg);}
 .opp-caret{display:inline-block;font-size:11px;color:#64748b;font-weight:700;transition:transform .15s;}
 .opp-caret.open{transform:rotate(180deg);}
@@ -5122,6 +5125,22 @@ function _hexInWater(lat,lon){
   return false;
 }
 let oppView='list';              // 'list' | 'mpc' (Communities ranking)
+/* Evaluate Metroplex (2026-07-25, user ask — replaces the removed hex Surface): run the REAL
+   site engine (zoning gates, retail corridors, capture model, land plays) across the whole
+   region as one drawn-area evaluation. The engine's fixed 36×36 grid self-adapts: over ~105mi
+   that's ~3-mile cells — a regional screen, the same run the user validated manually. */
+function evaluateMetroplex(){
+  const r=oppRegion;
+  const panel=document.getElementById('opp-panel'); if(panel) panel.classList.remove('show');
+  switchSection('map');
+  setTimeout(()=>{
+    map.invalidateSize();
+    drawnArea={type:'rect',bounds:L.latLngBounds([r.s,r.w],[r.n,r.e])};
+    try{ map.fitBounds(drawnArea.bounds,{animate:false,padding:[24,24]}); }catch(e){}
+    try{ captureAreaClinics(); }catch(e){}
+    openEvaluateArea();
+  },60);
+}
 function setOppView(v){
   if(v===oppView) return; oppView=v;
   renderOppList();
@@ -6331,7 +6350,8 @@ function renderOppList(){
   const tEl=document.getElementById('opp-title'); if(tEl) tEl.textContent='Opportunity Scores · '+oppRegion.name;
   // Two funnel stages, captioned the way PE runs them: market screen → site scoring
   const seg=`<div><div class="opp-view-seg"><button class="${oppView==='list'?'on':''}" onclick="setOppView('list')">List</button><button class="${oppView==='mpc'?'on':''}" onclick="setOppView('mpc')">Communities</button></div>`+
-    `<div style="font-size:10.5px;color:#64748b;font-weight:600;margin-top:3px;letter-spacing:.02em">${oppView==='mpc'?'Master-planned communities · ranked':'ZIP ranking · four weighted factors'}</div></div>`;
+    `<div style="font-size:10.5px;color:#64748b;font-weight:600;margin-top:3px;letter-spacing:.02em">${oppView==='mpc'?'Master-planned communities · ranked':'ZIP ranking · four weighted factors'}</div>`+
+    `<button class="opp-metro-btn" onclick="evaluateMetroplex()" title="Run the full site engine — zoning, retail corridors, capture model — across the whole region at ~3-mile screening grain">⚡ Evaluate metroplex<span class="sub">best buildable sites across ${_ceEsc(oppRegion.name)} · takes a few minutes</span></button></div>`;
   if(oppView==='mpc'){ _renderMpcList(wrap, seg); return; }
   document.getElementById('opp-sub').textContent=
     `${oppScored.length} ZIPs scored across ${oppRegion.name} · ranked best to worst`;
