@@ -1184,6 +1184,19 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
     <div class="layer-item">
       <div class="layer-row">
         <div>
+          <div class="layer-name">Off-market land (vacant commercial)</div>
+          <div class="layer-desc">Vacant, commercially-viable parcels across all 9 DFW counties with the owner of record and mailing address from county appraisal rolls — the off-market call list. Solid green = county-classified vacant commercial; teal = vacant land on a mapped retail corridor; gray = larger tract near retail. Dot size = acreage. Public record, not listings. Sources: CCAD / DCAD / DentonCAD / TAD + TxGIO StratMap 2025.</div>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="toggle-land" onchange="toggleLandLayer(this.checked)"/>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <div class="layer-status" id="land-status">Off</div>
+    </div>
+    <div class="layer-item">
+      <div class="layer-row">
+        <div>
           <div class="layer-name">Developing communities (master-planned)</div>
           <div class="layer-desc">35 major DFW master-planned communities under development, with resident and pet-household estimates at buildout. Real mapped boundaries where available (20 of 35); circles sized by announced homes elsewhere. Bold teal = in the pad-engagement window (approaching the 1,500–2,500-rooftop trigger or anchor committed — when chains sign sites, 12–24 months before opening). Dashed = announced. Combinable with any fill layer.</div>
         </div>
@@ -5206,6 +5219,62 @@ function _loadCommercial(){
     .then(d=>{_commData=d;return d;}).catch(()=>null);
   return _commP;
 }
+/* ---- Off-market land layer (2026-07-25, user ask: "pins of land into vetric" → Option A) ----
+   dfw-land.json (build-land.py): vacant commercially-plausible parcels, all 9 DFW counties, with
+   OWNER OF RECORD + mailing from county appraisal rolls. Not listings — the off-market call list
+   (land-bank thesis). cls: 'cad' = county-classified vacant commercial (Collin C3-C6 / Denton C2 /
+   Dallas C%+COMM desc), 'cor' = vacant-by-value on a mapped retail corridor (≤500m),
+   'hwy' = ≥3ac within 1500m of retail. Rendered on the shared overlay canvas (perf rule). */
+let _landData=null,_landP=null,landLayer=null;
+function _loadLand(){
+  if(_landData) return Promise.resolve(_landData);
+  if(_landP) return _landP;
+  _landP=fetch('dfw-land.json?v=1',{cache:'force-cache'}).then(r=>r.ok?r.json():null)
+    .then(d=>{_landData=d;return d;}).catch(()=>null);
+  return _landP;
+}
+const _LAND_CLS={
+  cad:{c:'#15803d',t:'County-classified vacant commercial'},
+  cor:{c:'#0d9488',t:'Vacant land on a retail corridor'},
+  hwy:{c:'#64748b',t:'Larger vacant tract near retail'}
+};
+const _LAND_LINK={
+  Collin:p=>'https://esearch.collincad.org/Property/View/'+encodeURIComponent(p),
+  Denton:p=>'https://esearch.dentoncad.com/Property/View/'+encodeURIComponent(p),
+  Dallas:p=>'https://www.dallascad.org/AcctDetailCom.aspx?ID='+encodeURIComponent(p),
+  Tarrant:p=>'https://www.tad.org/property?account='+encodeURIComponent(p)
+};
+function _landPopupHTML(r){
+  const cfg=_LAND_CLS[r.cls]||_LAND_CLS.cor;
+  const link=_LAND_LINK[r.co]&&r.pid?`<a href="${_LAND_LINK[r.co](r.pid)}" target="_blank" rel="noopener" style="color:#1e3a8a;font-weight:700;text-decoration:none">County record &nearr;</a>`:`<span style="color:#64748b">${_ceEsc(r.co)} County parcel ${_ceEsc(r.pid||'')}</span>`;
+  return `<div style="min-width:220px;max-width:270px">
+    <div style="display:inline-block;font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#fff;background:${cfg.c};border-radius:8px;padding:2px 9px">Off-market land</div>
+    <div style="font-size:13.5px;font-weight:700;margin-top:6px">${r.ac} acres · ${_ceEsc(r.ct||r.co)}</div>
+    <div style="font-size:10.5px;color:#64748b;margin:1px 0 6px">${_ceEsc(cfg.t)}${r.st?' · '+_ceEsc(r.st):''}</div>
+    <div style="font-size:11.5px;color:#0f172a"><b>Owner of record:</b> ${_ceEsc(r.own||'—')}</div>
+    ${r.ml?`<div style="font-size:11px;color:#475569">${_ceEsc(r.ml)}</div>`:''}
+    ${r.lv?`<div style="font-size:11px;color:#334155;margin-top:4px">Appraised land value $${r.lv.toLocaleString()}</div>`:''}
+    <div style="font-size:11px;margin-top:6px">${link}</div>
+    <div style="font-size:10px;color:#94a3b8;margin-top:6px">County appraisal roll (public record) — not a listing; value is appraisal, not an asking price. ${_ceEsc(r.co)} County.</div></div>`;
+}
+async function toggleLandLayer(on){
+  const status=document.getElementById('land-status');
+  if(!on){ if(landLayer){ map.removeLayer(landLayer); landLayer=null; } if(status) status.textContent='Off'; return; }
+  if(status) status.textContent='Loading…';
+  const d=await _loadLand();
+  if(!d||!d.list){ if(status) status.textContent='Data unavailable'; const cb=document.getElementById('toggle-land'); if(cb) cb.checked=false; return; }
+  if(landLayer) map.removeLayer(landLayer);
+  landLayer=L.layerGroup();
+  const rnd=_getOverlayCanvas();
+  for(const r of d.list){
+    const cfg=_LAND_CLS[r.cls]||_LAND_CLS.cor;
+    const m=L.circleMarker([r.la,r.lo],{renderer:rnd,radius:Math.max(3.2,Math.min(9,2.6+Math.sqrt(r.ac)*1.15)),color:cfg.c,weight:1.3,opacity:0.85,fillColor:cfg.c,fillOpacity:r.cls==='cad'?0.5:0.3});
+    m.bindPopup(()=>_landPopupHTML(r),{maxWidth:290});
+    landLayer.addLayer(m);
+  }
+  map.addLayer(landLayer);
+  if(status) status.textContent=d.list.length.toLocaleString()+' vacant commercial parcels · 9 counties · rolls as of '+(d.built||'2026');
+}
 const _PIPE_STATUS={uc:'Under construction',an:'Announced',co:'Conceptual'};
 /* Vet early-warning paws don't wait for the Commercial-pipeline toggle (2026-07-25, user: "I want
    the red paw print markers of clinics being built always to be visible") but they DO ride the
@@ -6565,6 +6634,7 @@ const VF_DATASETS=[
  {name:'Development signals',     file:'dfw-signals.json',  src:'curated (news/zoning sweep)', how:'sweep + hand-edit JSON, bump ?v=', last:'2026-07-14', every:60,  why:'rezonings and anchor signings move fast'},
  {name:'Development pipeline',    file:'dfw-pipeline.json', src:'NCTCOG Development Monitoring', how:'node build-pipeline.mjs, bump ?v=', last:'2026-07-22', every:30,  why:'NCTCOG maintains continuously — cheap one-call refresh'},
  {name:'Commercial pipeline (TABS)', file:'dfw-commercial.json', src:'TDLR TABS + Comptroller',  how:'node build-tabs.mjs, bump ?v= (checkpointed, ~1h cold / mins warm)', last:'2026-07-23', every:14, why:'new registrations land daily; vet early-warning depends on freshness'},
+ {name:'Off-market land (vacant commercial)', file:'dfw-land.json', src:'county CAD services + TxGIO StratMap', how:'python3 build-land.py, bump ?v= (~1 min warm)', last:'2026-07-25', every:90, why:'ownership and vacancy change slowly; appraisal rolls update annually'},
  {name:'Retail / commercial fabric', file:'dfw-retail.json',src:'OSM Overpass bake',          how:'re-run Overpass query + dedupe', last:'2026-06-30', every:180, why:'retail land changes slowly'},
  {name:'Census tracts + demographics', file:'dfw-tracts.json', src:'TIGERweb + ACS 2024',     how:'node build-tracts.mjs', last:'2026-07-09', every:365, why:'annual ACS vintage'},
  {name:'ZIP boundaries',          file:'tx-zips.json',      src:'Census ZCTA 2020',           how:'re-download on new vintage', last:'2026-06-25', every:365, why:'boundaries change at census vintages'},

@@ -377,6 +377,32 @@ status split disclosed, developer-announced counts caveated). Verified on a Celi
 / 7,617 units → +12,338 visits/yr vs 5,265 existing (future = 2.3× current — the Celina thesis in one
 card). Graceful null outside DFW / file missing (`try/catch`, `fut:null` hides the block).
 
+## Off-market land layer (2026-07-25, user ask: "pins of land/retail for sale/lease" → Option A of A+B)
+`dfw-land.json` (~3.7MB raw, 16,868 parcels) — VACANT, COMMERCIALLY-PLAUSIBLE parcels across ALL 9
+DFW counties (user explicitly rejected a 3-county version) with **owner of record + mailing address**
+from county appraisal rolls. NOT listings — the off-market call list (land-bank thesis: "SEC 423/380
+LTD" holding the US-380 corner is the product working). Built by **`build-land.py`** (python3 + `pip
+install --user fiona`; ~30s warm, ~5min cold): direct CAD ArcGIS pulls for the big four — Collin
+CCAD-mirror `state_cd IN C3-C6` (= `commercial_fl='T'`, verified), Denton `STATE_CD='C2'` (verified
+vacant-commercial: US-377/Stemmons samples), Dallas `SPTBCODE LIKE 'C%' AND PROP_CL LIKE '%COMM%'`
+(**PROP_CL descriptions are authoritative — SPTB subcodes conflict across the CADs mixed into that
+service**), Tarrant TADParcels `IMPR_VALUE=0 AND LAND_VALUE>5000` — plus **TxGIO StratMap 2025
+per-county GDBs** (fiona/OpenFileGDB) for Rockwall/Kaufman/Ellis/Johnson/Parker. GOTCHAS that cost a
+run: (1) **StratMap `GIS_AREA` ships in SQUARE DEGREES despite its unit field claiming 'Acres'**
+(18.458-ac parcel → GIS_AREA 1.79e-05) — use `LEGAL_AREA`, else shoelace from geometry; (2) StratMap
+downloads 403 curl's default UA (CloudFront) — browser UA required; (3) the statewide StratMap
+ArcGIS service is render-only (query capability advertised but disabled) — hence per-county GDB
+downloads (`.land-cache/`, git-ignored); (4) outer-county CADs only assign state class to IMPROVED
+parcels in StratMap → vacancy = `imp=0 ∧ land>$5k`, commercial plausibility = retail-corridor test
+(dfw-retail.json: ≤500m 'cor', or ≥3ac ≤1500m 'hwy'); class-coded rows ship as 'cad'. Filters:
+0.5–150ac, public/church/HOA/utility owners dropped (JUNK_OWNER), drop counts logged. Frontend:
+"Off-market land (vacant commercial)" Layers toggle (`toggle-land`/`toggleLandLayer`/`_loadLand`
+`?v=1`), circleMarkers on the shared overlay canvas (perf rule), green=cad / teal=cor / gray=hwy,
+radius=√acres; popup = acreage/city/situs, owner + mailing, appraised land value (where the CAD
+ships it), **County record ↗ deep link** (Collin/Denton esearch — bot-block curl but open fine in
+real browsers, same links the clinic editor uses; Dallas AcctDetailCom; TAD /property?account=),
+and a not-a-listing disclosure. VF_DATASETS cadence 90d. Refresh: `python3 build-land.py`, bump `?v=`.
+
 ## Development-signals layer (2026-07-14, user ask off the sweep)
 `dfw-signals.json` (curated, 7 entries; same 60-day sweep cadence as MPCs, registered in VF_DATASETS) = point events where commercial development is landing: rezonings, grocery-anchor commitments, retail waves, mixed-use approvals. Layers-panel toggle `toggle-signals`/`toggleSignalsLayer`/`sigLayer` (`_loadSignals` force-cache singleton, `?v=`) draws DIAMOND divIcon pins (`.vf-sig`, rotated square) colored by type via `_SIG_COLOR`: teal anchor / purple rezone / navy retail / slate mixed. Tooltip + sourced popup (type chip, city+ETA, note, source). DISPLAY-ONLY overlay, combinable with any fill (NOT in the single-fill exclusion). Refresh = run the news/zoning sweep (research/mpc-sweep-*.md pattern), hand-edit the JSON, bump `?v=`, update VF_DATASETS. Flagship entry: Kroger Marketplace + Custer Frontier (Custer & Laud Howell, McKinney/Prosper border) with six pad sites incl. medical uses, opens Mar 2027.
 

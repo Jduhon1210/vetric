@@ -10,3 +10,4 @@ package-lock.json
 .tabs-checkpoint.json
 .tabs-geocache.json
 .services-checkpoint.json
+.land-cache/
