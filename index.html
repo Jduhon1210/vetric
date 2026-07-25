@@ -8802,6 +8802,9 @@ function _evalRenderSidebar(){
   const _memoCard=`<div class="eval-memo"><p>${_memoTxt}</p>${_memoRows}</div>`;
   const _tabBtn=(id,label,n)=>`<span class="eval-tab ${evalTab===id?'on':''}" onclick="evalSetTab('${id}')">${label}${n!=null?` <span class="eval-tab-n">${n}</span>`:''}</span>`;
   const _pane=(id,html)=>`<div style="display:${evalTab===id?'block':'none'}">${html}</div>`;
+  // Rebuilding innerHTML resets the scroll — every card-pill click yanked the list back to the
+  // top (user, 2026-07-25). Capture the scroller's position and restore it after the swap.
+  const _prevScroll=(()=>{ const s=sb.querySelector('.eval-scroll'); return s?s.scrollTop:0; })();
   sb.innerHTML=`
     <div class="area-header">
       <span class="area-title">${_evalSubject?('Clinic evaluation · '+_ceEsc(_evalSubject.name)):('Placement analysis · '+(evalZip||(evalSitePt?'dropped site':'drawn area')))}</span>
@@ -8986,6 +8989,7 @@ function _evalRenderSidebar(){
     <div class="eval-note">Neighborhood demand is weighted at census-tract grain — rooftops in higher pet-ownership communities pull sites harder than senior or renter-heavy pockets. Sites are limited to commercial land — either zoned/parceled commercial, or (where that's unavailable) within a real retail/commercial area; residential, civic and rural parcels are excluded, and arterial frontage alone is not enough. Coverage is layered: municipal zoning in the 16 mapped cities, county appraisal-district parcels (Collin / Denton / Dallas) for the exurbs, and OpenStreetMap land-use elsewhere. Road visibility is weighted by TxDOT traffic counts (AADT), so a busier frontage scores higher${hasAADT?'':' (traffic data unavailable here — using road class)'}. Competition counts every clinic within range, including ones just over the ZIP border. A recommended site can sit just past the boundary (within ~0.5&nbsp;mi) where the market actually peaks — catchments don't stop at the line.</div>`)}
     </div>
     <div class="status-bar" id="status"></div>`;
+  { const s=sb.querySelector('.eval-scroll'); if(s && _prevScroll) s.scrollTop=_prevScroll; }
 }
 function _evalRenderUnavailable(){
   const sb=document.querySelector('.sidebar'); if(!sb) return;
