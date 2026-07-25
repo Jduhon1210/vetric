@@ -47,11 +47,8 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg)
 header{background:linear-gradient(150deg,#1e3a8a 0%,#1e3068 55%,#172554 100%);border-bottom:none;padding:0 24px;height:54px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;box-shadow:0 2px 16px rgba(15,23,42,.22);}
 .logo{width:34px;height:34px;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.22);border-radius:9px;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 18px rgba(10,18,48,.35);}
 .logo svg{width:20px;height:20px;}
-/* W4-white lockup (user pick 2026-07-25): solid-white "Vetric" over a letterspaced tagline;
-   the light-blue accent retires from the wordmark (it lives in the MARK). */
-.brand{display:flex;flex-direction:column;justify-content:center;margin-left:11px;line-height:1.12;font-size:16.5px;font-weight:800;letter-spacing:-.015em;color:#fff;}
-.brand span{color:#fff;}
-.brand .tag{font-size:7px;font-weight:700;letter-spacing:.26em;color:#7c8fc9;text-transform:uppercase;white-space:nowrap;}
+.brand{font-size:16px;font-weight:800;margin-left:11px;letter-spacing:-.03em;color:#fff;}
+.brand span{color:#93c5fd;}
 .hdr-left{display:flex;align-items:center;}
 .hdr-status{font-size:11px;color:#8fa1cc;letter-spacing:.01em;}
 .toolbar{display:flex;align-items:center;gap:8px;}
@@ -69,16 +66,12 @@ header{background:linear-gradient(150deg,#1e3a8a 0%,#1e3068 55%,#172554 100%);bo
 /* ── Top nav (section navigation) ── */
 header{height:58px;}
 .nav-links{display:flex;align-items:center;height:58px;margin-left:18px;}
-/* H1 "Navy refined" (2026-07-25, user pick from the brand board): active tab = soft glass PILL,
-   not an underline; inactive links lighter; hover gets a faint wash. */
-.nav-link{height:auto;display:flex;align-items:center;padding:7px 14px;margin:0 1px;font-size:13.5px;font-weight:500;color:#a7b4d9;cursor:pointer;border-radius:9px;transition:color .15s,background .15s;background:none;border:none;font-family:inherit;}
-.nav-link:hover{color:#fff;background:rgba(255,255,255,.07);}
-.nav-link.active{color:#fff;background:rgba(255,255,255,.16);font-weight:600;}
+.nav-link{height:100%;display:flex;align-items:center;padding:0 14px;font-size:13.5px;font-weight:500;color:#a7b4d9;cursor:pointer;border-bottom:2px solid transparent;transition:color .15s,border-color .15s;background:none;border-top:none;border-left:none;border-right:none;font-family:inherit;}
+.nav-link:hover{color:#fff;}
+.nav-link.active{color:#fff;border-bottom-color:#93c5fd;font-weight:600;}
 .nav-link .soon{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#c7d2fe;background:rgba(255,255,255,.10);border-radius:10px;padding:1px 6px;margin-left:6px;}
-/* H1 "Navy refined": the header market pill goes GHOST on the navy (was a solid light chip) */
-.market-pick{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.24);border-radius:20px;padding:6px 12px 6px 14px;font-size:12.5px;font-weight:600;color:#dbe5ff;cursor:pointer;white-space:nowrap;transition:background .15s;}
-.market-pick:hover{background:rgba(255,255,255,.18);color:#fff;}
-.market-pick svg{width:13px;height:13px;stroke:#a7b4d9;}
+.market-pick{display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border2);border-radius:20px;padding:6px 12px 6px 14px;font-size:12.5px;font-weight:600;color:var(--text2);cursor:pointer;white-space:nowrap;}
+.market-pick svg{width:13px;height:13px;stroke:var(--subtle);}
 .avatar{width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.12);border:1.5px solid rgba(255,255,255,.35);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;transition:background .15s;}
 .avatar:hover{background:rgba(255,255,255,.22);}
 .search-bar{align-items:center;flex-wrap:wrap;}
@@ -916,7 +909,7 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
       <rect x="13.6" y="6" width="3.4" height="15" rx="1.2" fill="#fff"/>
       <path d="M2.5 9.5h3l1.6-4 2.2 7 1.8-3.5 1.4 2h7.5" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" opacity="0.95"/>
     </svg></div>
-    <div class="brand"><span>Vetric</span><span class="tag">Veterinary Market Intelligence</span></div>
+    <div class="brand">Vet<span>ric</span></div>
     <nav class="nav-links">
       <button class="nav-link active" data-section="map" onclick="switchSection('map')">Map</button>
       <button class="nav-link" data-section="opportunity" onclick="switchSection('opportunity')">Opportunity</button>
