@@ -724,6 +724,8 @@ body.vf-evallock .leaflet-control-zoom{pointer-events:none;opacity:.45;}
 .cdx-kv .v{font-weight:600;text-align:right;color:#1d222c}
 .cdx-kv .v.acc{color:#24466e;font-weight:700}
 .cdx-note{font-size:10px;color:#9aa2b1;line-height:1.5;margin-top:4px}
+.cdx-eyet{font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:#0f766e;font-weight:700}
+.cdx-kv .v.t{color:#0f766e;font-weight:700}
 .cdx-bar{display:flex;align-items:center;gap:8px;font-size:10.5px;margin:4px 0}
 .cdx-bar .bk{width:150px;color:#6a7180;flex-shrink:0}
 .cdx-bar .bt{flex:1;height:5px;background:#e6e8ec;border-radius:3px}
@@ -5602,7 +5604,7 @@ async function toggleMpcLayer(on){
       circ=L.circle([m.lat,m.lon],{ radius: Math.sqrt(m.homes)*30, ...style }); mapNote=' · approx. area';
     }
     circ._mpcN=m.n;                                  // handle for the Opportunity Communities view to find + open this popup
-    circ.bindTooltip(`${sweet?'⚡ ':''}<b>${esc(m.n)}</b> · ${m.homes.toLocaleString()} homes planned${sweet?' · engagement window':''}${mapNote}`,{sticky:true,opacity:0.95});
+    circ.bindTooltip(`${sweet?'':''}<b>${esc(m.n)}</b> · ${m.homes.toLocaleString()} homes planned${sweet?' · engagement window':''}${mapNote}`,{sticky:true,opacity:0.95});
     const residents=Math.round(m.homes*3.0), dogHH=Math.round(m.homes*0.55);
     const kfmtM=v=>v>=1000?((v/1000).toFixed(v>=10000?0:1).replace(/\.0$/,'')+'k'):String(v);
     const stat=(v,l)=>`<div style="flex:1;text-align:center;padding:8px 4px"><div style="font-size:17px;font-weight:800;color:#0f172a;letter-spacing:-.02em">${v}</div><div style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#64748b;margin-top:1px">${l}</div></div>`;
@@ -5630,7 +5632,7 @@ async function toggleMpcLayer(on){
       ${m.price?`<div style="font-size:11px;color:#475569;margin:-2px 0 7px">New homes <b style="color:#0f172a">$${m.price[0]}k–$${m.price[1]>=1000?(m.price[1]/1000).toFixed(1).replace(/\.0$/,'')+'M':m.price[1]+'k'}</b> · est. buyer income ~$${Math.round((_mpcIncome(m)||0)/1000)}k</div>`:''}
       ${m.note?`<div style="font-size:11px;color:#475569;line-height:1.45;margin-bottom:7px">${esc(m.note)}</div>`:''}
       ${ph.k==='sweet'
-        ? `<div style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:9px;padding:7px 10px;margin-bottom:8px"><div style="font-size:10.5px;font-weight:800;color:#0f766e">⚡ PAD-ENGAGEMENT WINDOW</div><div style="font-size:10.5px;color:#134e4a;margin-top:2px;line-height:1.45">${esc(ph.why)}. Chains typically sign MPC sites 12–24 months before opening.</div></div>`
+        ? `<div style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:9px;padding:7px 10px;margin-bottom:8px"><div style="font-size:10.5px;font-weight:800;color:#0f766e">PAD-ENGAGEMENT WINDOW</div><div style="font-size:10.5px;color:#134e4a;margin-top:2px;line-height:1.45">${esc(ph.why)}. Chains typically sign MPC sites 12–24 months before opening.</div></div>`
         : `<div style="font-size:10.5px;color:#64748b;margin-bottom:7px">${ph.k==='late'?'Established':'Watch list'} — ${esc(ph.why)}.</div>`}
       <a href="${detailsHref}" target="_blank" rel="noopener" style="display:block;text-align:center;background:var(--navy,#1e3a8a);color:#fff;font-size:12px;font-weight:700;text-decoration:none;border-radius:9px;padding:8px 0">${m.web?'Community website ↗':'Find details ↗'}</a>
       <div style="font-size:10.5px;color:#64748b;margin-top:6px;line-height:1.4">Announced totals (${esc(m.src||'public sources')}) · buildout 10–20 yrs · est. 3.0 people, 0.55 dog households per home.</div>
@@ -6400,7 +6402,7 @@ function _renderMpcList(wrap, seg){
   const esc=v=>String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const yrNow=new Date().getFullYear();
   const phBadge=ph=> ph.k==='sweet'
-    ? `<span style="font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#0f766e;background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;padding:1.5px 7px">⚡ engage now</span>`
+    ? `<span style="font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#0f766e;background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;padding:1.5px 7px">engage now</span>`
     : ph.k==='late'
       ? `<span style="font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#64748b;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:1.5px 7px">pads likely committed</span>`
       : `<span style="font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#be123c;background:#fff1f2;border:1px solid #fecdd3;border-radius:8px;padding:1.5px 7px">watch</span>`;
@@ -6496,7 +6498,7 @@ async function _zipMpcHighlight(zip, feat){
     let lyr;
     if(m.polys&&m.polys.length) lyr=L.featureGroup(m.polys.map(ring=>L.polygon(ring.map(pt=>[pt[1],pt[0]]),style)));
     else lyr=L.circle([m.lat,m.lon],Object.assign({radius:rKm*1000},style));
-    lyr.bindTooltip(`⚡ ${m.n} — ~${rem.toLocaleString()} homes to come`,{sticky:true});
+    lyr.bindTooltip(`${m.n} — ~${rem.toLocaleString()} homes to come`,{sticky:true});
     g.addLayer(lyr); n++;
   }
   if(n){ _zipMpcLayer=g; map.addLayer(g); }
@@ -8599,17 +8601,21 @@ function _evalRenderLayers(){
     const m=L.marker([lp.la,lp.lo],{icon:L.divIcon({className:'',html:'<div class="vf-lp">'+_lpSvg+'<span class="vf-lp-n">'+(i+1)+'</span></div>',iconSize:[34,46],iconAnchor:[17,44],popupAnchor:[0,-46]})});
     m.bindTooltip('Land play '+(i+1)+' — future-demand corridor',{direction:'top',offset:[0,-48]});
     m.bindPopup(()=>{
+      // LP-A dossier popup (user pick 2026-07-25, "no lightning emoji") — matched pair with the
+      // Land-pane card: eyebrow + corridor title + score, kv rows, buying-dirt note, actions.
       const homes=(lp.coms||[]).reduce((t,x)=>t+Math.round(x.rem*x.conf),0);
       const fabMi=(lp.nearRetail!=null&&isFinite(lp.nearRetail))?(lp.nearRetail/1609.34):null;
       const futPct=Math.round(100*(lp.demF||0)/Math.max(1e-6,(lp.dem||0)+(lp.demF||0)));
+      const corridor=(lp.coms&&lp.coms.length)?(_ceEsc(lp.coms[0].n)+' corridor'):'Future-demand corridor';
       return `<div style="min-width:270px;max-width:300px">
-        <div style="display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#0f766e;background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;padding:3px 9px">⚡ Land play ${i+1} — not leaseable today</div>
-        <div style="font-size:14px;font-weight:800;margin-top:7px">Future-play score ${_evalDisp(lp.score)}/100 <span style="font-weight:600;font-size:11.5px;color:#64748b">(fabric assumed)</span></div>
-        <div style="font-size:12px;color:#334155;line-height:1.6;margin-top:6px">~<b>${homes.toLocaleString()}</b> discounted announced homes in reach${(lp.coms&&lp.coms.length)?' ('+lp.coms.map(x=>x.n).join(', ')+')':''} · winnable share today ${(lp.share*100).toFixed(0)}%.</div>
-        <div style="font-size:11.5px;color:#475569;margin-top:5px">Demand mix: <b>${futPct}%</b> from announced development, ${100-futPct}% from rooftops already built${futPct<35?' — largely serving existing neighbors (often just over the ZIP line)':''}.</div>
-        <div style="font-size:11.5px;color:#64748b;margin-top:5px">${fabMi==null?'No commercial fabric within reach yet':'Nearest commercial fabric ~'+fabMi.toFixed(1)+' mi'} — the play is buying dirt before the retail exists.</div>
-        <button class="settings-btn save" style="width:100%;margin-top:9px" onclick="openLeaseSearch(${lp.la},${lp.lo},null,'land')">Find land to buy near here ↗</button>
-        <button class="settings-btn" style="width:100%;margin-top:6px;color:var(--navy);border-color:#c9d4e8" onclick="metroRefine(${lp.la},${lp.lo})">⌖ Evaluate this area</button></div>`;
+        <div class="cdx-eyet">Land play ${i+1} — not leaseable today</div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-top:3px"><span style="font-size:13.5px;font-weight:700">${corridor}</span><span style="font-size:19px;font-weight:600;letter-spacing:-.02em">${_evalDisp(lp.score)}<span style="font-size:11px;color:#9aa2b1">/100</span></span></div>
+        <div class="cdx-kv" style="margin-top:4px"><span class="k">Homes in reach</span><span class="v t">~${homes.toLocaleString()}${(lp.coms&&lp.coms.length)?' · '+lp.coms.map(x=>_ceEsc(x.n)).slice(0,2).join(', ')+(lp.coms.length>2?' +'+(lp.coms.length-2):''):''}</span></div>
+        <div class="cdx-kv"><span class="k">Demand mix</span><span class="v">${futPct}% announced · ${100-futPct}% built</span></div>
+        <div class="cdx-kv"><span class="k">Share today</span><span class="v acc">${(lp.share*100).toFixed(0)}%</span></div>
+        <div class="cdx-note" style="font-size:10.5px;margin-top:6px">${fabMi==null?'No commercial fabric within reach yet':'Nearest commercial fabric ~'+fabMi.toFixed(1)+' mi'} — the play is buying dirt before the retail exists${futPct<35?'; demand today is largely existing neighbors':''}.</div>
+        <button class="settings-btn save" style="width:100%;margin-top:9px" onclick="metroRefine(${lp.la},${lp.lo})">⌖ Evaluate this area</button>
+        <button class="settings-btn" style="width:100%;margin-top:6px;color:var(--navy);border-color:#c9d4e8" onclick="openLeaseSearch(${lp.la},${lp.lo},null,'land')">Find land to buy ↗</button></div>`;
     },{maxWidth:320,minWidth:280});
     m.addTo(pins);
   });
@@ -8776,7 +8782,7 @@ function _evalRenderSidebar(){
     } else if(tab==='co'){
       const sw=_mpcSweetNear(g.la,g.lo);
       body=`${_communityHTML(g.la,g.lo,{small:true})||'<div style="font-size:11px;color:#64748b;padding:4px 0">No tract profile here.</div>'}
-      ${sw?`<div style="margin-top:6px;font-size:10.5px;color:#334155;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:6px 9px"><span style="font-weight:800;color:#0f766e">⚡ ${_ceEsc(sw.m.n)}</span> is ${sw.mi.toFixed(1)} mi away, in its pad-engagement window.</div>`:''}`;
+      ${sw?`<div style="margin-top:6px;font-size:10.5px;color:#334155;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:6px 9px"><span style="font-weight:800;color:#0f766e">${_ceEsc(sw.m.n)}</span> is ${sw.mi.toFixed(1)} mi away, in its pad-engagement window.</div>`:''}`;
     } else {
       body=`<div style="font-size:11px;line-height:2;color:#334155" onclick="event.stopPropagation()">
         <div><a href="https://www.google.com/maps/search/?api=1&query=${g.la},${g.lo}" target="_blank" rel="noopener" style="color:var(--navy);font-weight:700;text-decoration:none">Google Maps ↗</a> <span style="color:#64748b;font-family:'JetBrains Mono',monospace;font-size:10.5px;margin-left:6px">${sid}</span></div>
@@ -8969,7 +8975,7 @@ function _evalRenderSidebar(){
         </div>
         ${vd.k==='land' ? '' : _communityHTML(g.la,g.lo,{small:true})}
         ${(()=>{ const sw=_mpcSweetNear(g.la,g.lo); if(!sw) return '';
-          return `<div style="margin-top:6px;font-size:10.5px;color:#334155;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:6px 9px"><span style="font-weight:800;color:#0f766e">⚡ ${_ceEsc(sw.m.n)}</span> is ${sw.mi.toFixed(1)} mi away, in its pad-engagement window.</div>`; })()}
+          return `<div style="margin-top:6px;font-size:10.5px;color:#334155;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:6px 9px"><span style="font-weight:800;color:#0f766e">${_ceEsc(sw.m.n)}</span> is ${sw.mi.toFixed(1)} mi away, in its pad-engagement window.</div>`; })()}
         <div style="display:flex;align-items:center;gap:7px;margin-top:10px;flex-wrap:wrap" onclick="event.stopPropagation()">
           <button class="vm-export-btn" style="background:var(--navy);color:#fff;border-color:var(--navy)" onclick="saveSitePlacement(this)">${_inWatch('site',sid)?'Update saved placement':'Save placement'}</button>
           <button class="vm-export-btn" onclick="siteRemove()">Clear evaluation</button>
@@ -9025,7 +9031,7 @@ function _evalRenderSidebar(){
         </div>
         ${vd.k==='land' ? '' : _communityHTML(g.la,g.lo,{small:true})}
         ${(()=>{ const sw=_mpcSweetNear(g.la,g.lo); if(!sw) return '';
-          return `<div style="margin-top:6px;font-size:10.5px;color:#334155;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:6px 9px"><span style="font-weight:800;color:#0f766e">⚡ ${_ceEsc(sw.m.n)}</span> is ${sw.mi.toFixed(1)} mi away, in its pad-engagement window.</div>`; })()}
+          return `<div style="margin-top:6px;font-size:10.5px;color:#334155;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:6px 9px"><span style="font-weight:800;color:#0f766e">${_ceEsc(sw.m.n)}</span> is ${sw.mi.toFixed(1)} mi away, in its pad-engagement window.</div>`; })()}
         ${_evalSubject?'':_leaseBlock(g)}
         <div style="display:flex;align-items:center;gap:7px;margin-top:9px;flex-wrap:wrap" onclick="event.stopPropagation()">
           <button class="vm-export-btn" style="background:var(--navy);color:#fff;border-color:var(--navy)" onclick="saveSitePlacement(this)">${_inWatch('site',sid)?'Update saved placement':'Save placement'}</button>
@@ -9036,23 +9042,32 @@ function _evalRenderSidebar(){
     ${speciesPrompt}
     <div class="eval-tabs">${_evalSubject?'':_tabBtn('sites','Sites',evalTop.length)+_tabBtn('land','Land',evalLandPlays.length)}${_tabBtn('layers','Layers',null)}${_tabBtn('data','Data',null)}</div>
     ${_pane('sites', `${evalMetroRun?`<div style="background:#f8fafc;border:1px solid #dbe3f0;border-radius:10px;padding:9px 12px;margin:8px 0"><div style="font-size:11.5px;font-weight:800;color:#1e3a8a">Metroplex screening pass · ~3-mile grain</div><div style="font-size:11px;color:#475569;margin-top:3px;line-height:1.5">Each pin marks the best <b>area</b>, placed on the nearest commercial corridor — not a specific parcel. <b>⌖ Refine this area</b> on a card re-runs the full engine there with complete zoning + parcel data for parcel-level sites.</div></div>`:''}${verdictBanner}<div class="eval-cards">${hideCards?'':cards}</div>`)}
-    ${_pane('land', `${_evalFutInfo?`<div style="font-size:11px;color:#0f766e;background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;padding:7px 10px;margin:8px 0 2px;line-height:1.5">⚡ Demand includes ~${_evalFutInfo.reduce((t,x)=>t+Math.round(x.rem*x.conf),0).toLocaleString()} confidence-discounted announced homes (${_evalFutInfo.map(x=>x.n).join(', ')}). Toggle “Announced homes” off for today-only demand.</div>`:''}
-    ${evalLandPlays.length?`<div style="border:1.5px dashed #0d9488;background:#f0fdfa;border-radius:10px;padding:10px 12px;margin:8px 0 2px">
-      <div style="font-size:12px;font-weight:800;color:#0f766e">⚡ Land plays — ranked like sites, retail fabric assumed</div>
-      <div style="font-size:10.5px;color:#64748b;margin-top:2px;line-height:1.5">Same demand + competition + road math as the numbered sites; the retail term is held neutral because the fabric arrives with the rooftops. Not leaseable today — these are buy-dirt positions.</div>
-      ${evalLandPlays.map((lp,i)=>{ const homes=(lp.coms||[]).reduce((t,x)=>t+Math.round(x.rem*x.conf),0); const fabMi=(lp.nearRetail!=null&&isFinite(lp.nearRetail))?(lp.nearRetail/1609.34).toFixed(1):null; return `<div style="display:flex;align-items:center;gap:9px;background:#fff;border:1px solid #ccfbf1;border-radius:9px;padding:8px 10px;margin-top:7px">
-        <span style="flex-shrink:0;width:24px;height:24px;border-radius:50%;border:2px dashed #0d9488;background:#f0fdfa;color:#0f766e;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center">${i+1}</span>
-        <span style="flex:1;min-width:0"><span style="font-size:12px;font-weight:800;color:#0f172a">${_evalDisp(lp.score)}</span><span style="font-size:10.5px;color:#64748b"> · ~${homes.toLocaleString()} homes in reach${(lp.coms&&lp.coms.length)?' · '+lp.coms.map(x=>x.n).slice(0,2).join(', ')+(lp.coms.length>2?' +'+(lp.coms.length-2):''):''}${fabMi?' · fabric ~'+fabMi+' mi':''}</span></span>
-        <span style="font-size:10.5px;font-weight:700;color:var(--navy);cursor:pointer;white-space:nowrap" onclick="metroRefine(${lp.la},${lp.lo})" title="Run the full site engine on a 2-mi box around this land play">⌖ Evaluate</span>
-        <span style="font-size:10.5px;font-weight:700;color:var(--navy);cursor:pointer;white-space:nowrap" onclick="map.setView([${lp.la},${lp.lo}],14,{animate:false})">Map →</span>
-        <span style="font-size:10.5px;font-weight:700;color:var(--navy);cursor:pointer;white-space:nowrap" onclick="openLeaseSearch(${lp.la},${lp.lo},null,'land')">Land ↗</span>
-      </div>`; }).join('')}
-    </div>`:`<div class="empty" style="padding:14px 4px">No qualifying land plays here — either no announced development in reach, or no open dirt clear of built neighborhoods.</div>`}`)}
+    ${_pane('land', `${_evalFutInfo?`<div class="cdx-note" style="margin:8px 2px 2px;font-size:10.5px">Demand includes ~${_evalFutInfo.reduce((t,x)=>t+Math.round(x.rem*x.conf),0).toLocaleString()} confidence-discounted announced homes (${_evalFutInfo.map(x=>x.n).join(', ')}). Toggle “Announced homes” off for today-only demand.</div>`:''}
+    ${evalLandPlays.length?`<div class="cdx-note" style="margin:6px 2px 2px;font-size:10.5px">Ranked with the same demand + competition + road math as the numbered sites; the retail term is held neutral — the fabric arrives with the rooftops. Not leaseable today: these are buy-dirt positions.</div>
+      ${evalLandPlays.map((lp,i)=>{ const homes=(lp.coms||[]).reduce((t,x)=>t+Math.round(x.rem*x.conf),0); const fabMi=(lp.nearRetail!=null&&isFinite(lp.nearRetail))?(lp.nearRetail/1609.34).toFixed(1):null; const corridor=(lp.coms&&lp.coms.length)?(_ceEsc(lp.coms[0].n)+' corridor'):'Future-demand corridor'; const futPct=Math.round(100*(lp.demF||0)/Math.max(1e-6,(lp.dem||0)+(lp.demF||0))); return `<div class="eval-card" style="cursor:default;border:1px solid #d7def0;background:#fff;margin:8px 0;padding:13px 14px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+          <div style="min-width:0"><div class="cdx-eyet">Land play ${i+1} · buy-dirt position</div>
+          <div style="font-size:13.5px;font-weight:700;margin-top:2px">${corridor}</div></div>
+          <div style="font-size:22px;font-weight:600;letter-spacing:-.02em;flex-shrink:0">${_evalDisp(lp.score)}<span style="font-size:11px;color:#9aa2b1">/100</span></div>
+        </div>
+        <div class="cdx-rl" style="margin-top:8px">Future demand<b></b></div>
+        <div class="cdx-kv"><span class="k">Announced homes in reach</span><span class="v t">~${homes.toLocaleString()}</span></div>
+        ${(lp.coms&&lp.coms.length)?`<div class="cdx-kv"><span class="k">Communities</span><span class="v">${lp.coms.map(x=>_ceEsc(x.n)).slice(0,2).join(' · ')}${lp.coms.length>2?' +'+(lp.coms.length-2):''}</span></div>`:''}
+        <div class="cdx-kv"><span class="k">Demand mix</span><span class="v">${futPct}% announced · ${100-futPct}% built</span></div>
+        <div class="cdx-rl" style="margin-top:8px">Position today<b></b></div>
+        <div class="cdx-kv"><span class="k">Winnable share</span><span class="v acc">${(lp.share*100).toFixed(0)}%</span></div>
+        <div class="cdx-kv"><span class="k">Commercial fabric</span><span class="v">${fabMi?('~'+fabMi+' mi (arrives with rooftops)'):'none yet — that is the thesis'}</span></div>
+        <div style="display:flex;gap:7px;margin-top:10px" onclick="event.stopPropagation()">
+          <button class="vm-export-btn" style="flex:1;justify-content:center;background:var(--navy);border-color:var(--navy);color:#fff;font-weight:700" onclick="metroRefine(${lp.la},${lp.lo})" title="Run the full site engine on a 2-mi box around this land play">⌖ Evaluate</button>
+          <button class="vm-export-btn" style="flex:1;justify-content:center;color:var(--navy);border-color:#c9d4e8;font-weight:700" onclick="map.setView([${lp.la},${lp.lo}],14,{animate:false})">Map →</button>
+          <button class="vm-export-btn" style="flex:1;justify-content:center;color:var(--navy);border-color:#c9d4e8;font-weight:700" onclick="openLeaseSearch(${lp.la},${lp.lo},null,'land')">Land ↗</button>
+        </div>
+      </div>`; }).join('')}`:`<div class="empty" style="padding:14px 4px">No qualifying land plays here — either no announced development in reach, or no open dirt clear of built neighborhoods.</div>`}`)}
     ${_pane('layers', `<div class="eval-slider">
       <div class="eval-slider-row"><span>Competitor range</span><span id="eval-range-val">${evalRadiusMi.toFixed(1)} mi</span></div>
       <input type="range" min="1" max="6" step="0.5" value="${evalRadiusMi}" oninput="onEvalRadius(this.value)"/>
     </div>
-    <div class="eval-toggle-row">${_evalSubject?'':chip('heat','Heatmap')}${chip('hoods','Neighborhoods')}${chip('retail','Retail')}${chip('comp','Competitor range')}${chip('zoning','Zoning map')}<span class="eval-chip ${evalZoning?'on':''}" onclick="evalToggleZoning()">Zoning filter</span><span class="eval-chip ${evalFuture?'on':''}" onclick="evalToggleFuture()">⚡ Announced homes</span></div>
+    <div class="eval-toggle-row">${_evalSubject?'':chip('heat','Heatmap')}${chip('hoods','Neighborhoods')}${chip('retail','Retail')}${chip('comp','Competitor range')}${chip('zoning','Zoning map')}<span class="eval-chip ${evalZoning?'on':''}" onclick="evalToggleZoning()">Zoning filter</span><span class="eval-chip ${evalFuture?'on':''}" onclick="evalToggleFuture()">Announced homes</span></div>
     ${zoneLine}`)}
     ${_pane('data', `${evalSat?`<div class="eval-grade" style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="font-weight:800;font-size:18px;color:${evalSat.grade.c};border:2px solid ${evalSat.grade.c};border-radius:8px;padding:2px 10px">${evalSat.grade.l}</span><span style="font-weight:700;color:${evalSat.grade.c}">${evalSat.grade.t}</span></div><div class="eval-verdict">${evalSat.capCeil<0.15?'<span class="eval-strong">No strong placement in this ZIP — market is saturated.</span> ':''}Best winnable score ${_evalDisp(evalSat.capCeil)}/100 · median share ${evalSat.medShare.toFixed(2)} · ${evalSat.peInRange} PE + ${evalSat.indInRange} independent in range · ${evalSat.pctInCatch}% of buildable land inside a competitor catchment.${evalHiddenWeak?` ${evalHiddenWeak} weak spot${evalHiddenWeak!==1?'s':''} scored under ${_evalDisp(EVAL_FLOOR)}/100 and ${evalHiddenWeak!==1?'are':'is'} hidden.`:''}${warn}</div>`:`<div class="eval-verdict"><span class="eval-strong">${strongN} recommended site${strongN!==1?'s':''}${strongN<evalTop.length?` · ${evalTop.length-strongN} below the bar`:''}${evalHiddenWeak?` · ${evalHiddenWeak} weak spot${evalHiddenWeak!==1?'s':''} hidden`:''}.</span> ${evalCells.length} commercially-siteable cells scored; subdivision interiors &amp; rural land excluded.${warn}</div>`}
     <div class="eval-note">Neighborhood demand is weighted at census-tract grain — rooftops in higher pet-ownership communities pull sites harder than senior or renter-heavy pockets. Sites are limited to commercial land — either zoned/parceled commercial, or (where that's unavailable) within a real retail/commercial area; residential, civic and rural parcels are excluded, and arterial frontage alone is not enough. Coverage is layered: municipal zoning in the 16 mapped cities, county appraisal-district parcels (Collin / Denton / Dallas) for the exurbs, and OpenStreetMap land-use elsewhere. Road visibility is weighted by TxDOT traffic counts (AADT), so a busier frontage scores higher${hasAADT?'':' (traffic data unavailable here — using road class)'}. Competition counts every clinic within range, including ones just over the ZIP border. A recommended site can sit just past the boundary (within ~0.5&nbsp;mi) where the market actually peaks — catchments don't stop at the line.</div>`)}
@@ -9355,7 +9370,7 @@ function _evalCatchHTML(cs){
           :hr>0?`<div class="cdx-vgood"><b>Understaffed</b> — ~${hr.toLocaleString()} winnable visits/yr beyond current capacity ≈ ${hire.toFixed(1)} DVM of headroom; revenue growth without fighting for a point of share.</div>`
               :`<div class="cdx-vflag"><b>Utilization flag</b> — the share model supports ~${cs.captured.toLocaleString()} of their ${cap.toLocaleString()}-visit capacity (~${Math.abs(hire).toFixed(1)} DVM over). An established base often out-earns the model — read this as competitive pressure on growth, not current revenue.</div>`}
         <div class="cdx-note">Roster from website scrape (override in the clinic editor if wrong). Winnable = catchment visits × modeled share; the clinic is excluded from its own competition.</div>`;})():''}
-      ${cs.fut?`<div class="cdx-rl" style="color:#0f766e">⚡ Future demand — pipeline <i>· new residential in catchment</i><b></b></div>
+      ${cs.fut?`<div class="cdx-rl" style="color:#0f766e">Future demand — pipeline <i>· new residential in catchment</i><b></b></div>
         ${kv('Developments · units coming',cs.fut.n+' · '+cs.fut.u.toLocaleString())}
         ${kv('Status',cs.fut.uc.toLocaleString()+' under construction · '+(cs.fut.u-cs.fut.uc).toLocaleString()+' announced')}
         ${kv('Pet households at buildout','+'+cs.fut.dog.toLocaleString()+' dog · +'+cs.fut.cat.toLocaleString()+' cat')}
