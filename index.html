@@ -66,12 +66,16 @@ header{background:linear-gradient(150deg,#1e3a8a 0%,#1e3068 55%,#172554 100%);bo
 /* ── Top nav (section navigation) ── */
 header{height:58px;}
 .nav-links{display:flex;align-items:center;height:58px;margin-left:18px;}
-.nav-link{height:100%;display:flex;align-items:center;padding:0 14px;font-size:13.5px;font-weight:500;color:#a7b4d9;cursor:pointer;border-bottom:2px solid transparent;transition:color .15s,border-color .15s;background:none;border-top:none;border-left:none;border-right:none;font-family:inherit;}
-.nav-link:hover{color:#fff;}
-.nav-link.active{color:#fff;border-bottom-color:#93c5fd;font-weight:600;}
+/* H1 "Navy refined" (2026-07-25, user pick from the brand board): active tab = soft glass PILL,
+   not an underline; inactive links lighter; hover gets a faint wash. */
+.nav-link{height:auto;display:flex;align-items:center;padding:7px 14px;margin:0 1px;font-size:13.5px;font-weight:500;color:#a7b4d9;cursor:pointer;border-radius:9px;transition:color .15s,background .15s;background:none;border:none;font-family:inherit;}
+.nav-link:hover{color:#fff;background:rgba(255,255,255,.07);}
+.nav-link.active{color:#fff;background:rgba(255,255,255,.16);font-weight:600;}
 .nav-link .soon{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#c7d2fe;background:rgba(255,255,255,.10);border-radius:10px;padding:1px 6px;margin-left:6px;}
-.market-pick{display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border2);border-radius:20px;padding:6px 12px 6px 14px;font-size:12.5px;font-weight:600;color:var(--text2);cursor:pointer;white-space:nowrap;}
-.market-pick svg{width:13px;height:13px;stroke:var(--subtle);}
+/* H1 "Navy refined": the header market pill goes GHOST on the navy (was a solid light chip) */
+.market-pick{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.24);border-radius:20px;padding:6px 12px 6px 14px;font-size:12.5px;font-weight:600;color:#dbe5ff;cursor:pointer;white-space:nowrap;transition:background .15s;}
+.market-pick:hover{background:rgba(255,255,255,.18);color:#fff;}
+.market-pick svg{width:13px;height:13px;stroke:#a7b4d9;}
 .avatar{width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.12);border:1.5px solid rgba(255,255,255,.35);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;transition:background .15s;}
 .avatar:hover{background:rgba(255,255,255,.22);}
 .search-bar{align-items:center;flex-wrap:wrap;}
