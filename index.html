@@ -1197,6 +1197,19 @@ body.vf-opp .kpibar{display:none;}   /* Opportunity takes the full canvas — th
     <div class="layer-item">
       <div class="layer-row">
         <div>
+          <div class="layer-name">Listed properties (state site database)</div>
+          <div class="layer-desc">Live sale/lease listings from the State of Texas Industrial &amp; Commercial Sites and Buildings database — broker- and EDC-submitted land, retail, office and industrial statewide (~1,000 listings; thinner than paid marketplaces but every pin is a real listing). Amber = land, navy = building; click through to the original listing and flyer. Source: texassitesearch.com (GIS Planning).</div>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="toggle-listings" onchange="toggleListingsLayer(this.checked)"/>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <div class="layer-status" id="listings-status">Off</div>
+    </div>
+    <div class="layer-item">
+      <div class="layer-row">
+        <div>
           <div class="layer-name">Developing communities (master-planned)</div>
           <div class="layer-desc">35 major DFW master-planned communities under development, with resident and pet-household estimates at buildout. Real mapped boundaries where available (20 of 35); circles sized by announced homes elsewhere. Bold teal = in the pad-engagement window (approaching the 1,500–2,500-rooftop trigger or anchor committed — when chains sign sites, 12–24 months before opening). Dashed = announced. Combinable with any fill layer.</div>
         </div>
@@ -5275,6 +5288,60 @@ async function toggleLandLayer(on){
   map.addLayer(landLayer);
   if(status) status.textContent=d.list.length.toLocaleString()+' vacant commercial parcels · 9 counties · rolls as of '+(d.built||'2026');
 }
+/* ---- Listed properties layer (2026-07-25, Option B of the land/listings ask) ----
+   tx-listings.json (build-listings.mjs): the State of Texas Industrial & Commercial Sites and
+   Buildings database (texassitesearch.com, GIS Planning) — REAL sale/lease listings, broker/EDC-
+   submitted, statewide (~1,000; DFW ~90). Deep link ?p={SiteID} opens the original listing.
+   Amber = land, navy = building. Metro-limited pilot accounts get bbox-filtered pins. */
+let _listData=null,_listP=null,listingsLayer=null;
+function _loadListings(){
+  if(_listData) return Promise.resolve(_listData);
+  if(_listP) return _listP;
+  _listP=fetch('tx-listings.json?v=1',{cache:'force-cache'}).then(r=>r.ok?r.json():null)
+    .then(d=>{_listData=d;return d;}).catch(()=>null);
+  return _listP;
+}
+function _listSizeTxt(r){
+  const s=r.smax||r.smin; if(!s) return '';
+  if(!r.bldg && s>=10890) return (s/43560).toFixed(s/43560>=10?0:1)+' acres';
+  return s.toLocaleString()+' sf';
+}
+function _listStale(r){ return r.mod && r.mod<'2024'; }  // pre-2024 edit = dim + rose disclosure (mirrors the pipeline stale pattern)
+function _listPopupHTML(r){
+  const col=r.bldg?'#1e3a8a':'#b45309';
+  const sz=_listSizeTxt(r);
+  return `<div style="min-width:220px;max-width:270px">
+    <div style="display:inline-block;font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#fff;background:${col};border-radius:8px;padding:2px 9px">${r.bldg?'Listed building':'Listed land'}</div>
+    <div style="font-size:13px;font-weight:700;margin-top:6px">${_ceEsc(r.n||r.st||'Listing')}</div>
+    <div style="font-size:10.5px;color:#64748b;margin:1px 0 6px">${_ceEsc([r.t,sz].filter(Boolean).join(' · '))}</div>
+    <div style="font-size:11px;color:#475569">${_ceEsc([r.st,r.ct,r.zip].filter(Boolean).join(' · '))}${r.co?' · '+_ceEsc(r.co)+' County':''}</div>
+    ${r.ph?`<img src="${r.ph}" onerror="this.style.display='none'" style="width:100%;max-height:96px;object-fit:cover;border-radius:8px;margin-top:6px" alt=""/>`:''}
+    ${_listStale(r)?`<div style="font-size:10.5px;color:#9f1239;background:#fff1f2;border:1px solid #fecdd3;border-radius:8px;padding:4px 8px;margin-top:6px">Listing last updated ${_ceEsc(r.mod)} — verify it's still available.</div>`:''}
+    <div style="font-size:11.5px;margin-top:7px"><a href="https://www.texassitesearch.com/?p=${encodeURIComponent(r.id)}" target="_blank" rel="noopener" style="color:#1e3a8a;font-weight:700;text-decoration:none">View listing &nearr;</a></div>
+    <div style="font-size:10px;color:#94a3b8;margin-top:6px">State of Texas site database (texassitesearch.com) · broker/EDC-submitted${r.mod?' · updated '+r.mod:''}</div></div>`;
+}
+async function toggleListingsLayer(on){
+  const status=document.getElementById('listings-status');
+  if(!on){ if(listingsLayer){ map.removeLayer(listingsLayer); listingsLayer=null; } if(status) status.textContent='Off'; return; }
+  if(status) status.textContent='Loading…';
+  const d=await _loadListings();
+  if(!d||!d.list){ if(status) status.textContent='Data unavailable'; const cb=document.getElementById('toggle-listings'); if(cb) cb.checked=false; return; }
+  if(listingsLayer) map.removeLayer(listingsLayer);
+  listingsLayer=L.layerGroup();
+  const rnd=_getOverlayCanvas();
+  const limited=(typeof _vfMetroLimited==='function')&&_vfMetroLimited();
+  let shown=0;
+  for(const r of d.list){
+    if(limited && typeof _vfInLicense==='function' && !_vfInLicense(r.la,r.lo)) continue;
+    const col=r.bldg?'#1e3a8a':'#b45309';
+    const m=L.circleMarker([r.la,r.lo],{renderer:rnd,radius:r.bldg?4.5:5.5,color:'#fff',weight:1.4,opacity:0.95,fillColor:col,fillOpacity:_listStale(r)?0.45:0.85});
+    m.bindPopup(()=>_listPopupHTML(r),{maxWidth:290});
+    m.bindTooltip((r.bldg?'Listing: ':'Land listing: ')+(r.n||r.st||''),{direction:'top',offset:[0,-8]});
+    listingsLayer.addLayer(m); shown++;
+  }
+  map.addLayer(listingsLayer);
+  if(status) status.textContent=shown.toLocaleString()+' active listings'+(limited?' in your market':' statewide')+' · state database '+(d.built||'');
+}
 const _PIPE_STATUS={uc:'Under construction',an:'Announced',co:'Conceptual'};
 /* Vet early-warning paws don't wait for the Commercial-pipeline toggle (2026-07-25, user: "I want
    the red paw print markers of clinics being built always to be visible") but they DO ride the
@@ -6635,6 +6702,7 @@ const VF_DATASETS=[
  {name:'Development pipeline',    file:'dfw-pipeline.json', src:'NCTCOG Development Monitoring', how:'node build-pipeline.mjs, bump ?v=', last:'2026-07-22', every:30,  why:'NCTCOG maintains continuously — cheap one-call refresh'},
  {name:'Commercial pipeline (TABS)', file:'dfw-commercial.json', src:'TDLR TABS + Comptroller',  how:'node build-tabs.mjs, bump ?v= (checkpointed, ~1h cold / mins warm)', last:'2026-07-23', every:14, why:'new registrations land daily; vet early-warning depends on freshness'},
  {name:'Off-market land (vacant commercial)', file:'dfw-land.json', src:'county CAD services + TxGIO StratMap', how:'python3 build-land.py, bump ?v= (~1 min warm)', last:'2026-07-25', every:90, why:'ownership and vacancy change slowly; appraisal rolls update annually'},
+ {name:'Listed properties (state database)', file:'tx-listings.json', src:'texassitesearch.com (GIS Planning)', how:'node build-listings.mjs, bump ?v= (~5s)', last:'2026-07-25', every:30, why:'live listings — inventory turns over monthly'},
  {name:'Retail / commercial fabric', file:'dfw-retail.json',src:'OSM Overpass bake',          how:'re-run Overpass query + dedupe', last:'2026-06-30', every:180, why:'retail land changes slowly'},
  {name:'Census tracts + demographics', file:'dfw-tracts.json', src:'TIGERweb + ACS 2024',     how:'node build-tracts.mjs', last:'2026-07-09', every:365, why:'annual ACS vintage'},
  {name:'ZIP boundaries',          file:'tx-zips.json',      src:'Census ZCTA 2020',           how:'re-download on new vintage', last:'2026-06-25', every:365, why:'boundaries change at census vintages'},
