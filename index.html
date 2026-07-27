@@ -41,6 +41,75 @@
   --shadow:0 7px 20px rgba(15,23,42,.10);
   --shadow-lg:0 14px 42px rgba(15,23,42,.16);
 }
+/* ── DARK MODE (2026-07-26, user ask) ────────────────────────────────────────────────────────
+   Stage 1 = the SHELL: re-point the design tokens + swap to dark map tiles. Roughly half the CSS
+   already runs on var() so it flips for free; the rest is handled by the targeted overrides
+   below. The JS-built cards/popups carry ~757 hardcoded hex values — the `.vf-dark` rules with
+   !important below catch the common surface/text patterns (inline styles can ONLY be beaten by
+   !important), and anything still light-on-light is a known Stage-2 item, not a mystery.
+   The header is already a dark navy band in both themes, so it needs no override. */
+body.vf-dark{
+  --navy:#3b5bb5;--navy-dark:#1e3068;--navy-light:#1b2740;
+  --red:#f87171;--red-light:#2a1618;--red-border:#7f1d1d;
+  --green:#4ade80;--green-light:#12251a;--green-border:#166534;
+  --amber:#fbbf24;--amber-light:#2a1d16;
+  --purple:#a78bfa;--purple-light:#221a33;
+  --surface:#131a27;--bg:#0b111c;--bg2:#0f1725;
+  --border:#243044;--border2:#31405a;
+  --text:#e8edf6;--text2:#c2ccdc;--muted:#93a1b8;--subtle:#6f7d94;
+  --shadow-sm:0 1px 3px rgba(0,0,0,.45);
+  --shadow:0 7px 20px rgba(0,0,0,.5);
+  --shadow-lg:0 14px 42px rgba(0,0,0,.6);
+  color-scheme:dark;
+}
+/* Panels/cards that hardcode white or a light tint in CSS or inline styles. */
+body.vf-dark .sidebar,body.vf-dark .layers-panel,body.vf-dark .settings-modal,body.vf-dark .region-modal,
+body.vf-dark .kpibar,body.vf-dark .eval-card,body.vf-dark .opp-panel,body.vf-dark .spmod,
+body.vf-dark .cedit-modal,body.vf-dark .leaflet-popup-content-wrapper,body.vf-dark .leaflet-popup-tip,
+body.vf-dark .eval-legend,body.vf-dark .income-legend,body.vf-dark #sb-reopen,body.vf-dark .vf-ai-panel{
+  background:var(--surface)!important;color:var(--text)!important;border-color:var(--border)!important;
+}
+body.vf-dark .layers-panel-header,body.vf-dark .opp-list-wrap,body.vf-dark .settings-nav,
+body.vf-dark .adm-sec,body.vf-dark .ds-row,body.vf-dark .peg-row,body.vf-dark .opp-row,
+body.vf-dark .watch-card,body.vf-dark .acq-card,body.vf-dark .clinic-item{background:var(--surface)!important;border-color:var(--border)!important;}
+/* Inline-styled inner blocks: the light slate/gray fills used across cards + popups. */
+body.vf-dark [style*="background:#fff"],body.vf-dark [style*="background:#ffffff"],
+body.vf-dark [style*="background:#f8fafc"],body.vf-dark [style*="background:#f1f5f9"],
+body.vf-dark [style*="background:#f8f9fa"],body.vf-dark [style*="background:#eef2f7"],
+body.vf-dark [style*="background:#f0f4fa"],body.vf-dark [style*="background:#eef2f8"],
+body.vf-dark [style*="background:#f9fafb"],body.vf-dark [style*="background:#fafbfc"]{background:var(--bg2)!important;}
+body.vf-dark [style*="border:1px solid #dde4ef"],body.vf-dark [style*="border:1px solid #eef0f4"],
+body.vf-dark [style*="border:1px solid #e9ebf0"]{border-color:var(--border)!important;}
+/* Buttons + chips that get their white from CSS classes rather than inline styles. */
+body.vf-dark .vm-star,body.vf-dark .vm-export-btn,body.vf-dark .settings-btn,body.vf-dark .eval-chip,
+body.vf-dark .popup-sv-wrap,body.vf-dark .clear-area-btn,body.vf-dark .region-btn,body.vf-dark .opp-view-seg button,
+body.vf-dark .set-tab,body.vf-dark .pp-actions button{background:var(--bg2)!important;color:var(--text2)!important;border-color:var(--border)!important;}
+body.vf-dark .vm-export-btn:hover,body.vf-dark .settings-btn:hover,body.vf-dark .eval-chip:hover{background:var(--border)!important;}
+/* Keep the emphasis states loud: navy primaries and "on" chips stay filled. */
+body.vf-dark .settings-btn.save,body.vf-dark .eval-chip.on,body.vf-dark .opp-view-seg button.on{background:var(--navy)!important;color:#fff!important;border-color:var(--navy)!important;}
+body.vf-dark [style*="border:1px solid #eef2f7"],body.vf-dark [style*="border:1px solid #e2e8f0"],
+body.vf-dark [style*="border:1px solid #dfe3e9"],body.vf-dark [style*="border:1px solid #d7def0"],
+body.vf-dark [style*="border:1px solid #dbe3f0"],body.vf-dark [style*="border:1px solid #e5e8ee"]{border-color:var(--border)!important;}
+/* Dark text set inline (#0f172a / #1d222c / #334155 / #475569) must lift off the dark surface. */
+body.vf-dark [style*="color:#0f172a"],body.vf-dark [style*="color:#1d222c"]{color:var(--text)!important;}
+body.vf-dark [style*="color:#334155"],body.vf-dark [style*="color:#475569"],
+body.vf-dark [style*="color:#3f4654"]{color:var(--text2)!important;}
+body.vf-dark [style*="color:#64748b"],body.vf-dark [style*="color:#6a7180"]{color:var(--muted)!important;}
+body.vf-dark .cdx-name,body.vf-dark .cdx-score,body.vf-dark .cdx-kv .v,body.vf-dark .eval-card-title,
+body.vf-dark .sb-title,body.vf-dark .k-value{color:var(--text)!important;}
+body.vf-dark .cdx-kv{border-bottom-color:var(--border)!important;}
+body.vf-dark .cdx-kv .v.acc,body.vf-dark .cdx-eye{color:#93b4ff!important;}
+/* Verdict/status boxes: keep the semantic hue, darken the fill. */
+body.vf-dark .cdx-vgood{background:#12251a!important;border-color:#166534!important;color:#4ade80!important;}
+body.vf-dark .cdx-vbal{background:#141f33!important;border-color:#28406b!important;color:#93b4ff!important;}
+body.vf-dark .cdx-vflag{background:#2a1618!important;border-color:#7f1d1d!important;color:#fca5a5!important;}
+/* Leaflet chrome */
+body.vf-dark .leaflet-container{background:#0b111c;}   /* default is light gray — it flashes white under loading tiles */
+body.vf-dark .leaflet-bar a{background:var(--surface);color:var(--text);border-color:var(--border);}
+body.vf-dark .leaflet-bar a:hover{background:var(--bg2);}
+body.vf-dark .leaflet-popup-close-button{color:var(--muted)!important;}
+body.vf-dark input,body.vf-dark select,body.vf-dark textarea{background:var(--bg2);color:var(--text);border-color:var(--border);}
+body.vf-dark .search-input{background:var(--bg2)!important;color:var(--text)!important;}
 body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg);height:100vh;display:flex;flex-direction:column;overflow:hidden;color:var(--text);font-size:14px;}
 
 /* Header */
@@ -1009,6 +1078,7 @@ body.vf-evallock .leaflet-control-zoom{pointer-events:none;opacity:.45;}
           <label class="set-opt"><input type="checkbox" id="opt-mobile" onchange="toggleIncludeMobile(this.checked)"><span><b>Count mobile / traveling vets as competition</b><span class="set-opt-note">Off by default — a mobile vet's listed address is usually a home or PO box, not a clinic location, so it doesn't anchor a real trade area. Turn on to fold them into competition counts everywhere (map, opportunity, evaluate).</span></span></label>
           <label class="set-opt"><input type="checkbox" id="opt-equine" onchange="toggleCountEquine(this.checked)"><span><b>Count equine / large-animal vets as competition</b><span class="set-opt-note">Off by default — a practice whose name signals equine or livestock work only (no small-animal signal) doesn't compete for dog-and-cat visits, so it's left out of competition and saturation math in ranch-country markets. Mixed practices always count.</span></span></label>
           <label class="set-opt"><input type="checkbox" id="opt-hidepins" onchange="toggleHidePins(this.checked)"><span><b>Auto-hide clinic pins when zoomed out</b><span class="set-opt-note">On by default — pins clear when you zoom out past city level (and reappear as you zoom back in), keeping the map fast and uncluttered. Turn off to keep pins visible at every zoom.</span></span></label>
+          <label class="set-opt"><input type="checkbox" id="opt-dark" onchange="toggleDarkMode(this.checked)"><span><b>Dark mode</b><span class="set-opt-note">Dark app chrome and a dark base map, for low-light work and screen-sharing. Analysis, colors-by-meaning (green strong, rose advisory, red negative) and every number are unchanged. Saved to this browser.</span></span></label>
 
         </div>
         <div class="settings-pane" data-pane="access">
@@ -1914,6 +1984,22 @@ map.addLayer(clusterGroup);
 // so without this a far-out view shows a stale clump. We DETACH the whole layer below MIN_ZOOM (O(1), no
 // per-marker work) and re-attach on zoom-in. Toggle OFF to keep pins at every zoom.
 function _vfHidePins(){ try{ return localStorage.getItem('vf_hidepins')!=='0'; }catch(_){ return true; } }
+/* Dark mode (2026-07-26, user ask). Stage 1 = shell + tiles: the body class re-points the design
+   tokens (see the CSS block) and the base map swaps to CartoDB dark_all — same OSM data, dark
+   cartography, free/no key, and it keeps the clinic pins legible (a plain OSM raster in dark mode
+   is a glaring white slab). Persisted in vf_dark; applied at boot BEFORE first paint. */
+function _vfDark(){ try{ return localStorage.getItem('vf_dark')==='1'; }catch(_){ return false; } }
+const _TILE_LIGHT='https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+const _TILE_DARK='https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+function _applyMapTheme(){
+  try{ if(typeof baseTiles!=='undefined' && baseTiles) baseTiles.setUrl(_vfDark()?_TILE_DARK:_TILE_LIGHT); }catch(e){}
+}
+function toggleDarkMode(on){
+  try{ localStorage.setItem('vf_dark', on?'1':'0'); }catch(e){}
+  document.body.classList.toggle('vf-dark', !!on);
+  _applyMapTheme();
+}
+try{ if(_vfDark()){ document.body.classList.add('vf-dark'); _applyMapTheme(); } }catch(e){}
 // Collapsible clinic list (user 2026-07-25). Hide persists; reveal is also called by flows that
 // render INTO the sidebar (evaluations, Acquisitions, Watchlist) so they can never open blind.
 function toggleSidebarHidden(hide){
@@ -6556,7 +6642,7 @@ function oppSelect(zip){
 function marketPickerNote(){ vfToast('Market presets are coming soon — search or pan to move around Texas for now.'); }
 
 /* ─── Settings modal ─────────────────────────────────────────────────────────*/
-function openSettings(){ const m=document.getElementById('opt-mobile'); if(m) m.checked=_vfIncludeMobile(); const q=document.getElementById('opt-equine'); if(q) q.checked=_vfCountEquine(); const h=document.getElementById('opt-hidepins'); if(h) h.checked=_vfHidePins(); document.getElementById('settings-overlay').classList.add('show'); }
+function openSettings(){ const m=document.getElementById('opt-mobile'); if(m) m.checked=_vfIncludeMobile(); const q=document.getElementById('opt-equine'); if(q) q.checked=_vfCountEquine(); const h=document.getElementById('opt-hidepins'); if(h) h.checked=_vfHidePins(); const d=document.getElementById('opt-dark'); if(d) d.checked=_vfDark(); document.getElementById('settings-overlay').classList.add('show'); }
 function toggleHidePins(on){ try{ localStorage.setItem('vf_hidepins', on?'1':'0'); }catch(_){}; _applyPinZoomVisibility(); }
 /* ── Sidebar drag-resize: grab the border strip, drag between 260 and 560px; width persists.
    A manual width (inline style) intentionally overrides the eval-wide class. */

@@ -160,6 +160,26 @@ border + soft shadow + `min-height:1100px` letter proportion, margin 26px auto);
 strips backdrop/border/shadow so saved PDFs stay clean. Applies to BOTH clinic + site reports
 (shared shell).
 
+## Dark mode (2026-07-26, user ask)
+Settings → Data & Logic → Options → **Dark mode** (`opt-dark`, `toggleDarkMode`, persisted
+`vf_dark`, applied at boot before first paint; `openSettings` syncs the checkbox). Two mechanisms:
+(1) `body.vf-dark` RE-POINTS the `:root` design tokens (surface/bg/border/text/muted + semantic
+hues lightened for dark: red #f87171, green #4ade80, amber #fbbf24, purple #a78bfa) — roughly half
+the CSS runs on `var()` so it flips for free; (2) targeted `.vf-dark` overrides with **!important**
+for the rest, because the JS-built cards/popups carry ~757 HARDCODED hex values and **inline styles
+can only be beaten by !important**. Those overrides match on attribute selectors
+(`[style*="background:#fff"]`, `#f8fafc`, `#eef2f8`, `#f1f5f9`…, plus the matching border/text
+patterns) and on the class-styled surfaces (.sidebar/.leaflet-popup-content-wrapper/.settings-modal/
+.eval-card/.vm-star/.vm-export-btn/.adm-sec/…). Base map swaps to **CartoDB dark_all** (free, no
+key, same OSM data — a plain OSM raster in dark mode is a glaring white slab); `.leaflet-container`
+background is darkened too or it flashes light-gray under loading tiles. `_applyMapTheme()` calls
+`baseTiles.setUrl()`. Semantic color meaning is UNCHANGED (green strong / rose advisory / solid-red
+negative / amber data-viz) and no number or model is touched. Verified live: popup + list + KPI bar
++ settings modal all dark with 0 light blocks remaining inside the popup, and the light-mode round
+trip is pristine (body lum 242, sidebar 255, OSM tiles back). KNOWN STAGE-2 SCOPE: surfaces whose
+inline hex isn't in the matched set may still read light-on-dark — the fix is to add the pattern to
+the override block (or tokenize the source), not to re-theme by hand.
+
 ## Sensors / gotchas
 
 ### Things that broke and were fixed — don't re-break them
