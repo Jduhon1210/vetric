@@ -771,9 +771,13 @@ body.vf-sbhide #sb-reopen{display:block;}
    red cancel button sits bottom-right; both clear when results land or the run is cancelled. */
 /* Bottom-right of the LIST column (user 2026-07-25: "fit the list view") — the eval sidebar is
    sparse while loading, so the button owns its corner instead of straddling the map/list seam. */
-#eval-cancel-btn{position:absolute;bottom:26px;right:26px;z-index:1300;display:none;background:#dc2626;color:#fff;border:none;border-radius:12px;padding:12px 22px;font-size:13.5px;font-weight:800;font-family:inherit;letter-spacing:.01em;cursor:pointer;box-shadow:0 8px 26px rgba(220,38,38,.42);}
-#eval-cancel-btn:hover{background:#b91c1c;}
-#eval-cancel-btn.show{display:block;}
+/* Restyled 2026-07-26 (user: "don't like the way the cancel button looks") — the solid-red slab
+   read as an error state. Now it speaks the app's tinted-outline language (same family as
+   .clear-area-btn): light surface, rose hairline border, rose label. Solid red stays reserved
+   for true negatives. */
+#eval-cancel-btn{position:absolute;bottom:24px;right:24px;z-index:1300;display:none;align-items:center;gap:7px;background:var(--surface);color:#be123c;border:1px solid #fecdd3;border-radius:10px;padding:8px 15px;font-size:12.5px;font-weight:700;font-family:inherit;cursor:pointer;box-shadow:0 4px 16px rgba(15,23,42,.13);transition:background .15s,border-color .15s;}
+#eval-cancel-btn:hover{background:#fff1f2;border-color:#fda4af;}
+#eval-cancel-btn.show{display:inline-flex;}
 body.vf-evallock .leaflet-control-zoom{pointer-events:none;opacity:.45;}
 /* Clinic-evaluation dossier card (user pick A, 2026-07-25) — the 2a report language in the sidebar */
 .cdx-eye{font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:#24466e}
@@ -806,6 +810,7 @@ body.vf-evallock .leaflet-control-zoom{pointer-events:none;opacity:.45;}
 .vf-evalring{width:46px;height:46px;pointer-events:none}
 .vf-evalring svg{display:block;width:100%;height:100%;transform-origin:50% 50%;animation:vfEvalBreathe 2.4s ease-in-out infinite}
 .vf-evalring.settled svg{animation:none}
+.vf-evalring.lp svg circle{stroke:#0d9488}   /* land-play evaluation breathes TEAL, matching the land-play identity */
 @keyframes vfEvalBreathe{0%,100%{transform:scale(.9);opacity:.45}50%{transform:scale(1.06);opacity:.95}}
 @media (prefers-reduced-motion:reduce){.vf-evalring svg{animation:none}}
 /* Land-play pin (design F, 2026-07-15): teal teardrop with a white SPROUT — growth that isn't
@@ -2254,7 +2259,11 @@ function buildPopup(c) {
       const kindL=(CLINIC_KIND_LABEL&&CLINIC_KIND_LABEL[_kind])||_kind||'—';
       const prac=[st&&st.n?`${st.n} DVM${st.n>1?'s':''}`:null, kindL].filter(Boolean).join(' · ')
         +(_src?` <span class="fnt">· ${_src}</span>`:'')
-        +((st&&st.vets&&st.vets.length)?` <details style="display:inline"><summary style="display:inline;cursor:pointer;color:var(--navy)">· roster</summary><div style="font-weight:500;color:#6a7180;margin-top:2px;text-align:right">${_drNames(st.vets).slice(0,12).map(_ceEsc).join(' · ')}</div></details>`:'');
+        +((st&&st.vets&&st.vets.length)?` <details style="display:inline"><summary style="display:inline;cursor:pointer;color:var(--navy)">· roster</summary>`
+          // one doctor per line, broken LEFT out of the right-aligned value column (user 2026-07-26)
+          +`<div style="text-align:left;margin-top:5px;padding-left:2px;border-left:2px solid var(--border)">`
+          +_drNames(st.vets).slice(0,14).map(n=>`<div style="font-weight:500;color:#475569;line-height:1.7;padding-left:8px">${_ceEsc(n)}</div>`).join('')
+          +`</div></details>`:'');
       const mult=(c.mult!=null&&c.mult!=1)?`<div class="pp-kv"><span class="k">Competition ×</span><span class="v" style="color:#92400e">×${c.mult}</span></div>`:'';
       return `<div class="pp-contact">${contact||'No contact listed'}</div>
       <div class="pp-rl">Identity<b></b></div>
@@ -8521,6 +8530,7 @@ function _evalComputeAndRender(){
   _evalRenderLayers();
   _evalRenderSidebar();
   _evalRingSettle();                                // clinic mode: the evaluating spinner comes to rest
+  _lpHaloSettle();                                  // land-play mode: the teal halo comes to rest
   _evalLockMap(false);                              // results are in — hand the map back
   if(evalSitePt) _updateSiteKpis();                 // site mode: KPI bar reads the radius around the pin
   // Screen popup (once per analysis): urge classifying the unverified competitors, or ignore.
@@ -8550,9 +8560,25 @@ function _metroSnapSites(){
 // flow uses, through the unchanged engine. The small bbox means the zoning/parcel fetches load
 // COMPLETE (they're capped at metro scale), so the residential-exclude gate actually bites and
 // the resulting sites are parcel-grade, not area markers.
+// Teal breathing halo marking the land play under evaluation (user 2026-07-26) — same motion as
+// the navy clinic halo, land-play colour. Sits BEHIND the pin (negative z) and is cleared by
+// _evalResetState, so every teardown path removes it.
+let _lpHalo=null;
+function _lpHaloClear(){ if(_lpHalo){ try{ map.removeLayer(_lpHalo); }catch(e){} _lpHalo=null; } }
+function _lpHaloPlace(la,lo){
+  _lpHaloClear();
+  _lpHalo=L.marker([la,lo],{interactive:false,zIndexOffset:-600,icon:L.divIcon({className:'',iconSize:[46,46],iconAnchor:[23,23],
+    html:'<div class="vf-evalring lp"><svg viewBox="0 0 46 46" fill="none"><circle cx="23" cy="23" r="19" stroke="#0d9488" stroke-width="2.5"/></svg></div>'})}).addTo(map);
+}
+function _lpHaloSettle(){
+  if(!_lpHalo) return;
+  _lpHalo.setIcon(L.divIcon({className:'',iconSize:[46,46],iconAnchor:[23,23],
+    html:'<div class="vf-evalring lp settled"><svg viewBox="0 0 46 46" fill="none"><circle cx="23" cy="23" r="19" stroke="#0d9488" stroke-width="2" opacity=".65"/><path d="M23 .8v5.4M23 39.8v5.4M.8 23h5.4M39.8 23h5.4" stroke="#0d9488" stroke-width="2" stroke-linecap="round" opacity=".65"/></svg></div>'}));
+}
 function metroRefine(la,lo,fromLand){
   try{ map.closePopup(); }catch(e){}
   _evalNoLandPending=!!fromLand;   // evaluating a land play → sites only; consumed by openEvaluateArea
+  if(fromLand) _lpHaloPlace(la,lo); else _lpHaloClear();
   const dLat=2.0/69.0, dLon=2.0/(69.0*Math.cos(la*Math.PI/180));
   drawnArea={type:'poly', points:[{lat:la-dLat,lng:lo-dLon},{lat:la-dLat,lng:lo+dLon},{lat:la+dLat,lng:lo+dLon},{lat:la+dLat,lng:lo-dLon}]};
   try{ captureAreaClinics(); }catch(e){}
@@ -9063,7 +9089,7 @@ function _evalRenderSidebar(){
         <div class="cdx-rl">Practice<b></b></div>
         ${sub.dvm?kv('Roster · capacity',sub.dvm+' DVM'+(sub.dvm>1?'s':'')+' · ~'+(sub.dvm*DVM_VISIT_CAPACITY).toLocaleString()+' visits/yr')
                  :`<div class="cdx-vflag">No DVM roster scraped — set the count in the clinic editor (⚙) for the two-sided read.</div>`}
-        ${vets.length?`<details style="font-size:10.5px;margin:3px 0"><summary style="cursor:pointer;color:var(--navy);font-weight:700">Roster names</summary><div style="margin-top:3px;color:#64748b;line-height:1.6">${_drNames(vets).map(_ceEsc).join(' · ')}</div></details>`:''}
+        ${vets.length?`<details style="font-size:10.5px;margin:3px 0"><summary style="cursor:pointer;color:var(--navy);font-weight:700">Roster names</summary><div style="margin-top:5px;padding-left:2px;border-left:2px solid var(--border)">${_drNames(vets).map(n=>`<div style="color:#475569;line-height:1.7;padding-left:8px">${_ceEsc(n)}</div>`).join('')}</div></details>`:''}
         ${svLs?`<div class="cdx-note">Offers: ${svLs.slice(0,8).join(' · ')}${svLs.length>8?' · +'+(svLs.length-8)+' more':''} <span style="color:#c4c9d4">· site-read</span></div>`:''}
         ${(re_&&re_.econ)?`<div class="cdx-rl">Practice economics <i>(modeled)</i><b></b></div>
         ${kv('Modeled revenue (benchmark)',re_.txt,true)}
@@ -9116,7 +9142,7 @@ function _evalRenderSidebar(){
           const vets=(sub.vets||[]).slice(0,10);
           return `<div style="margin:0 0 8px;padding:7px 10px;background:#f8fafc;border:1px solid #eef2f7;border-radius:9px">
             <div style="font-size:11px;color:#334155">${ident}</div>
-            ${sub.dvm?`<div style="font-size:11px;color:#334155;margin-top:3px"><b>${sub.dvm} DVM${sub.dvm>1?'s':''} on staff</b> · capacity ~${(sub.dvm*DVM_VISIT_CAPACITY).toLocaleString()} visits/yr${vets.length?` <details style="display:inline"><summary style="display:inline;cursor:pointer;color:var(--navy);font-weight:700">· roster</summary><div style="margin-top:3px;color:#64748b">${_drNames(vets).map(_ceEsc).join(' · ')}</div></details>`:''}</div>`
+            ${sub.dvm?`<div style="font-size:11px;color:#334155;margin-top:3px"><b>${sub.dvm} DVM${sub.dvm>1?'s':''} on staff</b> · capacity ~${(sub.dvm*DVM_VISIT_CAPACITY).toLocaleString()} visits/yr${vets.length?` <details style="display:inline"><summary style="display:inline;cursor:pointer;color:var(--navy);font-weight:700">· roster</summary><div style="margin-top:5px;padding-left:2px;border-left:2px solid var(--border)">${_drNames(vets).map(n=>`<div style="color:#475569;line-height:1.7;padding-left:8px">${_ceEsc(n)}</div>`).join('')}</div></details>`:''}</div>`
                      :'<div style="font-size:11px;color:#9f1239;margin-top:3px">No DVM roster scraped — set the count in the clinic editor (⚙) for the two-sided read.</div>'}
             ${(()=>{const sv=_svcAt(sub.la,sub.lo); if(!sv||!sv.c||!sv.c.length) return ''; const ls=sv.c.map(x=>_SVC_LABEL[x]||x); return `<div style="font-size:10.5px;color:#475569;margin-top:3px">Offers: ${ls.slice(0,8).join(' · ')}${ls.length>8?' · +'+(ls.length-8)+' more':''} <span style="color:#94a3b8">· site-read</span></div>`;})()}
             ${(re_&&re_.econ)?`<div style="font-size:11px;color:#334155;margin-top:2px">Modeled revenue <b>${re_.txt}</b> · EBITDA ~<b>${_fmtM(re_.econ.ebitda)}</b> @ ${Math.round(re_.econ.margin*100)}% · ${re_.econ.multAnalyst?(re_.econ.multLo+'× analyst ⇒ '+_fmtM(re_.econ.valLo)):(re_.econ.multLo+'–'+re_.econ.multHi+'× ⇒ '+_fmtM(re_.econ.valLo)+'–'+_fmtM(re_.econ.valHi))}</div>`:''}
@@ -9877,6 +9903,7 @@ function _siteDropCommit(lat,lon){
 }
 function _evalResetState(){
   try{ _evalLockMap(false); }catch(e){}
+  try{ _lpHaloClear(); }catch(e){}
   evalActive=false; evalAreaMode=false; evalAreaZips=null; evalSat=null; evalZoneStat=null; evalZoneCities=[]; evalParcelCounties=[];
   try{ _applyPinZoomVisibility(); }catch(e){}   // evalActive just flipped — restore the zoom-toast rules
   evalTopMode=null; evalShowWeak=false; evalMetroRun=false; evalNoLand=false; evalSpeciesIgnored=false; evalSpeciesPrompted=false; _speciesModalClose();
