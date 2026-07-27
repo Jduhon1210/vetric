@@ -9493,7 +9493,8 @@ function _evalCatchHTML(cs){
   // Every data row from the pre-dossier card is preserved — restyle only.
   const kv=(k,v,acc)=>`<div class="cdx-kv"><span class="k">${k}</span><span class="v${acc?' acc':''}">${v}</span></div>`;
   return `<div style="line-height:1.5">
-      <div class="cdx-rl">Catchment demand <i>· ${cs.src==='drive'?'10-min drive-time':'~3.5 mi radius (drive-time unavailable)'} · ~${cs.areaMi} mi²</i><b></b></div>
+      <div class="cdx-rl">Catchment demand <i>· ${cs.src==='drive'?'10-min drive-time':(cs.fallback?'~3.5 mi radius (drive-time unavailable)':'~3.5 mi radius estimate')} · ~${cs.areaMi} mi²</i><b></b></div>
+      ${cs.src!=='drive'?`<div class="cdx-note" style="margin:0 0 2px">A straight-line circle counts households a real 10-minute drive can't reach — across a lake, a freeway with no crossing, or a one-exit subdivision. Treat these figures as an <b>upper bound</b>; the true drive-time catchment is usually smaller, so the revenue below typically comes down when you run it.</div>`:''}
       ${kv("Households you'd serve",cs.hhIn.toLocaleString())}
       ${kv('Pet households',cs.dogIn.toLocaleString()+' dog · '+cs.catIn.toLocaleString()+' cat')}
       ${kv('Est. vet visits in catchment','~'+cs.visits.toLocaleString()+'/yr')}
@@ -9544,7 +9545,8 @@ async function evalDriveTime(i, btn){
     const el=document.getElementById('evd-'+i);
     if(el) el.innerHTML=`<span style="color:#64748b">Analyzing catchment…</span>`;
     let cs=await _evalCatchmentStats(ring, g);
-    cs.src=ringSrc; _siteCatch[g.la.toFixed(4)+','+g.lo.toFixed(4)]=cs; _siteCardTabs[i]='ca'; _evalRenderSidebar();
+    cs.src=ringSrc; if(ringSrc==='radius') cs.fallback=1;   // TRUE failure — distinct from "not run yet" (see _evalCatchHTML)
+    _siteCatch[g.la.toFixed(4)+','+g.lo.toFixed(4)]=cs; _siteCardTabs[i]='ca'; _evalRenderSidebar();
     const elL=document.getElementById('evd-'+i)||el;   // re-render rebuilt the card — write into the live node
     if(elL) elL.innerHTML=_evalCatchHTML(cs);
     if(btn){ btn.disabled=false; btn.textContent=_DRIVE_HIDE; }
