@@ -7255,6 +7255,14 @@ let evalZoning=true;        // zoning FILTER on by default — drop residential/
 // tract pass can't zero them out on today's empty-pasture demographics. Toggleable (evalFuture).
 let evalFuture=true, _evalFutInfo=null, evalLandPlays=[], evalHiddenWeak=0;
 let evalMetroRun=false;   // true while the on-screen analysis is a region-scale screening pass (Evaluate Metroplex)
+// True while the on-screen analysis IS the evaluation of a land play (user 2026-07-26: "when
+// evaluating a land play i dont want it to give me more land plays"). You already chose the
+// corridor — this pass answers "where inside it do I build?", so nested land plays are noise.
+// HANDOFF, not a sticky flag: metroRefine sets _evalNoLandPending and openEvaluateArea CONSUMES
+// it on entry, so every other path in (drop site, draw area, metroplex, ZIP) resets to false by
+// construction — an earlier sticky version silently suppressed land plays on the next ordinary
+// evaluation.
+let evalNoLand=false, _evalNoLandPending=false;
 let evalTab='sites';
 function evalSetTab(t){ evalTab=t; _evalRenderSidebar(); }
 // Per-site card state (mockup-2 redesign): active pill per card + cached catchment stats keyed
@@ -8116,6 +8124,7 @@ async function openEvaluateArea(){
   if(evalSitePt && !pointInGeoJSON(evalSitePt.lat, evalSitePt.lon, feat)) _siteClear();   // pin belongs to a different analysis
   evalActive=true; evalAreaMode=true; evalAreaZips=null; evalZip=null; evalFeat=feat; evalZipAffluence=0.5;
   evalSpeciesIgnored=false; evalSpeciesPrompted=false;
+  evalNoLand=_evalNoLandPending; _evalNoLandPending=false;   // consume the land-play handoff (default false for every other entry path)
   _evalLockMap(true);
   const sb=document.querySelector('.sidebar');
   const setStage=msg=>_evalStage(sb,'Evaluating this area',msg);
@@ -8140,6 +8149,7 @@ async function openEvaluate(){
   const zip=[...selectedZips.keys()][0];
   _siteClear();                                              // ZIP evaluate supersedes a dropped site
   evalActive=true; evalAreaMode=false; evalAreaZips=null; evalZip=zip; evalFeat=selectedZips.get(zip).feat;
+  evalNoLand=false; _evalNoLandPending=false;   // ZIP evaluations always own their own land plays
   _evalLockMap(true);
   evalSpeciesIgnored=false; evalSpeciesPrompted=false;
   const sb=document.querySelector('.sidebar');
@@ -8333,7 +8343,7 @@ function _evalComputeAndRender(){
   evalCells=grid;
   // ── Ranked land plays: same engine, retail term NEUTRAL (fabric assumed to arrive) ──
   evalLandPlays=[];
-  if(landGrid.length){
+  if(landGrid.length && !evalNoLand){
     for(const g of landGrid){
       const _roofN=Math.min(1,(g.dem+(g.demF||0))/maxDem);
       g.demandN = (hasResid ? (evalAreaMode ? 0.55*_roofN+0.45*g.affl : _roofN) : g.affl) * (tractsOn ? 1 : (g.ageF||1));
@@ -8434,8 +8444,9 @@ function _metroSnapSites(){
 // flow uses, through the unchanged engine. The small bbox means the zoning/parcel fetches load
 // COMPLETE (they're capped at metro scale), so the residential-exclude gate actually bites and
 // the resulting sites are parcel-grade, not area markers.
-function metroRefine(la,lo){
+function metroRefine(la,lo,fromLand){
   try{ map.closePopup(); }catch(e){}
+  _evalNoLandPending=!!fromLand;   // evaluating a land play → sites only; consumed by openEvaluateArea
   const dLat=2.0/69.0, dLon=2.0/(69.0*Math.cos(la*Math.PI/180));
   drawnArea={type:'poly', points:[{lat:la-dLat,lng:lo-dLon},{lat:la-dLat,lng:lo+dLon},{lat:la+dLat,lng:lo+dLon},{lat:la+dLat,lng:lo-dLon}]};
   try{ captureAreaClinics(); }catch(e){}
@@ -8607,16 +8618,16 @@ function _evalRenderLayers(){
       const fabMi=(lp.nearRetail!=null&&isFinite(lp.nearRetail))?(lp.nearRetail/1609.34):null;
       const futPct=Math.round(100*(lp.demF||0)/Math.max(1e-6,(lp.dem||0)+(lp.demF||0)));
       const corridor=(lp.coms&&lp.coms.length)?(_ceEsc(lp.coms[0].n)+' corridor'):'Future-demand corridor';
-      return `<div style="min-width:270px;max-width:300px">
+      return `<div style="min-width:315px;max-width:345px">
         <div class="cdx-eyet">Land play ${i+1} — not leaseable today</div>
         <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-top:3px"><span style="font-size:13.5px;font-weight:700">${corridor}</span><span style="font-size:19px;font-weight:600;letter-spacing:-.02em">${_evalDisp(lp.score)}<span style="font-size:11px;color:#9aa2b1">/100</span></span></div>
         <div class="cdx-kv" style="margin-top:4px"><span class="k">Homes in reach</span><span class="v t">~${homes.toLocaleString()}${(lp.coms&&lp.coms.length)?' · '+lp.coms.map(x=>_ceEsc(x.n)).slice(0,2).join(', ')+(lp.coms.length>2?' +'+(lp.coms.length-2):''):''}</span></div>
         <div class="cdx-kv"><span class="k">Demand mix</span><span class="v">${futPct}% announced · ${100-futPct}% built</span></div>
         <div class="cdx-kv"><span class="k">Share today</span><span class="v acc">${(lp.share*100).toFixed(0)}%</span></div>
         <div class="cdx-note" style="font-size:10.5px;margin-top:6px">${fabMi==null?'No commercial fabric within reach yet':'Nearest commercial fabric ~'+fabMi.toFixed(1)+' mi'} — the play is buying dirt before the retail exists${futPct<35?'; demand today is largely existing neighbors':''}.</div>
-        <button class="settings-btn save" style="width:100%;margin-top:9px" onclick="metroRefine(${lp.la},${lp.lo})">⌖ Evaluate this area</button>
+        <button class="settings-btn save" style="width:100%;margin-top:9px" onclick="metroRefine(${lp.la},${lp.lo},1)">⌖ Evaluate this area</button>
         <button class="settings-btn" style="width:100%;margin-top:6px;color:var(--navy);border-color:#c9d4e8" onclick="openLeaseSearch(${lp.la},${lp.lo},null,'land')">Find land to buy ↗</button></div>`;
-    },{maxWidth:320,minWidth:280});
+    },{maxWidth:370,minWidth:325});
     m.addTo(pins);
   });
   pins.addTo(map); evalLayers.pins=pins;
@@ -8730,6 +8741,7 @@ function _leaseBlock(g){
 }
 function _evalRenderSidebar(){
   if(_evalSubject && (evalTab==='sites'||evalTab==='land')) evalTab='layers';   // clinic eval: those panes are empty by design
+  if(evalNoLand && evalTab==='land') evalTab='sites';   // land-play evaluation: the Land pane is gone, land the user on Sites
   const sb=document.querySelector('.sidebar'); if(!sb) return;
   setTimeout(()=>{ try{ _evalFillStrips(); }catch(e){} }, 30);
   setTimeout(()=>{ try{ _evalAutoBlend(); }catch(e){} }, 400);   // network refinement of the headline capture, background
@@ -9040,8 +9052,8 @@ function _evalRenderSidebar(){
         </div>
       </div>`; })()}
     ${speciesPrompt}
-    <div class="eval-tabs">${_evalSubject?'':_tabBtn('sites','Sites',evalTop.length)+_tabBtn('land','Land',evalLandPlays.length)}${_tabBtn('layers','Layers',null)}${_tabBtn('data','Data',null)}</div>
-    ${_pane('sites', `${evalMetroRun?`<div style="background:#f8fafc;border:1px solid #dbe3f0;border-radius:10px;padding:9px 12px;margin:8px 0"><div style="font-size:11.5px;font-weight:800;color:#1e3a8a">Metroplex screening pass · ~3-mile grain</div><div style="font-size:11px;color:#475569;margin-top:3px;line-height:1.5">Each pin marks the best <b>area</b>, placed on the nearest commercial corridor — not a specific parcel. <b>⌖ Refine this area</b> on a card re-runs the full engine there with complete zoning + parcel data for parcel-level sites.</div></div>`:''}${verdictBanner}<div class="eval-cards">${hideCards?'':cards}</div>`)}
+    <div class="eval-tabs">${_evalSubject?'':_tabBtn('sites','Sites',evalTop.length)+(evalNoLand?'':_tabBtn('land','Land',evalLandPlays.length))}${_tabBtn('layers','Layers',null)}${_tabBtn('data','Data',null)}</div>
+    ${_pane('sites', `${evalNoLand?`<div style="background:#f8fafc;border:1px solid #dbe3f0;border-radius:10px;padding:9px 12px;margin:8px 0"><div style="font-size:11.5px;font-weight:800;color:#1e3a8a">Land-play evaluation · parcel grain</div><div style="font-size:11px;color:#475569;margin-top:3px;line-height:1.5">Full engine on the corridor you picked — these are the buildable sites <b>inside</b> it. Nested land plays are off; you already chose the dirt.</div></div>`:''}${evalMetroRun?`<div style="background:#f8fafc;border:1px solid #dbe3f0;border-radius:10px;padding:9px 12px;margin:8px 0"><div style="font-size:11.5px;font-weight:800;color:#1e3a8a">Metroplex screening pass · ~3-mile grain</div><div style="font-size:11px;color:#475569;margin-top:3px;line-height:1.5">Each pin marks the best <b>area</b>, placed on the nearest commercial corridor — not a specific parcel. <b>⌖ Refine this area</b> on a card re-runs the full engine there with complete zoning + parcel data for parcel-level sites.</div></div>`:''}${verdictBanner}<div class="eval-cards">${hideCards?'':cards}</div>`)}
     ${_pane('land', `${_evalFutInfo?`<div class="cdx-note" style="margin:8px 2px 2px;font-size:10.5px">Demand includes ~${_evalFutInfo.reduce((t,x)=>t+Math.round(x.rem*x.conf),0).toLocaleString()} confidence-discounted announced homes (${_evalFutInfo.map(x=>x.n).join(', ')}). Toggle “Announced homes” off for today-only demand.</div>`:''}
     ${evalLandPlays.length?`<div class="cdx-note" style="margin:6px 2px 2px;font-size:10.5px">Ranked with the same demand + competition + road math as the numbered sites; the retail term is held neutral — the fabric arrives with the rooftops. Not leaseable today: these are buy-dirt positions.</div>
       ${evalLandPlays.map((lp,i)=>{ const homes=(lp.coms||[]).reduce((t,x)=>t+Math.round(x.rem*x.conf),0); const fabMi=(lp.nearRetail!=null&&isFinite(lp.nearRetail))?(lp.nearRetail/1609.34).toFixed(1):null; const corridor=(lp.coms&&lp.coms.length)?(_ceEsc(lp.coms[0].n)+' corridor'):'Future-demand corridor'; const futPct=Math.round(100*(lp.demF||0)/Math.max(1e-6,(lp.dem||0)+(lp.demF||0))); return `<div class="eval-card" style="cursor:default;border:1px solid #d7def0;background:#fff;margin:8px 0;padding:13px 14px">
@@ -9058,7 +9070,7 @@ function _evalRenderSidebar(){
         <div class="cdx-kv"><span class="k">Winnable share</span><span class="v acc">${(lp.share*100).toFixed(0)}%</span></div>
         <div class="cdx-kv"><span class="k">Commercial fabric</span><span class="v">${fabMi?('~'+fabMi+' mi (arrives with rooftops)'):'none yet — that is the thesis'}</span></div>
         <div style="display:flex;gap:7px;margin-top:10px" onclick="event.stopPropagation()">
-          <button class="vm-export-btn" style="flex:1;justify-content:center;background:var(--navy);border-color:var(--navy);color:#fff;font-weight:700" onclick="metroRefine(${lp.la},${lp.lo})" title="Run the full site engine on a 2-mi box around this land play">⌖ Evaluate</button>
+          <button class="vm-export-btn" style="flex:1;justify-content:center;background:var(--navy);border-color:var(--navy);color:#fff;font-weight:700" onclick="metroRefine(${lp.la},${lp.lo},1)" title="Run the full site engine on a 2-mi box around this land play">⌖ Evaluate</button>
           <button class="vm-export-btn" style="flex:1;justify-content:center;color:var(--navy);border-color:#c9d4e8;font-weight:700" onclick="map.setView([${lp.la},${lp.lo}],14,{animate:false})">Map →</button>
           <button class="vm-export-btn" style="flex:1;justify-content:center;color:var(--navy);border-color:#c9d4e8;font-weight:700" onclick="openLeaseSearch(${lp.la},${lp.lo},null,'land')">Land ↗</button>
         </div>
@@ -9761,7 +9773,7 @@ function _evalResetState(){
   try{ _evalLockMap(false); }catch(e){}
   evalActive=false; evalAreaMode=false; evalAreaZips=null; evalSat=null; evalZoneStat=null; evalZoneCities=[]; evalParcelCounties=[];
   try{ _applyPinZoomVisibility(); }catch(e){}   // evalActive just flipped — restore the zoom-toast rules
-  evalTopMode=null; evalShowWeak=false; evalMetroRun=false; evalSpeciesIgnored=false; evalSpeciesPrompted=false; _speciesModalClose();
+  evalTopMode=null; evalShowWeak=false; evalMetroRun=false; evalNoLand=false; evalSpeciesIgnored=false; evalSpeciesPrompted=false; _speciesModalClose();
   _evalClearLayers(); _evalHideLegend(); _evalClearDrive();
   evalData={vets:[], retail:[], resid:[], roads:[], aadt:[], zoning:[], osmLU:[], parcels:[]}; evalDataOk={retail:false,roads:false,resid:false,aadt:false,zoning:false,parcels:false};
   evalCells=[]; evalTop=[]; evalCompsCache=[]; evalLandPlays=[]; _evalFutInfo=null; evalHiddenWeak=0; evalTab='sites'; _siteCardTabs={};
