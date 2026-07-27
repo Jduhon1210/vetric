@@ -6,6 +6,26 @@ remains the default until this one is proven better on real markets.
 
 ---
 
+## 0. Scope — METROPLEX RUNS ONLY (user, 2026-07-26)
+
+This model replaces demand scoring **only inside Evaluate Metroplex**. Every other flow — ZIP
+evaluation, drop-a-site, clinic evaluation, Refine-this-area — keeps the current gravity engine
+untouched.
+
+That is the right seam, and it narrows the work considerably:
+
+- **The metro run is the only flow that asks the question this model answers.** "Screen everywhere
+  and hand me the best areas" needs comparable, absolute demand across a whole region. A drop-site
+  evaluation already has a 2-mile grid and the full parcel-grade engine; it doesn't need this.
+- **Regression risk drops to near zero** on the flows used most. If the capture model is wrong, it is
+  wrong in exactly one button.
+- **The precompute only has to cover the metro bbox** — which was already the plan, but now it is a
+  hard boundary rather than a coverage compromise.
+- **Refine stays gravity**, so the metro→refine handoff still ends in the parcel-grade engine that is
+  already field-validated. Capture finds the *area*; the existing engine finds the *parcel*.
+
+Everything below is scoped accordingly.
+
 ## 1. What the user asked for
 
 > "Sites now find underserved areas in established suburbs, where when you evaluate all 10–15 minute
@@ -95,6 +115,8 @@ uses crow-flies gravity at all. Precomputed, it is a lookup.
 `EVAL_MODEL` — `'gravity'` (current engine, **default**) | `'capture'` (this model).
 
 - Persisted in `localStorage.vf_evalmodel`; Settings → Data & Logic toggle
+- **Consulted only when `_metroRun` is true.** Every other evaluation path ignores it entirely and
+  runs gravity, so the toggle cannot affect drop-site, ZIP, clinic or refine evaluations
 - Read at the top of `_evalComputeAndRender`; the two demand paths diverge at exactly one place —
   how `g.dem` is derived — and rejoin for share/access/tiers, so the blast radius is one function
 - `'capture'` degrades to `'gravity'` automatically when `dfw-catchments.json` is absent or the
@@ -107,9 +129,10 @@ uses crow-flies gravity at all. Precomputed, it is a lookup.
 1. **Engine accuracy** — compare OSRM/ORS polygons against the Google isochrones already cached in
    `localStorage.vf_iso_*` (free, already paid for). Expect OSRM to run slightly *larger*: OSM
    free-flow speeds, no traffic model. Record the bias; if systematic, correct the time budget.
-2. **Side-by-side rankings** — run both models on the same markets and diff the top-5. Anchor cases:
-   a dense established suburb (Plano/Richardson), a saturated one (Flower Mound), a growth exurb
-   (Celina/Prosper), and a metro-wide run.
+2. **Side-by-side rankings** — run a full DFW metro evaluation under both models and diff the top-5.
+   (Metro is the only flow affected, so this is the whole comparison surface.) The diff should show
+   picks moving from growth corridors toward established suburbs with weak incumbent coverage; if it
+   instead moves toward saturated density, the share term is under-weighted.
 3. **The underserved test** — the new model must rank a dense-but-saturated suburb BELOW a dense
    suburb with weak incumbent coverage. If it doesn't, the share term isn't doing its job.
 4. **Land plays must not move.** They are scored off future demand and are out of scope; any change
@@ -146,4 +169,7 @@ Recommendation: OSRM on a DFW-clipped extract, with ORS as the accuracy cross-ch
   15-min boundary would overstate unless decay is added. Precompute both; headline 10; show 15 as
   full-trade-area upside. Revisit if decay is added.
 - Whether the Opportunity ZIP list should also move to capture-based demand (currently ZIP-grain,
-  crow-flies). Out of scope here; sites first.
+  crow-flies). Out of scope — metro runs only, per §0.
+- Whether other metros get precomputed catchments later (Houston/Austin/San Antonio). The build is
+  per-metro by construction, so adding one is re-running the pipeline on a different bbox — but each
+  adds an artifact to ship, so do it on demand rather than speculatively.
