@@ -1577,16 +1577,36 @@ function _svcAt(la,lo){
   return null;
 }
 // Popup block: category chips + the clinic's own list in a dropdown. Returns '' when unread.
+// Roster names render as "Dr. Firstname Lastname" (user 2026-07-26) and are DE-DUPLICATED — the
+// website scrape often catches the same vet twice (homepage feature + team card), which showed as
+// "Mark O'Gorman … Mark O'Gorman" in the popup. Already-prefixed names aren't double-titled.
+function _drNames(vets){
+  const seen=new Set(), out=[];
+  for(const v of (vets||[])){
+    const n=String(v||'').trim(); if(!n) continue;
+    const k=n.toLowerCase().replace(/[^a-z]/g,'');
+    if(!k || seen.has(k)) continue;
+    seen.add(k);
+    out.push(/^dr\.?\s/i.test(n) ? n : 'Dr. '+n);
+  }
+  return out;
+}
 function _svcPopupHTML(c){
   const sv=_svcAt(c.lat,c.lon); if(!sv||(!sv.c&&!sv.r)) return '';
-  const chips=(sv.c||[]).map(x=>_SVC_LABEL[x]||x).slice(0,10)
-    .map(l=>`<span style="font-size:10px;background:#eef2f8;border:1px solid #dde4ef;border-radius:7px;padding:1.5px 7px;color:#334155">${l}</span>`).join('');
-  const more=(sv.c||[]).length>10?`<span style="font-size:10px;color:#64748b">+${sv.c.length-10}</span>`:'';
-  const raw=(sv.r&&sv.r.length)?`<details style="margin-top:4px"><summary style="cursor:pointer;font-size:10.5px;font-weight:700;color:var(--navy)">Their services list (${sv.r.length})</summary><div style="font-size:10.5px;color:#475569;margin-top:3px;line-height:1.6">${sv.r.map(x=>_ceEsc(x)).join(' · ')}</div></details>`:'';
+  // Services collapse into ONE dropdown (user 2026-07-26: "the services should also be a dropdown
+  // for all of it") — the chip wall was the tallest block in the popup. Summary states the counts
+  // so the value is visible closed; opening reveals the category chips + the clinic's own wording.
+  const cats=(sv.c||[]).map(x=>_SVC_LABEL[x]||x);
+  const chips=cats.map(l=>`<span style="font-size:10px;background:#eef2f8;border:1px solid #dde4ef;border-radius:7px;padding:1.5px 7px;color:#334155">${_ceEsc(l)}</span>`).join('');
+  const nRaw=(sv.r&&sv.r.length)||0;
+  if(!cats.length && !nRaw) return '';
+  const parts=[]; if(cats.length) parts.push(cats.length+' categor'+(cats.length===1?'y':'ies')); if(nRaw) parts.push(nRaw+' listed');
   return `<div style="margin-top:6px">
     <div class="pp-rl">Services <i>· site-read</i><b></b></div>
-    ${chips?`<div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:3px">${chips}${more}</div>`:''}
-    ${raw}
+    <details style="margin-top:2px"><summary style="cursor:pointer;font-size:10.5px;font-weight:700;color:var(--navy)">Services offered (${parts.join(' · ')})</summary>
+      ${chips?`<div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:5px">${chips}</div>`:''}
+      ${nRaw?`<div style="font-size:10.5px;color:#475569;margin-top:6px;line-height:1.6"><span style="font-weight:700;color:#6a7180">Their own list:</span> ${sv.r.map(x=>_ceEsc(x)).join(' · ')}</div>`:''}
+    </details>
   </div>`;
 }
 // The competition-exclusion test, upgraded: the WEBSITE-read species wins when we have it
@@ -1819,14 +1839,14 @@ function _revEstLine(c){
 }
 function _staffPopupHTML(c){
   const s=_vetStaffAt(c.lat,c.lon); if(!s||!s.n) return '';
-  const names=(s.vets||[]);
+  const names=_drNames(s.vets||[]);   // "Dr. …" + de-duplicated (shared helper)
   // Est.-revenue line HIDDEN from the pin popup (2026-07-13, user pref) — the modeled figure
   // still shows on Acquisitions cards, the Screener, and CSV exports where the deal context is.
   // Roster names live in a dropdown (2026-07-16, user ask — no emoji, names on demand).
   return `<div style="margin-top:9px;padding-top:9px;border-top:1px solid #eef2f7">`
     +(names.length
       ?`<details><summary style="font-size:11px;font-weight:700;color:#0f172a;cursor:pointer;list-style-position:inside">${s.n} veterinarian${s.n!==1?'s':''} on staff</summary>`
-        +`<div style="font-size:11px;color:#475569;margin-top:3px;line-height:1.6">${names.map(v=>'Dr. '+_ceEsc(v)).join('<br>')}</div></details>`
+        +`<div style="font-size:11px;color:#475569;margin-top:3px;line-height:1.6">${names.map(_ceEsc).join('<br>')}</div></details>`
       :`<div style="font-size:11px;font-weight:700;color:#0f172a">${s.n} veterinarian${s.n!==1?'s':''} on staff</div>`)
     +`</div>`;
 }
@@ -2234,7 +2254,7 @@ function buildPopup(c) {
       const kindL=(CLINIC_KIND_LABEL&&CLINIC_KIND_LABEL[_kind])||_kind||'—';
       const prac=[st&&st.n?`${st.n} DVM${st.n>1?'s':''}`:null, kindL].filter(Boolean).join(' · ')
         +(_src?` <span class="fnt">· ${_src}</span>`:'')
-        +((st&&st.vets&&st.vets.length)?` <details style="display:inline"><summary style="display:inline;cursor:pointer;color:var(--navy)">· roster</summary><div style="font-weight:500;color:#6a7180;margin-top:2px;text-align:right">${st.vets.slice(0,10).map(_ceEsc).join(' · ')}</div></details>`:'');
+        +((st&&st.vets&&st.vets.length)?` <details style="display:inline"><summary style="display:inline;cursor:pointer;color:var(--navy)">· roster</summary><div style="font-weight:500;color:#6a7180;margin-top:2px;text-align:right">${_drNames(st.vets).slice(0,12).map(_ceEsc).join(' · ')}</div></details>`:'');
       const mult=(c.mult!=null&&c.mult!=1)?`<div class="pp-kv"><span class="k">Competition ×</span><span class="v" style="color:#92400e">×${c.mult}</span></div>`:'';
       return `<div class="pp-contact">${contact||'No contact listed'}</div>
       <div class="pp-rl">Identity<b></b></div>
@@ -9043,7 +9063,7 @@ function _evalRenderSidebar(){
         <div class="cdx-rl">Practice<b></b></div>
         ${sub.dvm?kv('Roster · capacity',sub.dvm+' DVM'+(sub.dvm>1?'s':'')+' · ~'+(sub.dvm*DVM_VISIT_CAPACITY).toLocaleString()+' visits/yr')
                  :`<div class="cdx-vflag">No DVM roster scraped — set the count in the clinic editor (⚙) for the two-sided read.</div>`}
-        ${vets.length?`<details style="font-size:10.5px;margin:3px 0"><summary style="cursor:pointer;color:var(--navy);font-weight:700">Roster names</summary><div style="margin-top:3px;color:#64748b;line-height:1.6">${vets.map(_ceEsc).join(' · ')}</div></details>`:''}
+        ${vets.length?`<details style="font-size:10.5px;margin:3px 0"><summary style="cursor:pointer;color:var(--navy);font-weight:700">Roster names</summary><div style="margin-top:3px;color:#64748b;line-height:1.6">${_drNames(vets).map(_ceEsc).join(' · ')}</div></details>`:''}
         ${svLs?`<div class="cdx-note">Offers: ${svLs.slice(0,8).join(' · ')}${svLs.length>8?' · +'+(svLs.length-8)+' more':''} <span style="color:#c4c9d4">· site-read</span></div>`:''}
         ${(re_&&re_.econ)?`<div class="cdx-rl">Practice economics <i>(modeled)</i><b></b></div>
         ${kv('Modeled revenue (benchmark)',re_.txt,true)}
@@ -9096,7 +9116,7 @@ function _evalRenderSidebar(){
           const vets=(sub.vets||[]).slice(0,10);
           return `<div style="margin:0 0 8px;padding:7px 10px;background:#f8fafc;border:1px solid #eef2f7;border-radius:9px">
             <div style="font-size:11px;color:#334155">${ident}</div>
-            ${sub.dvm?`<div style="font-size:11px;color:#334155;margin-top:3px"><b>${sub.dvm} DVM${sub.dvm>1?'s':''} on staff</b> · capacity ~${(sub.dvm*DVM_VISIT_CAPACITY).toLocaleString()} visits/yr${vets.length?` <details style="display:inline"><summary style="display:inline;cursor:pointer;color:var(--navy);font-weight:700">· roster</summary><div style="margin-top:3px;color:#64748b">${vets.map(_ceEsc).join(' · ')}</div></details>`:''}</div>`
+            ${sub.dvm?`<div style="font-size:11px;color:#334155;margin-top:3px"><b>${sub.dvm} DVM${sub.dvm>1?'s':''} on staff</b> · capacity ~${(sub.dvm*DVM_VISIT_CAPACITY).toLocaleString()} visits/yr${vets.length?` <details style="display:inline"><summary style="display:inline;cursor:pointer;color:var(--navy);font-weight:700">· roster</summary><div style="margin-top:3px;color:#64748b">${_drNames(vets).map(_ceEsc).join(' · ')}</div></details>`:''}</div>`
                      :'<div style="font-size:11px;color:#9f1239;margin-top:3px">No DVM roster scraped — set the count in the clinic editor (⚙) for the two-sided read.</div>'}
             ${(()=>{const sv=_svcAt(sub.la,sub.lo); if(!sv||!sv.c||!sv.c.length) return ''; const ls=sv.c.map(x=>_SVC_LABEL[x]||x); return `<div style="font-size:10.5px;color:#475569;margin-top:3px">Offers: ${ls.slice(0,8).join(' · ')}${ls.length>8?' · +'+(ls.length-8)+' more':''} <span style="color:#94a3b8">· site-read</span></div>`;})()}
             ${(re_&&re_.econ)?`<div style="font-size:11px;color:#334155;margin-top:2px">Modeled revenue <b>${re_.txt}</b> · EBITDA ~<b>${_fmtM(re_.econ.ebitda)}</b> @ ${Math.round(re_.econ.margin*100)}% · ${re_.econ.multAnalyst?(re_.econ.multLo+'× analyst ⇒ '+_fmtM(re_.econ.valLo)):(re_.econ.multLo+'–'+re_.econ.multHi+'× ⇒ '+_fmtM(re_.econ.valLo)+'–'+_fmtM(re_.econ.valHi))}</div>`:''}

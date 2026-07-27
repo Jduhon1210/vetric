@@ -11,3 +11,4 @@ package-lock.json
 .tabs-geocache.json
 .services-checkpoint.json
 .land-cache/
+.owners-checkpoint.json
