@@ -12,3 +12,5 @@ package-lock.json
 .services-checkpoint.json
 .land-cache/
 .owners-checkpoint.json
+.osrm-cache/
+.catchments-checkpoint.json

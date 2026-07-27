@@ -152,6 +152,56 @@ would likely thrash, so a statewide extract is not viable as-is.
 
 Recommendation: OSRM on a DFW-clipped extract, with ORS as the accuracy cross-check.
 
+### 7b. BUILT — what actually happened (2026-07-27)
+
+**ORS was rejected on licensing, not capability.** Their terms restrict the free tier to a "Single
+End User", require a commercial plan for commercial use, and explicitly forbid redistributing hosted
+API output. Baking it into a product sold to PE firms sits inside that prohibition. Self-hosting has
+no such restriction — OSM data is ODbL, which wants attribution, not exclusivity.
+
+**Pipeline as built:** Docker (Homebrew was too old to parse the formula — v3.2.14 from 2021) →
+`ghcr.io/project-osrm/osrm-backend` → Texas extract from Geofabrik (679 MB) → clipped to the DFW
+bbox with a locally-compiled `osmconvert` (184 MB, 26 s) → extract/partition/customize. Peak RAM in
+`osrm-extract` was **3.3 GB against Docker's 3.8 GB** — statewide would have OOM'd, so the clip was
+load-bearing, not an optimisation.
+
+GOTCHAS worth keeping:
+- **macOS ControlCenter (AirPlay Receiver) squats on port 5000** — the container silently sits in
+  `Created` and never starts. Run on 5001.
+- No osmium Docker image resolved; `osmconvert` is a single C file that compiles with the system
+  clang in seconds. Use that.
+- `tx-zips.json` carries a plain `zip` property, NOT the Census `ZCTA5CE20`/`ZCTA5CE10` names.
+  Assuming the Census names produced a **silently empty ZIP mix on every cell** — the whole demand
+  half was null and the build still "succeeded". Validate field names against real output.
+
+**Output** `dfw-catchments.json` — 1.6 MB, 911 clinic catchments, 1,146 candidate cells, 36 rays,
+budgets 8/10/12/15 min. Whole sweep ~2 minutes at ~18 locations/sec.
+
+**Calibration finding that corrected an earlier assumption.** I had claimed a real 10-minute drive
+polygon is roughly half the area of a 3.5-mile circle. Measured, it is **not**: OSRM 10-min polygons
+run 39–55 sq mi vs the circle's 38, and *downtown Dallas is the largest* because free-flow OSM speeds
+have no congestion model and downtown has the most freeway convergence. Google's Routes isochrones
+are traffic-aware, which is why they came back smaller and why the app's drive-time button lowered
+revenue. Resolution: compute **four budgets from the same ray sample at zero extra cost**, so
+calibration is a runtime field choice rather than a rebuild. Headline stays 10-min free-flow — its
+~3.6 mi equivalent radius is conservative against the 5.3-mi mean client travel distance in the
+industry survey, and flat-weight counting suits a tight polygon.
+
+**Competitor-overlap cap.** First pass capped each cell's competitor list at 20 and 615 of 1,146
+cells were cutting a meaningful (>0.10) competitor — understating competition exactly in the dense
+markets where it decides the ranking. Raised to 120 (effectively uncapped; observed max 117).
+
+**Discrimination check — the model separates saturated from underserved as designed:**
+
+| | ZIP-equivalent reach (10m) | competitive pressure |
+|---|---|---|
+| Richardson | 4.68 | 11.55 |
+| Plano | 3.52 | 13.61 |
+| Flower Mound | 1.52 | 12.11 (saturated — matches the app's independent read) |
+| Prosper | 1.00 | 11.66 |
+| Celina | 0.41 | 6.17 (correctly not a site — it is a land play) |
+| SE Dallas cluster | 2.60 | **0.49** ← the underserved signal |
+
 ## 8. Build order
 
 1. This spec reviewed and approved
