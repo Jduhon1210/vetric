@@ -212,6 +212,67 @@ markets where it decides the ranking. Raised to 120 (effectively uncapped; obser
 5. Wire the `'capture'` path; run §6.2 side-by-sides
 6. Only then consider changing the default
 
+## 8b. KNOWN WEAKNESSES — all five to be fixed (user, 2026-07-27)
+
+Ranked by how much they distort the answer. All five are agreed work; do them after the catchment
+build lands and before the capture model becomes the metro default.
+
+### W1 — No distance decay inside the catchment (biggest, and cheapest to fix)
+Every household inside the polygon is counted at FULL weight, so one at the far edge counts the same
+as one across the street. The Pfizer Practice Evaluation Survey puts **27% of clients within 2 miles**
+and mean travel at 5.3 mi — demand is heavily near-weighted, and flat counting overstates the fringe.
+
+**The fix is already built and costs nothing.** The 8/10/12/15-minute budgets are NESTED rings, so
+they are a ready-made decay curve: weight the 0–8 min band ~1.0, 8–10 ~0.7, 10–12 ~0.45, 12–15 ~0.25
+(curve to be calibrated). Households per band come from differencing the ZIP mixes we already ship
+(`z8`, `z10`, `z12`, `z15`). No new routing, no new data, no file growth.
+Consequence: absolute visit counts will DROP. That is the correction, not a regression.
+
+### W2 — Overlap is area-weighted, not household-weighted
+`overlapFrac` samples the candidate ring on a uniform grid and asks what share of that AREA a
+competitor also covers. But households are not uniform inside a catchment, so a competitor covering
+the empty half of your area is priced the same as one covering the dense half. Systematically
+misprices competition at the urban/rural seam — exactly where the underserved cells surface, so this
+one can move rankings.
+
+**Fix:** weight the overlap samples by the household density of the ZIP each sample falls in (the
+`zipAt` lookup already runs in the same pass). Build-time change only.
+
+### W3 — The demand chain is modeled end to end and never observed
+ACS housing → modeled dog-ownership rate → 2.4 visits/dog-HH → $193/visit. Four inferential steps,
+errors compounding, none validated against a real clinic's actual visit count. Internal coherence
+(Flower Mound saturated, Celina land-play, SE Dallas underserved) is NOT accuracy.
+
+**Fix path — this is the Buxton Benchmark tier, and it needs data we don't have yet:** the first
+customer who uploads real per-clinic visit/revenue figures lets us regress predicted vs actual and
+calibrate. Until then this is a DISCLOSURE, not a code change: the model screens, it does not predict.
+Interim partial check: compare modeled revenue against the `$538/sq-ft` cross-check already in the
+clinic editor for clinics with known building sqft.
+
+### W4 — Capture share assumes parity attractiveness
+`A_OWN = 1.0` says the entrant is exactly as attractive as a typical incumbent. No adjustment for
+rating, review volume, hours, or service breadth — so a 4.9★ 7-day operator and a 3.7★ weekday-only
+practice compete identically. Note `_revW` was deliberately neutralised to 1.0 in 2026-07 because
+review-weighting punished new PE clinics; any fix must not reintroduce that failure.
+
+**Fix:** a bounded attractiveness multiplier on the entrant and on incumbents, driven by data we
+already scrape (rating, review count, days/wk, service-category count), clamped tightly (e.g.
+0.85–1.２5) so it refines rather than dominates. Must be re-validated against the Celina/Prosper/
+Argyle trio that calibrated the current constants.
+
+### W5 — Competition counts clinics, not utilization
+A practice at 60% capacity leaks demand you can take; one turning patients away leaks more. Today
+both count identically at their `_staffW` weight.
+
+**Fix:** we already compute the two-sided read (`_practiceEcon`: demand ceiling vs DVM capacity) for
+individual clinics. Extend it to competitors — a clinic whose catchment demand exceeds its roster
+capacity should contribute LESS competitive pressure, because it is already full. Needs roster
+coverage, which is ~65% statewide, so it must degrade gracefully to today's behaviour when unknown.
+
+**Ordering:** W1 and W2 are build-time and change the numbers — do them together, then re-run the
+side-by-side. W4 and W5 are runtime scoring changes; do them after, one at a time, each re-validated
+against the anchor markets. W3 is a disclosure now and a product tier later.
+
 ## 9. Open questions
 
 - 10 vs 15 minutes as the site headline. Evidence: 15 min is the practice-valuation trade-area

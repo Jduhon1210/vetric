@@ -38,9 +38,11 @@ const DFW = { s:32.10, n:33.62, w:-98.15, e:-96.00 };
 // reads. Headline is 10; 15 is the full-trade-area upside. Measured equivalent radius at 10 min is
 // ~3.6 mi, conservative against the 5.3-mi mean client travel distance in the industry survey.
 const BUDGETS = [480, 600, 720, 900];
-const RAYS = 36;                       // rays per polygon — free locally, so 2x the app's Google version
-const FRACS = [0.25, 0.5, 0.75, 1.0];  // sample fractions along each ray
-const GRID_MI = 1.5;                   // candidate grid spacing
+const RAYS = 72;                       // rays per polygon — 5° angular resolution. Free locally and costs
+                                       // NOTHING in file size (we ship derived numbers, not geometry), so
+                                       // fidelity is the cheap axis to buy accuracy on — unlike grid density.
+const FRACS = [0.2, 0.4, 0.6, 0.8, 1.0];  // probes per ray — finer interpolation of the budget edge
+const GRID_MI = 0.61;                  // candidate grid spacing — 6x the cells of the 1.5mi first pass (user ask)
 const FABRIC_MI = 1.2;                 // prune: candidate must be within this of commercial fabric
 
 const sleep = ms => new Promise(r=>setTimeout(r,ms));
@@ -305,7 +307,9 @@ async function computeSet(list, store, label){
   // the "produced work" side of OSM's ODbL rather than redistributing a derived road database.
   console.log('\nDeriving demand + clinic overlap…');
   const clinicRecs=Object.entries(ck.clinics).filter(([,r])=>!r.fail);
-  const clinicIdx=clinicRecs.map(([k,r])=>({ k, la:r.la, lo:r.lo, pe:r.pe, ring:r.r10, bb:ringBBox(r.r10) }));
+  // Competitor references are the clinic's INDEX in the shipped clinics array, not its cell key —
+  // at ~30 competitors per cell across thousands of cells the 12-char keys dominated the file.
+  const clinicIdx=clinicRecs.map(([k,r],i)=>({ i, k, la:r.la, lo:r.lo, pe:r.pe, ring:r.r10, bb:ringBBox(r.r10) }));
   const cells={};
   let n=0;
   for(const [k,r] of Object.entries(ck.grid)){
@@ -321,7 +325,7 @@ async function computeSet(list, store, label){
     for(const c of clinicIdx){
       if(c.bb.maxLa<ringBBox(r.r10).minLa||c.bb.minLa>ringBBox(r.r10).maxLa) continue;
       const frac=overlapFrac(r.r10, c.ring);
-      if(frac>0.03) ov.push([c.k, +frac.toFixed(3)]);   // 3% floor drops trivial fringe overlap
+      if(frac>0.03) ov.push([c.i, +frac.toFixed(2)]);   // 3% floor drops trivial fringe overlap
     }
     ov.sort((a,b)=>b[1]-a[1]);
     // Cap at 120 (effectively uncapped): a 20-cap was truncating a MEANINGFUL (>0.10) competitor on 615 of 1,146
@@ -333,7 +337,8 @@ async function computeSet(list, store, label){
   const doc={ v:1, built:new Date().toISOString().slice(0,10), engine:'osrm', rays:RAYS,
     budgets:BUDGETS, grid:GRID_MI, bbox:DFW,
     credit:'Drive-time catchments computed locally with OSRM over OpenStreetMap data (ODbL). Derived household/visit figures only — no road geometry redistributed.',
-    clinics:Object.fromEntries(clinicRecs.map(([k,r])=>[k,{la:r.la,lo:r.lo,pe:r.pe,a10:r.a10,a15:r.a15}])),
+    // ARRAY, so `ov` entries can reference clinics by index. Order is load-bearing — do not sort.
+    clinics:clinicRecs.map(([k,r])=>({k, la:r.la, lo:r.lo, pe:r.pe, a10:r.a10, a15:r.a15})),
     cells };
   writeAtomic(OUT, JSON.stringify(doc));
   console.log(`\nWrote ${OUT}\n  ${Object.keys(cells).length} candidate cells · ${clinicRecs.length} clinic catchments · ${(fs.statSync(OUT).size/1048576).toFixed(1)} MB`);
