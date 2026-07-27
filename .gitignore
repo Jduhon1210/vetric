@@ -14,3 +14,4 @@ package-lock.json
 .owners-checkpoint.json
 .osrm-cache/
 .catchments-checkpoint.json
+.acs-hh-cache.json

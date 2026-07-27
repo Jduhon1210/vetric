@@ -158,12 +158,25 @@ function loadClinics(){
   for(const c of PE){ if(!inD(c[0],c[1])) continue; const k=key(c[0],c[1]); if(seen.has(k)) continue; seen.add(k); out.push({k, la:c[0], lo:c[1], n:c[4]||'', pe:1}); }
   return out;
 }
-// Candidate grid, pruned to points near commercial fabric — a candidate with no commercial
-// context can never pass the siting gate, so its catchment would be wasted work.
+// Candidate grid, pruned to points with COMMERCIAL CONTEXT — a candidate that can never pass the
+// siting gate would be wasted routing.
+//
+// The gate is deliberately TWO-SOURCE (2026-07-27, user spotted empty areas around Westlake and
+// Southlake). Using OSM retail alone had a systematic bias: dfw-retail.json maps EXISTING retail,
+// so a commercially-zoned tract that has been platted but not yet built carries no retail to map —
+// and that is exactly where a de novo clinic goes. Half the points pruned in the Flower Mound
+// window sat within a mile of a county-recorded vacant COMMERCIAL parcel. Adding dfw-land.json
+// (appraisal-district vacant commercial) recovers 2,720 cells, 39% more than retail alone.
+// Each source catches what the other misses: OSM sees built strip centres the appraisal roll marks
+// improved; the county sees platted dirt OSM has not noticed.
 function loadGrid(){
-  const retail=JSON.parse(fs.readFileSync(path.join(HERE,'dfw-retail.json'),'utf8'));
+  const pts=[];
+  try{ for(const [la,lo] of JSON.parse(fs.readFileSync(path.join(HERE,'dfw-retail.json'),'utf8'))) pts.push([la,lo]); }
+  catch(e){ console.warn('dfw-retail.json missing — gate falls back to county land only'); }
+  try{ for(const p of JSON.parse(fs.readFileSync(path.join(HERE,'dfw-land.json'),'utf8')).list) pts.push([p.la,p.lo]); }
+  catch(e){ console.warn('dfw-land.json missing — gate falls back to OSM retail only'); }
   const bin=new Map(); const B=0.02;   // ~1.4 mi bins
-  for(const [la,lo] of retail){ const k=Math.round(la/B)+'_'+Math.round(lo/B); (bin.get(k)||bin.set(k,[]).get(k)).push([la,lo]); }
+  for(const [la,lo] of pts){ const k=Math.round(la/B)+'_'+Math.round(lo/B); if(!bin.has(k)) bin.set(k,[]); bin.get(k).push([la,lo]); }
   const near=(la,lo)=>{
     const a=Math.round(la/B), o=Math.round(lo/B);
     for(let i=-1;i<=1;i++)for(let j=-1;j<=1;j++){
@@ -229,6 +242,102 @@ function zipArea(z){
   let a=0; if(rec) for(const r of rec.rings) a+=ringAreaMi(r.map(([lo,la])=>[la,lo]));
   return (ZIPAREA[z]=a);
 }
+// ── ZIP RASTER ────────────────────────────────────────────────────────────────────────────────
+// Point-in-polygon against ~250 ZIP rings, run per sample per cell, was the cost that forced the
+// old FIXED 26x26 grid — and that fixed grid is what produced the coverage bug: as a ring grew
+// 24 -> 129 sq mi the same 676 samples got coarser, so a small downtown ZIP was quantised in ~0.2
+// steps at 15 min while being accurate at 8 min (75226 read 100% covered at 8 min, 31% at 15).
+// Rasterising the ZIP map ONCE at the sampling resolution makes every later lookup O(1), which
+// buys a fine FIXED-RESOLUTION sample grid — accurate at every budget.
+const SAMPLE_MI = 0.25;                  // sample spacing; ~0.0625 sq mi per sample
+let ZRAST=null, ZLIST=null, ZIDX=null, RNL=0, RNO=0, RmpdLon=1;
+function buildRaster(){
+  if(ZRAST) return;
+  const zs=loadZips();
+  ZLIST=zs.map(z=>z.zip); ZIDX=new Map(ZLIST.map((z,i)=>[z,i]));
+  RmpdLon = 69.0*Math.cos(((DFW.s+DFW.n)/2)*Math.PI/180);
+  RNL = Math.ceil((DFW.n-DFW.s)*69.0/SAMPLE_MI);
+  RNO = Math.ceil((DFW.e-DFW.w)*RmpdLon/SAMPLE_MI);
+  ZRAST = new Int16Array(RNL*RNO).fill(-1);
+  // bucket ZIPs by 0.05 deg so each raster cell tests only a handful of rings
+  const B=0.05, buck=new Map();
+  zs.forEach((z,i)=>{
+    for(let la=Math.floor(z.bb.minLa/B);la<=Math.floor(z.bb.maxLa/B);la++)
+      for(let lo=Math.floor(z.bb.minLo/B);lo<=Math.floor(z.bb.maxLo/B);lo++){
+        const k=la+'_'+lo; if(!buck.has(k)) buck.set(k,[]); buck.get(k).push(i);
+      }
+  });
+  for(let i=0;i<RNL;i++){
+    const la=DFW.s+(i+0.5)*SAMPLE_MI/69.0;
+    for(let j=0;j<RNO;j++){
+      const lo=DFW.w+(j+0.5)*SAMPLE_MI/RmpdLon;
+      const cand=buck.get(Math.floor(la/B)+'_'+Math.floor(lo/B)); if(!cand) continue;
+      for(const ci of cand){
+        const z=zs[ci];
+        if(la<z.bb.minLa||la>z.bb.maxLa||lo<z.bb.minLo||lo>z.bb.maxLo) continue;
+        let hit=false;
+        for(const r of z.rings){
+          let inside=false;
+          for(let a=0,b=r.length-1;a<r.length;b=a++){
+            const yi=r[a][1], xi=r[a][0], yj=r[b][1], xj=r[b][0];
+            if(((yi>la)!==(yj>la)) && (lo < (xj-xi)*(la-yi)/((yj-yi)||1e-12)+xi)) inside=!inside;
+          }
+          if(inside){hit=true;break;}
+        }
+        if(hit){ ZRAST[i*RNO+j]=ci; break; }
+      }
+    }
+  }
+  console.log(`  ZIP raster ${RNL}x${RNO} at ${SAMPLE_MI} mi`);
+}
+function rastAt(la,lo){
+  const i=Math.floor((la-DFW.s)*69.0/SAMPLE_MI), j=Math.floor((lo-DFW.w)*RmpdLon/SAMPLE_MI);
+  if(i<0||i>=RNL||j<0||j>=RNO) return -1;
+  return ZRAST[i*RNO+j];
+}
+
+// ── HOUSEHOLD DENSITY (W2) ────────────────────────────────────────────────────────────────────
+// The build was pure geometry until W2. Household-weighting the competitor overlap needs ACS
+// household counts at BUILD time — an area-weighted overlap prices a competitor covering the empty
+// half of your market the same as one covering the dense half. This is the ONLY Census call here,
+// it is cached locally, and it is used purely to WEIGHT the overlap: the app still owns the pet
+// model and still converts the ZIP mix to households/pets/visits with its own figures.
+const ACS_CACHE=path.join(HERE,'.acs-hh-cache.json');
+let HHDENS=null;
+async function loadHouseholds(){
+  if(HHDENS) return HHDENS;
+  let rows=null;
+  try{ rows=JSON.parse(fs.readFileSync(ACS_CACHE,'utf8')); }catch(e){}
+  if(!rows){
+    const url='https://api.census.gov/data/2024/acs/acs5?get=B11001_001E&for=zip%20code%20tabulation%20area:*&key=3429f2401376a586a8f6ffc02bb5678ee32fbf44';
+    const r=await fetch(url); rows=await r.json();
+    try{ fs.writeFileSync(ACS_CACHE, JSON.stringify(rows)); }catch(e){}
+  }
+  const hh={};
+  for(const row of rows.slice(1)){ const n=parseInt(row[0]); if(n>0) hh[row[1]]=n; }
+  HHDENS={};
+  for(const z of loadZips()){ const a=zipArea(z.zip); if(a>0 && hh[z.zip]) HHDENS[z.zip]=hh[z.zip]/a; }
+  console.log(`  household density for ${Object.keys(HHDENS).length} ZIPs`);
+  return HHDENS;
+}
+
+// ── STAR-RING CONTAINMENT, O(1) ───────────────────────────────────────────────────────────────
+// Rings are built from RAYS evenly-spaced rays out of one origin, so they are star-shaped: vertex d
+// sits at bearing 2*pi*d/RAYS. Containment is therefore "is the sample nearer than the boundary at
+// its own bearing" — one interpolation instead of a 72-edge crossing test. That is what makes the
+// fine sample grid affordable. Radial interpolation vs the true chord is <0.1% at 5 deg steps.
+function reachOf(ring, ola, olo){
+  const mLat=69.0, mLon=69.0*Math.cos(ola*Math.PI/180);
+  return ring.map(([la,lo])=>Math.hypot((la-ola)*mLat,(lo-olo)*mLon));
+}
+function inStar(dLat, dLon, reach){        // offsets in MILES from the ring origin
+  const dist=Math.hypot(dLat,dLon); if(dist<=0) return true;
+  let th=Math.atan2(dLat,dLon); if(th<0) th+=2*Math.PI;
+  const f=th/(2*Math.PI)*reach.length, i0=Math.floor(f);
+  const i=i0%reach.length, j=(i+1)%reach.length;
+  return dist <= reach[i]+(reach[j]-reach[i])*(f-i0);
+}
+
 // Returns [[zip, fractionOfThatZipInsideTheRing], …] — the app multiplies each by its own
 // household/pet figures for that ZIP and sums.
 function ringZipMix(ring){
@@ -310,32 +419,92 @@ async function computeSet(list, store, label){
   // Competitor references are the clinic's INDEX in the shipped clinics array, not its cell key —
   // at ~30 competitors per cell across thousands of cells the 12-char keys dominated the file.
   const clinicIdx=clinicRecs.map(([k,r],i)=>({ i, k, la:r.la, lo:r.lo, pe:r.pe, ring:r.r10, bb:ringBBox(r.r10) }));
+  buildRaster();
+  const HD = await loadHouseholds();
+  // Precompute each clinic's ray reaches once — reused against every candidate cell.
+  for(const c of clinicIdx){ c.reach=reachOf(c.ring, c.la, c.lo); c.mLon=69.0*Math.cos(c.la*Math.PI/180); }
+
   const cells={};
   let n=0;
   for(const [k,r] of Object.entries(ck.grid)){
     if(r.fail) continue;
     const cell={ la:r.la, lo:r.lo };
-    for(const b of BUDGETS){
-      const m=b/60;
-      cell['z'+m]=ringZipMix(r['r'+m]);   // ZIP mix — app converts to households/pets/visits
-      cell['a'+m]=r['a'+m];               // area mi² (display + sanity)
+    for(const b of BUDGETS) cell['a'+(b/60)]=r['a'+(b/60)];   // area mi² (display + sanity)
+
+    const ola=r.la, olo=r.lo, mLon=69.0*Math.cos(ola*Math.PI/180);
+    const reaches=BUDGETS.map(b=>reachOf(r['r'+(b/60)], ola, olo));
+    const rMax=Math.max(...reaches[reaches.length-1]);
+    const rb=ringBBox(r.r10);
+    // only competitors whose 10-min bbox meets this candidate's 10-min bbox can overlap it
+    const comps=clinicIdx.filter(c=> !(c.bb.maxLa<rb.minLa||c.bb.minLa>rb.maxLa||c.bb.maxLo<rb.minLo||c.bb.minLo>rb.maxLo));
+
+    const SA=SAMPLE_MI*SAMPLE_MI;                  // sq mi represented by one sample
+    const bandArea=[new Map(),new Map(),new Map(),new Map()];
+    const ovHH=new Map(); let mktHH=0;
+    const covHH=new Array(9).fill(0);              // households reached by exactly N competitors
+    for(let dy=-rMax; dy<=rMax; dy+=SAMPLE_MI){
+      for(let dx=-rMax; dx<=rMax; dx+=SAMPLE_MI){
+        // largest ring first so a sample outside everything costs exactly one test
+        if(!inStar(dy,dx,reaches[3])) continue;
+        let band=3;
+        for(let b=0;b<3;b++) if(inStar(dy,dx,reaches[b])){ band=b; break; }
+        const la=ola+dy/69.0, lo=olo+dx/mLon;
+        const zi=rastAt(la,lo); if(zi<0) continue;
+        const zip=ZLIST[zi];
+        bandArea[band].set(zip,(bandArea[band].get(zip)||0)+SA);
+        if(band<=1){                                // inside the 10-min competitive market
+          const w=(HD[zip]||0)*SA;                  // W2: weight by households, not area
+          if(w>0){
+            mktHH+=w;
+            let nCov=0;
+            for(const c of comps)
+              if(inStar((la-c.la)*69.0,(lo-c.lo)*c.mLon,c.reach)){ ovHH.set(c.i,(ovHH.get(c.i)||0)+w); nCov++; }
+            // Household-weighted distribution of HOW MANY competitors reach each household.
+            // Summing per-competitor overlaps and taking 1/(1+sum) is NOT the same as averaging
+            // the per-household split — by Jensen's inequality it systematically over-penalises.
+            // The split has to happen per household and then be aggregated, which is build-time
+            // information. Shipping the distribution lets the app do the correct average while
+            // still applying its own runtime roster weights.
+            covHH[Math.min(nCov,8)] += w;
+          }
+        }
+      }
     }
-    // which clinic catchments leach into this candidate's 10-min market, and how much
+    // BAND mixes, disjoint by construction — a sample lands in exactly one band, so these can never
+    // be non-monotonic the way differencing four independently-sampled cumulative rings could be.
+    // Raster sampling quantises a SMALL ZIP badly — a 0.4 sq mi ZIP gets ~6 samples, so one sample
+    // either way is ~17%, and the four bands can sum past 100% of the ZIP. Normalise per ZIP so
+    // cumulative coverage cannot exceed 1: it preserves the band DISTRIBUTION (what decay reads)
+    // while enforcing the physical ceiling. Measured before the fix: median overflow 1.04, max 1.42,
+    // and every worst case was a ZIP far below the 53.7 sq mi median.
+    const zTot={};
+    for(const m of bandArea) for(const [z,a] of m) zTot[z]=(zTot[z]||0)+a;
+    const zScale={};
+    for(const z in zTot){ const za=zipArea(z); zScale[z]=(za>0 && zTot[z]>za) ? za/zTot[z] : 1; }
+    cell.b=bandArea.map(m=>{
+      const out=[];
+      for(const [z,a] of m){ const za=zipArea(z); if(!za) continue;
+        const f=Math.min(1,a*(zScale[z]||1)/za); if(f>0.005) out.push([z,+f.toFixed(3)]); }
+      return out.sort((x,y)=>y[1]-x[1]);
+    });
+    // household-weighted share of this candidate's 10-min market that each competitor also reaches
+    // cd[n] = household-weighted share of this market reached by exactly n competitors
+    cell.cd = mktHH>0 ? covHH.map(w=>+(w/mktHH).toFixed(3)) : new Array(9).fill(0);
     const ov=[];
-    for(const c of clinicIdx){
-      if(c.bb.maxLa<ringBBox(r.r10).minLa||c.bb.minLa>ringBBox(r.r10).maxLa) continue;
-      const frac=overlapFrac(r.r10, c.ring);
-      if(frac>0.03) ov.push([c.i, +frac.toFixed(2)]);   // 3% floor drops trivial fringe overlap
-    }
+    if(mktHH>0) for(const [i,w] of ovHH){ const f=w/mktHH; if(f>0.03) ov.push([i,+f.toFixed(2)]); }
     ov.sort((a,b)=>b[1]-a[1]);
     // Cap at 120 (effectively uncapped): a 20-cap was truncating a MEANINGFUL (>0.10) competitor on 615 of 1,146
     // cells — understating competition exactly in the dense markets where it decides the ranking.
     cell.ov=ov.slice(0,120);
     cells[k]=cell;
-    if(++n%200===0) process.stdout.write(`  derived ${n}…\n`);
+    if(++n%400===0) process.stdout.write(`  derived ${n}…\n`);
   }
-  const doc={ v:1, built:new Date().toISOString().slice(0,10), engine:'osrm', rays:RAYS,
-    budgets:BUDGETS, grid:GRID_MI, bbox:DFW,
+  const doc={ v:2, built:new Date().toISOString().slice(0,10), engine:'osrm', rays:RAYS,
+    budgets:BUDGETS, grid:GRID_MI, bbox:DFW, sampleMi:SAMPLE_MI,
+    // v2: cells carry `b` = FOUR DISJOINT band ZIP mixes (0-8, 8-10, 10-12, 12-15 min) instead of
+    // four nested cumulative mixes; `ov` is HOUSEHOLD-weighted not area-weighted; and `cd` is the
+    // household-weighted distribution of competitor COUNT per household, which is what lets the
+    // app compute a correct average capture share instead of 1/(1+sum-of-overlaps).
     credit:'Drive-time catchments computed locally with OSRM over OpenStreetMap data (ODbL). Derived household/visit figures only — no road geometry redistributed.',
     // ARRAY, so `ov` entries can reference clinics by index. Order is load-bearing — do not sort.
     clinics:clinicRecs.map(([k,r])=>({k, la:r.la, lo:r.lo, pe:r.pe, a10:r.a10, a15:r.a15})),

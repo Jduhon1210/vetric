@@ -219,14 +219,121 @@ build lands and before the capture model becomes the metro default.
 
 ### W1 — No distance decay inside the catchment (biggest, and cheapest to fix)
 Every household inside the polygon is counted at FULL weight, so one at the far edge counts the same
-as one across the street. The Pfizer Practice Evaluation Survey puts **27% of clients within 2 miles**
-and mean travel at 5.3 mi — demand is heavily near-weighted, and flat counting overstates the fringe.
+as one across the street. Flat counting overstates the fringe.
 
 **The fix is already built and costs nothing.** The 8/10/12/15-minute budgets are NESTED rings, so
-they are a ready-made decay curve: weight the 0–8 min band ~1.0, 8–10 ~0.7, 10–12 ~0.45, 12–15 ~0.25
-(curve to be calibrated). Households per band come from differencing the ZIP mixes we already ship
-(`z8`, `z10`, `z12`, `z15`). No new routing, no new data, no file growth.
-Consequence: absolute visit counts will DROP. That is the correction, not a regression.
+they are a ready-made decay curve. Households per band come from differencing the ZIP mixes we
+already ship (`z8`, `z10`, `z12`, `z15`). No new routing, no new data, no file growth.
+
+#### W1 calibration — what the literature actually says (researched 2026-07-27)
+
+Three independent sources, deliberately chosen because they can disagree:
+
+1. **Huff-model convention (GIS/retail standard, Esri + ArcGIS Pro docs).** The distance-decay
+   exponent β in `attraction / distance^β` is empirically **1.5–2.0** across retail categories.
+   This is generic retail — it includes impulse and convenience goods, which decay FASTER than a
+   planned, loyalty-driven service like veterinary care, so it should read as an upper bound.
+2. **Trade-area zone convention.** Primary trade area = **60–70% of customers**, secondary 20–25%,
+   tertiary the remainder. Drive-time band norms by category: QSR/coffee 5–7 min, grocery 10–12 min,
+   specialty retail 15–20 min. Vet care sits in the grocery-to-specialty range, which is what
+   independently justifies a 15-minute outer boundary.
+3. **Vet-specific client travel (Pfizer Practice Evaluation Survey via dvm360).** Mean client travel
+   **5.3 miles**, **27% of clients within 2 miles**.
+
+**A single power law cannot fit both vet facts, and that is the useful finding.** Fitting only
+"27% under 2 mi" wants β≈1.55; fitting only "mean 5.3 mi" wants β≈1.8. The gap is the signature of a
+distribution tighter near the clinic and fatter in the tail than a pure power law — a handful of
+clients who follow a trusted vet a long way. Joint-fitting both facts (grid search over β and an
+effective max travel distance) gives **β = 1.38 with an effective range of ~13 mi**, reproducing
+mean 5.30 mi and 26.8% under 2 mi — both targets, simultaneously.
+
+**Cross-check against source 2, using our own real polygon areas** (median 19.2 / 32.2 / 53.2 / 98.0
+sq mi at 8/10/12/15 min): at β=1.38 the implied client split is **64% inside 10 minutes** — dead
+centre of the published 60–70% primary-zone convention. Two unrelated sources land on the same curve.
+
+**Shipping value: β = 1.5.** It is the top of the vet-data fit and the bottom of the Huff convention
+range — the one point where all three sources overlap — and it is deliberately the more conservative
+(steeper) end of that overlap, so the fringe is discounted harder rather than softer. Ring weights,
+computed as the area-weighted mean of `t^-β` within each band and normalised to the inner ring:
+
+| band | weight | share of captured clients |
+|---|---|---|
+| 0–8 min | 1.00 | 55% |
+| 8–10 min | 0.28 | 11% |
+| 10–12 min | 0.21 | 14% |
+| 12–15 min | 0.15 | 20% |
+
+→ primary (0–10 min) = **67%** of captured demand, inside the 60–70% convention.
+
+`CATCH_DECAY_BETA` is a named constant so this is a one-line retune, not a rebuild — the four ring
+budgets are already in the artifact.
+
+**Consequence: absolute visit counts DROP to ~35% of the flat count.** That is the correction, not a
+regression — the old number counted a household 14 minutes away exactly like one across the street.
+Rankings only move where the ring MIX differs between cells, i.e. freeway-stretched catchments lose
+more than compact ones. That is precisely the distortion W1 exists to remove.
+
+**Not double-counting distance:** the decay weight answers "does this household participate in the
+market at all", the existing Huff `_grav` term answers "which clinic wins them". Standard two-stage
+formulation; the terms are complementary, not duplicative.
+
+#### W1 + W2 — BUILT AND VALIDATED (2026-07-27)
+
+Implemented together because both are build-time, and because validating W1 exposed two real bugs
+that had to be fixed first.
+
+**Bug 1 — ZIP coverage was quantised, badly, and only at large budgets.** `ringZipMix` used a FIXED
+26x26 sample grid over each ring's bounding box. As a ring grows 24 -> 129 sq mi the same 676 samples
+get coarser, so a small ZIP's coverage was estimated in ~0.2 steps at 15 min while being accurate at
+8 min. ZIP 75226 read **100% covered at 8 min and 31% at 15 min** — physically impossible. Differencing
+the four cumulative rings to get bands surfaced it: 2,857 cells had a ZIP whose coverage SHRANK as the
+polygon grew. Flat-summing the 15-min ring had hidden it completely.
+
+**Fix — one fine-resolution pass instead of four coarse ones.** The rings are built from 72 evenly
+spaced rays out of one origin, so they are **star-shaped**: containment is "is this sample nearer than
+the boundary at its own bearing", an O(1) interpolation rather than a 72-edge crossing test. That makes
+a fixed 0.25-mi sample grid affordable. A ZIP raster built once at the same resolution turns the
+per-sample ZIP lookup into an array index (it was the real cost). Each sample lands in exactly one
+band, so **band mixes are disjoint by construction and monotonicity is structural, not checked**.
+Artifact v2 ships `b` = four disjoint band mixes instead of four nested cumulative ones.
+Residual: raster sampling still quantises very small ZIPs (a 0.4 sq mi ZIP gets ~6 samples), so bands
+are normalised per ZIP to cap cumulative coverage at 1.0 — preserving the band distribution, which is
+what decay reads. Before the fix: median overflow 1.04, max 1.42, every worst case a ZIP far under the
+53.7 sq mi median.
+
+**Bug 2 — the share formula was wrong in a way that flatters no one.** Summing per-competitor overlaps
+and taking `1/(1+sum)` is NOT the same as splitting each household among the clinics that actually
+reach it and then averaging. By Jensen's inequality it systematically over-penalises. Correct share on
+real data is **1.91x** the aggregate form. The per-household split is build-time information, so the
+artifact now ships `cd[n]` = the household-weighted share of the market reached by exactly n
+competitors; the app computes `sum cd[n]/(1+n)` and can still layer its own roster weights on top.
+
+**W2 proper:** overlap is now weighted by ACS household density per sample rather than by area, so a
+competitor covering the empty half of a market no longer prices the same as one covering the dense
+half. This is the build's only Census call, cached locally; the app still owns the pet model.
+
+#### THE VALIDATION GATE — and it passes
+
+The decay curve is calibrated from published trade-area literature. DVM rosters are scraped from
+clinic websites. Nothing connects them, so agreement is real evidence.
+
+Modelled winnable visits/yr at 831 real clinic locations, against scraped rosters (n=2,408,
+median 2 DVMs, mean 3.12) at `DVM_VISIT_CAPACITY` 3,200:
+
+| model | median visits/yr | implied DVMs | vs empirical median of 2.0 |
+|---|---|---|---|
+| **decayed, beta=1.5** | **6,071** | **1.90** | **within 5%** |
+| flat (today) | 17,053 | 5.33 | 167% too high |
+
+Real practices run below full capacity, so landing slightly under 2.0 is the right side to miss on.
+32% of clinics fall inside the 6,400-9,990 full-capacity band.
+
+**This retires the "flat is fine" hypothesis.** Flat counting does not merely inflate absolute
+numbers — it implies the median DFW clinic is a 5-DVM hospital, which the roster data directly refutes.
+
+Caveat kept honest: the gate omits the senior-age and low-income damps (extra Census calls), both of
+which only REDUCE demand — so the true figure sits slightly below 1.90, not above. This validates the
+DECAY CURVE, not the whole demand chain; W3 remains open.
 
 ### W2 — Overlap is area-weighted, not household-weighted
 `overlapFrac` samples the candidate ring on a uniform grid and asks what share of that AREA a
