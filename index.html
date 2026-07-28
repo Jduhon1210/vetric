@@ -5301,7 +5301,7 @@ let oppView='list';              // 'list' | 'mpc' (Communities ranking)
    that's ~3-mile cells — a regional screen, the same run the user validated manually. */
 function evaluateMetroplex(){
   const r=oppRegion;
-  try{ _loadOppRetail(); _loadLand(); }catch(e){}   // warm the snap anchors — loaded long before the ~7-min compute ends
+  try{ _loadOppRetail(); _loadLand(); _loadCatchments(); }catch(e){}   // warm snap anchors + drive-time catchments before the compute
   const panel=document.getElementById('opp-panel'); if(panel) panel.classList.remove('show');
   switchSection('map');
   setTimeout(()=>{
@@ -7370,6 +7370,7 @@ let evalZoning=true;        // zoning FILTER on by default — drop residential/
 // tract pass can't zero them out on today's empty-pasture demographics. Toggleable (evalFuture).
 let evalFuture=true, _evalFutInfo=null, evalLandPlays=[], evalHiddenWeak=0;
 let evalMetroRun=false;   // true while the on-screen analysis is a region-scale screening pass (Evaluate Metroplex)
+let evalCaptureOn=false;  // true while the on-screen analysis ran on the drive-time capture model
 // True while the on-screen analysis IS the evaluation of a land play (user 2026-07-26: "when
 // evaluating a land play i dont want it to give me more land plays"). You already chose the
 // corridor — this pass answers "where inside it do I build?", so nested land plays are noise.
@@ -7680,6 +7681,126 @@ const EVAL_TOP_N=3;
 // Re-derived 2026-07-15 after rooftop-only ZIP demand: ceiling = demandN 1.0 x share cap 0.45-0.5
 // x access ~0.85 ~= 0.38-0.42. STRONG=0.35 is ~85-90% of that ceiling (same proportion as the
 // prior 0.40-vs-0.47 calibration); the demand>=0.45 + retail-mass guards carry the honesty.
+// ══ DRIVE-TIME CAPTURE MODEL (2026-07-27) ══════════════════════════════════════════════════════
+// Replaces the two circles that matter — demand and competition — with measured road-network
+// reach, for METROPLEX runs only. Design + calibration: research/site-capture-model.md.
+// EVAL_MODEL is the revert switch: set window.EVAL_MODEL='gravity' to put metro runs back on the
+// crow-flies engine exactly as it was. Ordinary ZIP / drop-site / clinic evaluations NEVER consult
+// this — they keep the gravity engine unconditionally.
+let EVAL_MODEL='capture';
+// beta=1.5 — the single point where three independent sources overlap: the Huff exponent
+// convention (1.5-2.0), a joint fit to the Pfizer vet-travel facts (mean 5.3 mi, 27% within 2 mi
+// -> 1.38), and the 60-70% primary-trade-area convention. Validated end to end: at this beta the
+// median DFW clinic models to 1.90 DVM equivalents against a scraped roster median of 2.0. Flat
+// counting says 5.33, which the roster data refutes. Retune HERE — never rebuild the artifact.
+const CATCH_DECAY_BETA=1.5;
+// Capture-mode demand is anchored ABSOLUTELY, not against the metro's biggest cell. Normalising
+// against the max would peg every suburb low just because a downtown cell reaches 120k visits, and
+// would make the score mean something different in every region. Anchor = 10 x DVM_VISIT_CAPACITY:
+// reach enough to fill ten doctors if you won all of it. Because score = demandN x share, that makes
+// the score literally WINNABLE VISITS / 32,000 — so the existing bars keep their meaning and gain a
+// plain reading: EVAL_STRONG 0.22 = ~7,000 winnable visits/yr = a viable 2-DVM practice;
+// EVAL_FLOOR 0.12 = ~3,800 = a marginal solo. Both fall out of constants we already ship.
+const CATCH_REACH_FULL=10*DVM_VISIT_CAPACITY;
+const CATCH_BANDS=[[0.5,8],[8,10],[10,12],[12,15]];   // minutes; must match the artifact's budgets
+const CATCH_RING_W=(function(b){
+  const w=CATCH_BANDS.map(([t1,t2])=>{ let n=0,q=0;
+    for(let t=t1;t<t2;t+=0.02){ n+=Math.pow(t,-b)*t*0.02; q+=t*0.02; } return n/q; });
+  return w.map(x=>x/w[0]);                            // -> 1.00 / 0.28 / 0.21 / 0.15
+})(CATCH_DECAY_BETA);
+// ── SPEND POWER (2026-07-27, user: "we still need to include how important household income is") ──
+// Without this the capture model re-opened the vet-desert trap the ZIP List closed in June: raw
+// road-network geometry ranks a market on EMPTINESS, and southeast Dallas (0 clinics within 3 mi,
+// verified) topped DFW on pure reach x share. Real whitespace — but a market's ability to PAY is
+// a separate axis from its ability to reach you.
+//
+// LITERATURE-DERIVED, and deliberately NOT the ZIP List's percentile `_util` curve: the capture
+// score encodes absolute winnable VISITS, so the damper has to be anchored in dollars or it means
+// something different in every region.
+//   - BLS Consumer Expenditure Survey: top income quintile spends ~2.5-3x the bottom on pets,
+//     driven by spend PER PET, not pet count -> bottom/top ratio ~0.36.
+//   - That total already contains the ownership difference, which `_incDampF` models separately
+//     (0.85 floor). Netting it out leaves the utilisation+spend residual: 0.36 / 0.85 = 0.42.
+//     Applying both then reproduces the published 0.36 end to end instead of double-counting.
+//   - AVMA 2017 Pet Demographics: 69% of dog owners under $20k see a vet annually vs 93% at $100k+
+//     (82% overall) — so ~0.74 of the gap is participation and the rest is spend per visit.
+//   - BLS also puts the behavioural inflection at $65-75k, which the curve passes through near 0.70.
+// Anchors: $25k -> 0.42 (floor), $110k+ -> 1.00 (no boost above it — affluence must not inflate,
+// only poverty deflates, same asymmetry as _incDampF).
+function _catchSpendF(inc){
+  if(inc==null) return 0.85;                       // unknown income: mild haircut, never a free pass
+  return Math.max(0.42, Math.min(1, 0.42+0.58*(inc-25000)/85000));
+}
+// Catchment income = the decay- and household-weighted mean across the ZIPs a site actually
+// reaches, NOT the single ZIP it sits in — a corner site can serve three ZIPs of different means.
+function _catchIncome(cell){
+  let n=0,q=0;
+  for(let b=0;b<4;b++) for(const [z,f] of (cell.b[b]||[])){
+    const dd=dogData[z], inc=modelIncome[z];
+    if(!dd||inc==null) continue;
+    const w=f*(dd.households||0)*CATCH_RING_W[b];
+    n+=inc*w; q+=w;
+  }
+  return q>0?n/q:null;
+}
+let _catchData=null, _catchP=null, _catchIdx=null;
+function _loadCatchments(){
+  if(_catchP) return _catchP;
+  _catchP=fetch('dfw-catchments.json?v=2',{cache:'force-cache'}).then(r=>r.ok?r.json():null).then(d=>{
+    if(!d||!d.cells) return null;
+    _catchData=d;
+    _catchIdx=new Map();                              // 0.01 deg buckets -> cells, for nearest lookup
+    for(const c of Object.values(d.cells)){
+      const k=Math.round(c.la*100)+'_'+Math.round(c.lo*100);
+      if(!_catchIdx.has(k)) _catchIdx.set(k,[]); _catchIdx.get(k).push(c);
+    }
+    return d;
+  }).catch(()=>{ _catchP=null; return null; });       // clear on failure so a retry can succeed
+  return _catchP;
+}
+// Every catchment cell whose centre falls inside the analysis bbox. These ARE the candidate set in
+// capture mode: 9,627 cells on a 0.61-mi grid, already gated on two-source commercial fabric
+// (OSM retail UNION county vacant-commercial parcels) — far better than a 36x36 metro grid whose
+// ~3-mi cell centres land mid-subdivision.
+function _catchCellsIn(bb){
+  if(!_catchData) return [];
+  const out=[];
+  for(const c of Object.values(_catchData.cells))
+    if(c.la>=bb.minLa&&c.la<=bb.maxLa&&c.lo>=bb.minLo&&c.lo<=bb.maxLo) out.push(c);
+  return out;
+}
+// Decayed reachable total. `valOf(zip)` supplies the per-ZIP quantity, so the app's OWN pet model
+// (dog/cat rates, senior-age + low-income damps) stays the single source of truth — the artifact
+// ships geometry-derived ZIP coverage only. The four band mixes are DISJOINT, so this is a plain
+// weighted sum with nothing to difference.
+function _catchDecayed(cell, valOf){
+  let t=0;
+  for(let b=0;b<4;b++) for(const [z,f] of (cell.b[b]||[])) t+=f*(valOf(z)||0)*CATCH_RING_W[b];
+  return t;
+}
+// Capture share from the household-weighted competitor-count distribution. cd[n] is the share of
+// THIS cell's households reached by exactly n competitors, so the split happens per household and
+// is then averaged — NOT 1/(1+sum-of-overlaps), which over-penalises by Jensen's inequality
+// (measured: the correct form is 1.91x the aggregate one on real data).
+// `wBar` scales each competitor by roster strength, read at RUNTIME from `ov` indices so analyst
+// overrides stay live. Without it a solo clinic and a 6-DVM hospital would count identically —
+// the gravity engine weights by _staffW and the capture path must not regress against it.
+function _catchShare(cell){
+  const cd=cell.cd; if(!cd||!cd.length) return null;
+  let wBar=1;
+  if(cell.ov&&cell.ov.length&&_catchData&&_catchData.clinics){
+    let sw=0, sf=0;
+    for(const [i,f] of cell.ov){
+      const cl=_catchData.clinics[i]; if(!cl) continue;
+      const st=_vetStaffAt(cl.la,cl.lo);
+      sw+=_staffW(st&&st.n?st.n:2)*f; sf+=f;
+    }
+    if(sf>0) wBar=sw/sf;
+  }
+  let sh=0;
+  for(let n=0;n<cd.length;n++) sh+=cd[n]/(1+n*wBar);
+  return Math.max(0,Math.min(1,sh));
+}
 const EVAL_STRONG=0.22, EVAL_FLOOR=0.12;   // fair-fight scale (A_OWN=1.0): contested-market ceiling ~0.25-0.30, open-market ~0.6+
 // 'Strong' additionally requires REAL commercial fabric at the site: g.ret is the ABSOLUTE
 // grav-weighted retail mass within 1mi (audit separation: field-bad 76226 sites 0-1.0 vs real
@@ -8178,6 +8299,8 @@ async function _ensureEvalDemographics(){
   const have = Object.keys(incomeData).length || (typeof oppIncomeSnap!=='undefined' && Object.keys(oppIncomeSnap).length);
   if(!have){ try{ await fetchIncomeBatch([]); }catch(e){} } // all-TX income, cached, no choropleth paint
   try{ await ensureAgeData(); }catch(e){}                    // senior-skew damp input (best-effort)
+  try{ await ensureDogData(); }catch(e){}                    // pet model — the capture model's demand input
+  try{ await _loadCatchments(); }catch(e){}                  // drive-time catchments (metro capture model; graceful null)
 }
 async function _buildAreaZips(feat){
   const geo=await loadZipGeometry(); const bb=_evalBBox(feat); const out=[];
@@ -8331,8 +8454,19 @@ function _evalComputeAndRender(){
   const grid=[], landGrid=[];
   const _hasFut = evalFuture && evalData.resid.some(r=>r._fut);
   let zEx=0; // cells dropped by the zoning/landuse gate (residential/civic)
-  for(let la=bb.minLa-BUF_CELLS*stepLa+stepLa/2; la<bb.maxLa+BUF_CELLS*stepLa; la+=stepLa)
-    for(let lo=bb.minLo-BUF_CELLS*stepLo+stepLo/2; lo<bb.maxLo+BUF_CELLS*stepLo; lo+=stepLo){
+  // CAPTURE MODE (metroplex runs only). The candidate set becomes the drive-time catchment cells
+  // — a 0.61-mi grid already gated on two-source commercial fabric — instead of the 36x36 metro
+  // grid whose ~3-mi cell centres land mid-subdivision. Clinic evaluations never take this path.
+  const _metroBB=(bb.maxLa-bb.minLa)>0.9||(bb.maxLo-bb.minLo)>1.1;
+  const _capture=_metroBB && EVAL_MODEL==='capture' && !!_catchData && !_evalSubject;
+  // visits per ZIP from the app's OWN pet model, incl. the senior-age and low-income damps
+  const _catchVisits=z=>{ const dd=dogData[z]; return dd?((dd.est||0)*OPP_VISITS_PER_DOGHH+(dd.catEst||0)*OPP_VISITS_PER_CATHH):0; };
+  const _candPts=[];
+  if(_capture){ for(const c of _catchCellsIn(bb)) _candPts.push([c.la,c.lo,c]); }
+  else for(let la=bb.minLa-BUF_CELLS*stepLa+stepLa/2; la<bb.maxLa+BUF_CELLS*stepLa; la+=stepLa)
+    for(let lo=bb.minLo-BUF_CELLS*stepLo+stepLo/2; lo<bb.maxLo+BUF_CELLS*stepLo; lo+=stepLo) _candPts.push([la,lo,null]);
+  evalCaptureOn=_capture;
+    for(const [la,lo,_cc] of _candPts){
       const _inPoly=pointInGeoJSON(la,lo,feat);
       if(!_inPoly){           // outside the polygon → keep only the buffer ring (test ALL boundary segments — they can be long & sparse, so no lat-band prefilter)
         let dmin=Infinity;
@@ -8361,6 +8495,13 @@ function _evalComputeAndRender(){
       // no green area. If there's neither signal, the cell is not siteable (we don't guess).
       let siteable;
       if(zgate==='allow') siteable=true;                       // GREEN — commercial land
+      // CAPTURE MODE: the candidate already PASSED a commercial-fabric gate at build time, using
+      // COMPLETE data (5,905 dfw-retail points UNION 16,868 county vacant-commercial parcels).
+      // The runtime retail test here reads `evalData.retail`, which at a metro bbox is a CAPPED
+      // OSM fetch — a worse dataset re-filtering what a better one already approved. Measured: it
+      // cut 9,627 candidates to 433 (95%) and silently dropped the verified southeast-Dallas
+      // whitespace. Zoning EXCLUDE still applies above; only the retail-proximity test is skipped.
+      else if(_cc) siteable=true;
       else siteable=(hasRetail && nearRetail<SITE_COMM);       // else require BLUE — a real retail/commercial area
       // Gate-fail cells INSIDE the polygon stay alive as LAND-PLAY candidates when announced
       // development is in play (2026-07-15, user ask: rank land plays with the same logic as
@@ -8384,6 +8525,18 @@ function _evalComputeAndRender(){
       const affl=_cellAffl(la,lo); // per-cell ZIP demographics in area mode; constant in ZIP mode
       const ageF=_cellAgeF(la,lo); // senior-skew demand damp for the containing ZIP
       const _cell={la,lo,dem,demF,ret,comp,nearC,nearPE,nComp,nPE,affl,ageF,nearRoad,nearCls,aadt,aadtRoad,stepLa,stepLo,nearRetail,zone:zinfo?zinfo.label:null,zcity:zinfo?zinfo.city:null};
+      // Measured road-network demand REPLACES the crow-flies rooftop sum. Same field, so every
+      // downstream consumer (normalisation, bars, cards, CSV) is untouched — but `dem` is now
+      // decay-weighted annual VISITS inside the real 8/10/12/15-min drive polygons rather than a
+      // gravity sum over a disc. maxDem normalisation makes the unit change cancel.
+      if(_cc){ _cell.cc=_cc; _cell.cShare=_catchShare(_cc); _cell.cUncon=(_cc.cd&&_cc.cd[0])||0;
+               _cell.cRaw=_catchDecayed(_cc,_catchVisits);
+               _cell.cInc=_catchIncome(_cc); _cell.cSpend=_catchSpendF(_cell.cInc);
+               _cell.cReach=_cell.cRaw*_cell.cSpend;   // reachable visits the market can actually PAY for
+               // heatmap rect + hover hit-test read stepLa/stepLo — capture cells sit on the
+               // artifact's 0.61-mi grid, NOT the 36x36 metro step, or the surface draws 3-mi blocks
+               const _gm=(_catchData&&_catchData.grid)||0.61;
+               _cell.stepLa=_gm/69.0; _cell.stepLo=_gm/(69.0*Math.cos(la*Math.PI/180)); }
       if(siteable) grid.push(_cell); else landGrid.push(_cell);
     }
   // Dropped-site FORCED cell — the user's exact pin, scored with the identical formulas. It
@@ -8421,6 +8574,9 @@ function _evalComputeAndRender(){
     // Income still shows in the community line and still differentiates cells in AREA mode.
     const _roofN = Math.min(1,(g.dem+(g.demF||0))/maxDem);
     g.demandN = (hasResid ? (evalAreaMode ? 0.55*_roofN+0.45*g.affl : _roofN) : g.affl) * (tractsOn ? 1 : (g.ageF||1));   // ZIP ageF only as the non-tract fallback (min: a forced site cell may top the real-cell max)
+    // Capture mode: measured drive-time reach on an absolute anchor. The pet model already applied
+    // the senior-age and low-income damps per ZIP inside _catchVisits, so no ageF here (double-damp).
+    if(g.cReach!=null) g.demandN = Math.min(1, g.cReach/CATCH_REACH_FULL);
     g.retailN = hasRetail ? Math.min(1,g.ret/maxRet) : 0.5;
     // Road VISIBILITY: traffic volume on the frontage road (AADT) when a count is
     // near, else road class as a proxy. The drive-by / new-client revenue signal —
@@ -8439,6 +8595,11 @@ function _evalComputeAndRender(){
     //     0.17mi from a PE clinic (Double Oak vs Lantana) is proof of coexistence, not a 10% share.
     const _incW = (g.forced && _evalSubject && _evalSubject.dvm) ? _staffW(_evalSubject.dvm) : 1;
     g.share = (A_OWN*_incW)/(A_OWN*_incW + g.comp);
+    // Capture mode: the share is measured, not modelled from a distance-decayed disc — it is the
+    // household-weighted average of the per-household split among the clinics that can actually
+    // DRIVE to each household. The PE proximity cap still applies: it encodes new-build entry
+    // risk next to a corporate incumbent, which is a siting fact the road network does not know.
+    if(g.cShare!=null) g.share=g.cShare;
     if(g.nearPE < PE_NEAR_HARD && !(g.forced && _evalSubject)) g.share = Math.min(g.share, 0.10); // unwinnable sitting on top of a PE incumbent (0.10 ≡ old 0.20 on the fair-fight scale)
     g.lowComp = g.share; // alias: the "Low competition" bar now shows absolute winnable share
     // Core is MULTIPLICATIVE captured demand — what the site actually WINS. Demand can no longer
@@ -8454,6 +8615,7 @@ function _evalComputeAndRender(){
     const accessMult = (hasRoads||hasAADT) ? 0.65+0.40*g.accessN : 1;
     const retailBonus = hasRetail ? 0.88+0.24*g.retailN : 1;
     g.score = Math.max(0, Math.min(1, core*accessMult*retailBonus));
+    if(g.cReach!=null) g.winVis = g.cReach*g.share;   // the business quantity the score encodes
   }
   evalCells=grid;
   // ── Ranked land plays: same engine, retail term NEUTRAL (fabric assumed to arrive) ──
@@ -8465,6 +8627,7 @@ function _evalComputeAndRender(){
       const av = g.aadt>0 ? _aadtVis(g.aadt) : null;
       g.accessN = av!=null ? av : ((hasRoads||hasAADT) ? _clsVis(g.nearCls) : 0.5);
       g.share = A_OWN/(A_OWN + g.comp);
+      if(g.cShare!=null) g.share=g.cShare;
       if(g.nearPE < PE_NEAR_HARD) g.share = Math.min(g.share, 0.10);
       const accessMult = (hasRoads||hasAADT) ? 0.65+0.40*g.accessN : 1;
       g.score = Math.max(0, Math.min(1, g.demandN * Math.pow(Math.min(g.share,0.85), GAMMA) * accessMult));
@@ -8526,7 +8689,9 @@ function _evalComputeAndRender(){
   if(evalTopMode!=='none'){ const _keep=evalTop.filter(g=>g.tier!=='weak'); evalHiddenWeak=evalTop.length-_keep.length; evalTop=_keep; }
   evalShowWeak=false;
   evalMetroRun=_metroRun;
-  if(_metroRun) _metroSnapSites();   // ~3-mi cells: move each pin off the cell center onto commercial ground (see fn)
+  // Snap only applies to the COARSE metro grid. Capture-mode cells are 0.61 mi and already sit on
+  // commercial fabric by construction, so snapping would push a pin off the cell that was scored.
+  if(_metroRun && !evalCaptureOn) _metroSnapSites();
   _evalRenderLayers();
   _evalRenderSidebar();
   _evalRingSettle();                                // clinic mode: the evaluating spinner comes to rest
@@ -8646,7 +8811,7 @@ function _evalSitePopup(g,i){
   return `<div style="font-size:12.5px;min-width:180px">
     <b>${g.tier==='strong'?(evalMetroRun?'Recommended area':'Recommended site'):(evalMetroRun?'Area':'Site')} ${i+1}</b> · score ${_evalDisp(g.score)}/100${g.tier!=='strong'?' · <span style="color:#be123c;font-weight:700">below the recommendation bar</span>':''}<br>
     <span style="color:#64748b">${near}${z}</span>
-    ${evalMetroRun?`<br><span style="color:#475569;font-size:11px">~3-mi screening grain${g.snapMi?' · pin on the nearest commercial corridor':''} — </span><span style="cursor:pointer;font-size:11px;color:var(--navy);font-weight:700" onclick="metroRefine(${g.la},${g.lo})">Refine this area</span>`:''}
+    ${evalMetroRun?`<br><span style="color:#475569;font-size:11px">${evalCaptureOn?'drive-time capture model · 0.61-mi grid':'~3-mi screening grain'}${g.snapMi?' · pin on the nearest commercial corridor':''} — </span><span style="cursor:pointer;font-size:11px;color:var(--navy);font-weight:700" onclick="metroRefine(${g.la},${g.lo})">Refine this area</span>`:''}
     ${cannib?`<br><span style="color:#be123c;font-weight:600">${cannib}</span>`:''}
     <div style="margin-top:7px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
       <a href="https://www.google.com/maps/search/?api=1&query=${g.la},${g.lo}" target="_blank" rel="noopener" style="font-size:11px;color:var(--navy);font-weight:700;text-decoration:none">Open in Maps ↗</a>
@@ -8933,7 +9098,7 @@ function _evalRenderSidebar(){
         ${_leaseBlock(g)}
       </div>`;
     }
-    const metroNote=evalMetroRun?`<div style="font-size:10.5px;color:#475569;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:5px 9px;margin:6px 0 2px">~3-mile screening area${g.snapMi?` — pin placed on the nearest commercial corridor (${g.snapMi.toFixed(1)} mi off the cell center)`:''}. <b>Refine</b> runs the full parcel-level analysis here.</div>`:'';
+    const metroNote=evalMetroRun?`<div style="font-size:10.5px;color:#475569;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:5px 9px;margin:6px 0 2px">${evalCaptureOn?`Drive-time capture model${g.cReach?` — reaches <b>${Math.round(g.cReach).toLocaleString()}</b> distance-weighted visits/yr, ${Math.round((g.share||0)*100)}% winnable = <b>${Math.round(g.winVis||0).toLocaleString()}</b>/yr (~${((g.winVis||0)/DVM_VISIT_CAPACITY).toFixed(1)} DVMs)${g.cUncon>0.02?` · ${Math.round(g.cUncon*100)}% of households reached by no competitor`:''}${g.cSpend!=null&&g.cSpend<0.97?` · spend power ${Math.round(g.cSpend*100)}% (catchment median income $${Math.round((g.cInc||0)/1000)}k) — reach discounted accordingly`:''}`:''}.`:`~3-mile screening area${g.snapMi?` — pin placed on the nearest commercial corridor (${g.snapMi.toFixed(1)} mi off the cell center)`:''}.`} <b>Refine</b> runs the full parcel-level analysis here.</div>`:'';
     return `<div class="eval-card" onclick="evalFlyTo(${i})"${g.tier!=='strong'?' style="opacity:.92"':''}>
       <div class="eval-card-head"><span class="eval-rank"${g.tier!=='strong'?' style="background:#94a3b8"':''}>${i+1}</span><span class="eval-card-title">${evalMetroRun?'Area':'Site'} ${i+1}</span>${chipT}<span class="eval-score"${g.tier!=='strong'?' style="color:#64748b"':''}>${headline}</span></div>
       <div class="eval-why">${nearStr}${roadStr?' · '+roadStr:''}</div>
@@ -9185,7 +9350,7 @@ function _evalRenderSidebar(){
       </div>`; })()}
     ${speciesPrompt}
     <div class="eval-tabs">${_evalSubject?'':_tabBtn('sites','Sites',evalTop.length)+(evalNoLand?'':_tabBtn('land','Land',evalLandPlays.length))}${_tabBtn('layers','Layers',null)}${_tabBtn('data','Data',null)}</div>
-    ${_pane('sites', `${evalNoLand?`<div style="background:#f8fafc;border:1px solid #dbe3f0;border-radius:10px;padding:9px 12px;margin:8px 0"><div style="font-size:11.5px;font-weight:800;color:#1e3a8a">Land-play evaluation · parcel grain</div><div style="font-size:11px;color:#475569;margin-top:3px;line-height:1.5">Full engine on the corridor you picked — these are the buildable sites <b>inside</b> it. Nested land plays are off; you already chose the dirt.</div></div>`:''}${evalMetroRun?`<div style="background:#f8fafc;border:1px solid #dbe3f0;border-radius:10px;padding:9px 12px;margin:8px 0"><div style="font-size:11.5px;font-weight:800;color:#1e3a8a">Metroplex screening pass · ~3-mile grain</div><div style="font-size:11px;color:#475569;margin-top:3px;line-height:1.5">Each pin marks the best <b>area</b>, placed on the nearest commercial corridor — not a specific parcel. <b>⌖ Refine this area</b> on a card re-runs the full engine there with complete zoning + parcel data for parcel-level sites.</div></div>`:''}${verdictBanner}<div class="eval-cards">${hideCards?'':cards}</div>`)}
+    ${_pane('sites', `${evalNoLand?`<div style="background:#f8fafc;border:1px solid #dbe3f0;border-radius:10px;padding:9px 12px;margin:8px 0"><div style="font-size:11.5px;font-weight:800;color:#1e3a8a">Land-play evaluation · parcel grain</div><div style="font-size:11px;color:#475569;margin-top:3px;line-height:1.5">Full engine on the corridor you picked — these are the buildable sites <b>inside</b> it. Nested land plays are off; you already chose the dirt.</div></div>`:''}${evalMetroRun?(evalCaptureOn?`<div style="background:#f8fafc;border:1px solid #dbe3f0;border-radius:10px;padding:9px 12px;margin:8px 0"><div style="font-size:11.5px;font-weight:800;color:#1e3a8a">Metroplex pass · drive-time capture model</div><div style="font-size:11px;color:#475569;margin-top:3px;line-height:1.5">Demand and competition are measured on the <b>road network</b>, not as circles: households are counted inside real 8/10/12/15-minute drive polygons and distance-weighted, and share is the per-household split among the clinics that can actually drive to them. Candidates sit on a 0.61-mi commercial-fabric grid. <b>⌖ Refine this area</b> re-runs the parcel-level engine on a winner.</div></div>`:`<div style="background:#f8fafc;border:1px solid #dbe3f0;border-radius:10px;padding:9px 12px;margin:8px 0"><div style="font-size:11.5px;font-weight:800;color:#1e3a8a">Metroplex screening pass · ~3-mile grain</div><div style="font-size:11px;color:#475569;margin-top:3px;line-height:1.5">Each pin marks the best <b>area</b>, placed on the nearest commercial corridor — not a specific parcel. <b>⌖ Refine this area</b> on a card re-runs the full engine there with complete zoning + parcel data for parcel-level sites.</div></div>`):''}${verdictBanner}<div class="eval-cards">${hideCards?'':cards}</div>`)}
     ${_pane('land', `${_evalFutInfo?`<div class="cdx-note" style="margin:8px 2px 2px;font-size:10.5px">Demand includes ~${_evalFutInfo.reduce((t,x)=>t+Math.round(x.rem*x.conf),0).toLocaleString()} confidence-discounted announced homes (${_evalFutInfo.map(x=>x.n).join(', ')}). Toggle “Announced homes” off for today-only demand.</div>`:''}
     ${evalLandPlays.length?`<div class="cdx-note" style="margin:6px 2px 2px;font-size:10.5px">Ranked with the same demand + competition + road math as the numbered sites; the retail term is held neutral — the fabric arrives with the rooftops. Not leaseable today: these are buy-dirt positions.</div>
       ${evalLandPlays.map((lp,i)=>{ const homes=(lp.coms||[]).reduce((t,x)=>t+Math.round(x.rem*x.conf),0); const fabMi=(lp.nearRetail!=null&&isFinite(lp.nearRetail))?(lp.nearRetail/1609.34).toFixed(1):null; const corridor=(lp.coms&&lp.coms.length)?(_ceEsc(lp.coms[0].n)+' corridor'):'Future-demand corridor'; const futPct=Math.round(100*(lp.demF||0)/Math.max(1e-6,(lp.dem||0)+(lp.demF||0))); return `<div class="eval-card" style="cursor:default;border:1px solid #d7def0;background:#fff;margin:8px 0;padding:13px 14px">
@@ -9908,7 +10073,7 @@ function _evalResetState(){
   try{ _lpHaloClear(); }catch(e){}
   evalActive=false; evalAreaMode=false; evalAreaZips=null; evalSat=null; evalZoneStat=null; evalZoneCities=[]; evalParcelCounties=[];
   try{ _applyPinZoomVisibility(); }catch(e){}   // evalActive just flipped — restore the zoom-toast rules
-  evalTopMode=null; evalShowWeak=false; evalMetroRun=false; evalNoLand=false; evalSpeciesIgnored=false; evalSpeciesPrompted=false; _speciesModalClose();
+  evalTopMode=null; evalShowWeak=false; evalMetroRun=false; evalCaptureOn=false; evalNoLand=false; evalSpeciesIgnored=false; evalSpeciesPrompted=false; _speciesModalClose();
   _evalClearLayers(); _evalHideLegend(); _evalClearDrive();
   evalData={vets:[], retail:[], resid:[], roads:[], aadt:[], zoning:[], osmLU:[], parcels:[]}; evalDataOk={retail:false,roads:false,resid:false,aadt:false,zoning:false,parcels:false};
   evalCells=[]; evalTop=[]; evalCompsCache=[]; evalLandPlays=[]; _evalFutInfo=null; evalHiddenWeak=0; evalTab='sites'; _siteCardTabs={};

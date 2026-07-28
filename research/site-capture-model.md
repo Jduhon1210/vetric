@@ -335,6 +335,46 @@ Caveat kept honest: the gate omits the senior-age and low-income damps (extra Ce
 which only REDUCE demand — so the true figure sits slightly below 1.90, not above. This validates the
 DECAY CURVE, not the whole demand chain; W3 remains open.
 
+#### W6 — SPEND POWER (added 2026-07-27, user: "we still need to include how important household income is")
+
+Wiring the capture model re-opened the **vet-desert trap** the ZIP List closed in June. Raw
+road-network geometry ranks a market on EMPTINESS: southeast Dallas topped all of DFW on reach x
+share alone. The whitespace is REAL — verified directly against the shipped clinic data, **0 clinics
+within 3 miles, 1 within 5** (controls: Plano 17 within 3 mi, Frisco 21) — but ability to REACH a
+market and ability to PAY are different axes, and the capture score had dropped income entirely.
+
+**Literature-derived, and deliberately NOT the ZIP List's percentile `_util` curve.** The capture
+score encodes absolute winnable VISITS, so a percentile damper would mean something different in
+every region and would distort the visit count itself. Anchored in dollars instead:
+
+- **BLS Consumer Expenditure Survey** — top income quintile spends ~2.5-3x the bottom on pets,
+  driven by spend PER PET rather than pet count. Bottom/top ratio ~0.36.
+- That total already contains the ownership difference, which `_incDampF` models separately (0.85
+  floor). Netting it out leaves the utilisation+spend residual: **0.36 / 0.85 = 0.42**. Applying
+  both then reproduces the published 0.36 end to end instead of double-counting it.
+- **AVMA 2017 Pet Demographics** — 69% of dog owners under $20k see a vet annually vs 93% at
+  $100k+ (82% overall), so ~0.74 of the gap is participation and the remainder is spend per visit.
+- BLS puts the behavioural inflection at $65-75k; the curve passes through it near 0.70.
+
+`_catchSpendF(inc)` = clamp(0.42 + 0.58 x (inc - 25k)/85k, 0.42, 1.0). Unknown income -> 0.85 (a
+mild haircut, never a free pass). No boost above $110k — only poverty deflates, matching
+`_incDampF`'s asymmetry. Income is the **catchment's** decay- and household-weighted mean across
+every ZIP the site reaches, not the single ZIP it sits in.
+
+Effect on the live DFW run: SE Dallas raw reach 47,868 visits/yr -> **31,653** after a 0.66 spend
+multiplier, and it stays #1 at 96/100 — surviving on economics rather than on emptiness, with four
+affluent markets now competing directly against it instead of being buried by it.
+
+#### Wiring defect found and fixed in the same pass
+The runtime siting gate re-tested every candidate for retail within 280 m using `evalData.retail` —
+a CAPPED OSM fetch at metro bbox — even though the candidate had already passed a commercial-fabric
+gate at build time built from COMPLETE data (5,905 dfw-retail points UNION 16,868 county
+vacant-commercial parcels). A worse dataset was re-filtering what a better one had approved:
+**9,627 candidates cut to 433 (95%)**, and the verified SE Dallas whitespace was silently dropped
+before scoring. Capture-mode cells now skip the retail-proximity test (zoning EXCLUDE still
+applies). Scored cells went 433 -> **8,830**, and the offline prediction and the in-app result then
+agreed exactly — which is what confirms the wiring is faithful to the validated model.
+
 ### W2 — Overlap is area-weighted, not household-weighted
 `overlapFrac` samples the candidate ring on a uniform grid and asks what share of that AREA a
 competitor also covers. But households are not uniform inside a catchment, so a competitor covering
