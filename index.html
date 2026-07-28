@@ -7775,7 +7775,7 @@ function _catchIncome(cell){
 let _catchData=null, _catchP=null, _catchIdx=null;
 function _loadCatchments(){
   if(_catchP) return _catchP;
-  _catchP=fetch('dfw-catchments.json?v=3',{cache:'force-cache'}).then(r=>r.ok?r.json():null).then(d=>{
+  _catchP=fetch('dfw-catchments.json?v=5',{cache:'force-cache'}).then(r=>r.ok?r.json():null).then(d=>{
     if(!d||!d.cells) return null;
     _catchData=d;
     _catchIdx=new Map();                              // 0.01 deg buckets -> cells, for nearest lookup
@@ -7855,13 +7855,22 @@ const _catchAttract=n=>Math.sqrt(Math.max(0.05,n)/2.5);
 // until competitor decay moves INSIDE the Huff share (so two equally-distant clinics split 50/50
 // rather than both reading as uncontested) — see the register entry. The 20/25-min bands are BUILT
 // and ship in the artifact; this is the only line gating their use.
-const CATCH_MAX_BAND=4;   // 4 = credit demand out to 15 min; 6 = the full 25 min, after the redesign
+// 5 = credit demand out to 20 minutes. Chosen EMPIRICALLY: with decay in the share, the model
+// tracks actual rosters at p25 1.12 / p50 1.06 / p75 0.95 / p90 0.89 at 20 min, against
+// 0.52-0.62 at 15 min (too tight) and 1.19-1.83 at 25 min (too loose). 20 min is also ~73% of a
+// clientele by the survey distribution, inside the primary+secondary trade-area convention.
+const CATCH_MAX_BAND=5;
+// Demand is NOT decayed here. Decay lives entirely in the attraction term inside _catchShareBand,
+// which is orthodox Huff — a household makes its ~2.4 visits/dog-HH wherever it lives, and distance
+// decides WHICH clinic gets them, not whether the visits happen. Multiplying demand by W[b] as well
+// counts distance twice: measured, that double-decay drove the model to 0.27-0.31x actual rosters,
+// a 3x undershoot, uniformly across the distribution.
 function _catchBandDemand(cell, valOf){
-  const W=_catchUrbanClass(cell).w, out=[];
-  for(let b=0;b<W.length;b++){
+  const out=[];
+  for(let b=0;b<CATCH_BANDS.length;b++){
     let t=0;
     if(b<CATCH_MAX_BAND) for(const [z,f] of (cell.b[b]||[])) t+=f*(valOf(z)||0);
-    out.push(t*W[b]);
+    out.push(t);
   }
   return out;
 }
@@ -7870,9 +7879,17 @@ function _catchBandDemand(cell, valOf){
 // is then averaged — NOT 1/(1+sum-of-overlaps), which over-penalises by Jensen's inequality.
 function _catchShareBand(cell, b, n, wBar){
   const cd=cell.cd && cell.cd[b]; if(!cd||!cd.length) return null;
-  const A=_catchAttract(n);
+  const W=_catchUrbanClass(cell).w;
+  // SYMMETRIC HUFF (2026-07-28). Our attraction is decayed by OUR travel time to the household, and
+  // cd[b][i] buckets the EFFECTIVE competitor weight — each rival already decayed by ITS OWN travel
+  // time using the same curve. Two equally distant clinics therefore split 50/50 instead of both
+  // reading uncontested, which is what broke the 20/25-minute bands.
+  // NOT double-decay: the W[b] on demand is PARTICIPATION (a distant household uses less care at
+  // all), while the W[b] here is relative ATTRACTION (who wins the visits they do make).
+  const A=_catchAttract(n)*W[b];
+  const step=(_catchData&&_catchData.kStep)||0.5;
   let sh=0;
-  for(let k=0;k<cd.length;k++) sh+=cd[k]*A/(A + k*wBar);
+  for(let i=0;i<cd.length;i++) sh+=cd[i]*A/(A + wBar*(i*step));
   return Math.max(0,Math.min(1,sh));
 }
 // Visits winnable at size n, summed across bands. Measuring competition on the 10-minute ring while

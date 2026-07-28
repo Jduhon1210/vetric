@@ -428,11 +428,37 @@ async function computeSet(list, store, label){
   const clinicRecs=Object.entries(ck.clinics).filter(([,r])=>!r.fail);
   // Competitor references are the clinic's INDEX in the shipped clinics array, not its cell key —
   // at ~30 competitors per cell across thousands of cells the 12-char keys dominated the file.
-  const clinicIdx=clinicRecs.map(([k,r],i)=>({ i, k, la:r.la, lo:r.lo, pe:r.pe, ring:r.r10, bb:ringBBox(r.r10) }));
+  // SYMMETRY (2026-07-28, user: "competitors represented by the same rings a demand site would
+  // have with the same distance decay algorithms"). Previously a competitor was a single 10-minute
+  // ring — a binary in/out test — while a candidate's demand spanned 25 minutes. A household 20 min
+  // from the site sat outside nearly every competitor ring and read as UNCONTESTED when it was not.
+  // Measured cost: the model read 1.4-1.8x actual rosters instead of the ~0.7x incumbency-consistent
+  // level, worst where competitors are sparse. Each competitor now carries ALL SIX of its own rings
+  // and is weighted by the SAME decay curve a site uses, so two equally distant clinics split 50/50
+  // instead of both reading uncontested.
+  const clinicIdx=clinicRecs.map(([k,r],i)=>({ i, k, la:r.la, lo:r.lo, pe:r.pe,
+    ring:r['r'+(BUDGETS[BUDGETS.length-1]/60)], bb:ringBBox(r['r'+(BUDGETS[BUDGETS.length-1]/60)]),
+    rings:BUDGETS.map(b=>r['r'+(b/60)]) }));
   buildRaster();
   const HD = await loadHouseholds();
   // Precompute each clinic's ray reaches once — reused against every candidate cell.
-  for(const c of clinicIdx){ c.reach=reachOf(c.ring, c.la, c.lo); c.mLon=69.0*Math.cos(c.la*Math.PI/180); }
+  for(const c of clinicIdx){
+    c.reach=reachOf(c.ring, c.la, c.lo);                       // outermost, for the bbox/skip test
+    c.reaches=c.rings.map(rg=>reachOf(rg, c.la, c.lo));        // all six, for the decay weight
+    c.mLon=69.0*Math.cos(c.la*Math.PI/180);
+  }
+  // The decay curve applied to a competitor is the SAME one applied to the site. Urbanicity is a
+  // runtime classification (it needs the app's household model), so the build uses the SUBURBAN
+  // reference curve — the median class, 33% of DFW cells. Documented approximation: the dominant
+  // correction is that competitors are decay-weighted AT ALL rather than a binary 10-min test.
+  const CBANDS=[[0.5,8],[8,10],[10,12],[12,15],[15,20],[20,25]];
+  const CW=(function(beta,theta){
+    const w=CBANDS.map(([t1,t2])=>{ let n=0,q=0;
+      for(let t=t1;t<t2;t+=0.02){ n+=(1/(1+Math.pow(t/theta,beta)))*t*0.02; q+=t*0.02; }
+      return n/q; });
+    return w.map(x=>x/w[0]);
+  })(2.22, 4.0);
+  const KBUCKETS=17, KSTEP=0.5;   // effective competitor weight, 0 to 8 in 0.5 steps
 
   const cells={};
   let n=0;
@@ -458,7 +484,7 @@ async function computeSet(list, store, label){
     // many closer clinics. Measured effect of that mismatch: the model read 1.4-1.5x actual rosters
     // instead of the ~0.7x incumbency-consistent level, and rural cells (largest outer rings
     // relative to inner) inflated 9.4x. Each band now splits against the clinics that reach IT.
-    const covHH=Array.from({length:NB},()=>new Array(9).fill(0));
+    const covHH=Array.from({length:NB},()=>new Array(17).fill(0));
     const mktB=new Array(NB).fill(0);
     for(let dy=-rMax; dy<=rMax; dy+=SAMPLE_MI){
       for(let dx=-rMax; dx<=rMax; dx+=SAMPLE_MI){
@@ -474,16 +500,24 @@ async function computeSet(list, store, label){
           const w=(HD[zip]||0)*SA;                  // W2: weight by households, not area
           if(w>0){
             mktHH+=w; mktB[band]+=w;
-            let nCov=0;
-            for(const c of comps)
-              if(inStar((la-c.la)*69.0,(lo-c.lo)*c.mLon,c.reach)){ ovHH.set(c.i,(ovHH.get(c.i)||0)+w); nCov++; }
+            // Effective competitor weight at THIS household: each rival contributes the decay
+            // weight of whichever of ITS OWN rings reaches here — the same curve the site uses.
+            let K=0;
+            for(const c of comps){
+              const dy2=(la-c.la)*69.0, dx2=(lo-c.lo)*c.mLon;
+              if(!inStar(dy2,dx2,c.reaches[c.reaches.length-1])) continue;   // outside even 25 min
+              let cb=c.reaches.length-1;
+              for(let q2=0;q2<c.reaches.length-1;q2++) if(inStar(dy2,dx2,c.reaches[q2])){ cb=q2; break; }
+              K+=CW[cb];
+              ovHH.set(c.i,(ovHH.get(c.i)||0)+w*CW[cb]);
+            }
             // Household-weighted distribution of HOW MANY competitors reach each household.
             // Summing per-competitor overlaps and taking 1/(1+sum) is NOT the same as averaging
             // the per-household split — by Jensen's inequality it systematically over-penalises.
             // The split has to happen per household and then be aggregated, which is build-time
             // information. Shipping the distribution lets the app do the correct average while
             // still applying its own runtime roster weights.
-            covHH[band][Math.min(nCov,8)] += w;
+            covHH[band][Math.min(KBUCKETS-1, Math.round(K/KSTEP))] += w;
           }
         }
       }
@@ -509,7 +543,10 @@ async function computeSet(list, store, label){
     // cd[band][n] = household-weighted share of THAT BAND's households reached by exactly n
     // competitors. Per band, because a 20-minute household faces a different competitive set than
     // a 5-minute one and must not inherit the inner ring's share.
-    cell.cd = covHH.map((arr,b)=> mktB[b]>0 ? arr.map(w=>+(w/mktB[b]).toFixed(3)) : new Array(9).fill(0));
+    // cd[band][i] = household-weighted share of that band's households facing an EFFECTIVE
+    // competitor weight of i*0.5 (decay-weighted, not a raw count). Runtime reads bucket i as
+    // K = i*0.5 and computes A*W[band] / (A*W[band] + wBar*K).
+    cell.cd = covHH.map((arr,b)=> mktB[b]>0 ? arr.map(w=>+(w/mktB[b]).toFixed(3)) : new Array(17).fill(0));
     const ov=[];
     if(mktHH>0) for(const [i,w] of ovHH){ const f=w/mktHH; if(f>0.03) ov.push([i,+f.toFixed(2)]); }
     ov.sort((a,b)=>b[1]-a[1]);
@@ -519,8 +556,10 @@ async function computeSet(list, store, label){
     cells[k]=cell;
     if(++n%400===0) process.stdout.write(`  derived ${n}…\n`);
   }
-  const doc={ v:4, built:new Date().toISOString().slice(0,10), engine:'osrm', rays:RAYS,
-    budgets:BUDGETS, grid:GRID_MI, bbox:DFW, sampleMi:SAMPLE_MI,
+  const doc={ v:5, built:new Date().toISOString().slice(0,10), engine:'osrm', rays:RAYS,
+    budgets:BUDGETS, grid:GRID_MI, bbox:DFW, sampleMi:SAMPLE_MI, kStep:0.5,
+    // v5: competitors carry all six of their OWN rings and are decay-weighted with the same curve a
+    //     site uses; cd[band][i] buckets EFFECTIVE competitor weight (i*0.5), not a raw count.
     // v4: `cd` is PER BAND (cd[band][n]); competition spans the whole catchment, not the 10-min ring.
     // v3: cells carry `b` = SIX DISJOINT band ZIP mixes (0-8, 8-10, 10-12, 12-15, 15-20, 20-25 min) instead of
     // four nested cumulative mixes; `ov` is HOUSEHOLD-weighted not area-weighted; and `cd` is the

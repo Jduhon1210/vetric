@@ -533,6 +533,44 @@ exurban <600, suburban <1400, urban core above — giving 24% / 31% / 33% / 13% 
 non-uniform and front-loaded where the rings actually live. This invalidates the v2 checkpoint, so
 v3 is a full recompute of all 911 clinics and 9,627 cells.
 
+#### W7 FINAL — symmetric Huff, decay in the SHARE only (2026-07-28, user: "competitors represented by the same rings a demand site would have with the same distance decay algorithms")
+
+Two structural errors, fixed together. The model now tracks actual rosters at **0.89-1.12 across the
+whole distribution** — against v2's 0.62-0.77 collapsing at the top — with Spearman rho 0.64, so it
+genuinely re-orders rather than lifting.
+
+**Error 1 — asymmetry.** A competitor was ONE 10-minute ring, a binary in/out test, while a
+candidate's demand spanned 25 minutes. A household 20 min from the site sat outside nearly every
+competitor ring and read as UNCONTESTED. Each competitor now carries all six of its OWN rings and is
+weighted by the same curve a site uses, so two equally distant clinics split 50/50. `cd[band][i]`
+buckets EFFECTIVE competitor weight (i x 0.5, decay-weighted) instead of a raw count.
+
+**Error 2 — double decay, and it was mine.** With decay inside the share, ALSO multiplying demand by
+`W[b]` counts distance twice. A household makes its ~2.4 visits/dog-HH wherever it lives; distance
+decides WHICH clinic gets them, not whether the visits happen. Measured cost of the double-decay:
+**0.27-0.31x actual rosters — a 3x undershoot, uniform across the distribution.** That uniformity is
+what identified it as a level error rather than a shape error.
+
+| variant | p25 | p50 | p75 | p90 | ceiling |
+|---|---|---|---|---|---|
+| decay in both places | 0.27 | 0.31 | 0.30 | 0.28 | 4.2 |
+| share only, 15 min | 0.52 | 0.62 | 0.62 | 0.57 | 6.4 |
+| **share only, 20 min (SHIPPED)** | **1.12** | **1.06** | **0.95** | **0.89** | **9.1** |
+| share only, 25 min | 1.83 | 1.56 | 1.27 | 1.19 | 11.5 |
+
+`CATCH_MAX_BAND=5` credits demand to 20 minutes — chosen empirically, and independently ~73% of a
+clientele by the survey distribution, inside the primary+secondary trade-area convention. The
+25-minute band ships in the artifact and is one constant away.
+
+**On the target ratio.** Earlier entries argued ~0.7x was correct because the model predicts a NEW
+entrant while an incumbent has years of client base. That reasoning belonged to the FIXED 2.5-DVM
+probe. With a properly sized entrant and symmetric competition the equilibrium size IS what a mature
+market supports, so ~1.0 is the right target and 0.89-1.12 is a good fit.
+
+**Documented approximation:** urbanicity is a runtime classification (it needs the app's household
+model), so the BUILD weights competitors with the suburban reference curve — the median class, 33%
+of DFW cells. Per-class competitor curves are a refinement, not a correction.
+
 #### W7 RESULT — bands BUILT, gated at 15 min pending a Huff redesign (2026-07-27)
 
 The 6-band artifact is built and validated structurally (0 malformed, 0 ZIP over-coverage, ring
