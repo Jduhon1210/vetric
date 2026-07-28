@@ -7785,21 +7785,69 @@ function _catchDecayed(cell, valOf){
 // `wBar` scales each competitor by roster strength, read at RUNTIME from `ov` indices so analyst
 // overrides stay live. Without it a solo clinic and a 6-DVM hospital would count identically —
 // the gravity engine weights by _staffW and the capture path must not regress against it.
-function _catchShare(cell){
-  const cd=cell.cd; if(!cd||!cd.length) return null;
-  let wBar=1;
-  if(cell.ov&&cell.ov.length&&_catchData&&_catchData.clinics){
-    let sw=0, sf=0;
-    for(const [i,f] of cell.ov){
-      const cl=_catchData.clinics[i]; if(!cl) continue;
-      const st=_vetStaffAt(cl.la,cl.lo);
-      sw+=_staffW(st&&st.n?st.n:2)*f; sf+=f;
-    }
-    if(sf>0) wBar=sw/sf;
+// Mean competitor strength in this cell's market, roster-weighted at RUNTIME from the `ov` indices
+// so analyst overrides stay live.
+function _catchWBar(cell){
+  if(!(cell.ov&&cell.ov.length&&_catchData&&_catchData.clinics)) return 1;
+  let sw=0, sf=0;
+  for(const [i,f] of cell.ov){
+    const cl=_catchData.clinics[i]; if(!cl) continue;
+    const st=_vetStaffAt(cl.la,cl.lo);
+    sw+=_staffW(st&&st.n?st.n:2)*f; sf+=f;
   }
+  return sf>0? sw/sf : 1;
+}
+// Capture share for an entrant OF SIZE n, from the household-weighted competitor-count
+// distribution. cd[k] is the share of this cell's households reached by exactly k competitors, so
+// the split happens per household and is then averaged — NOT 1/(1+sum-of-overlaps), which
+// over-penalises by Jensen's inequality (measured: the correct form is 1.91x the aggregate one).
+// Attraction of an entrant OF SIZE n. Deliberately NOT _staffW: that function carries two things
+// which are correct for an OBSERVED competitor and wrong for a solved-for entrant —
+//   (a) an "unknown roster" sentinel (n<1 -> 1.0), which makes it NON-MONOTONIC across fractional
+//       sizes (_staffW(0.5)=1.0 but _staffW(1)=0.8) and broke the fixed point outright;
+//   (b) a [0.8,1.8] clamp that exists because the roster SCRAPE undercounts JS-rendered team pages
+//       — a measurement-error guard on observed data, not a statement about how attraction scales.
+// The entrant's size is a free variable we are solving for, not an observation, so it carries
+// neither. Same sqrt(n/2.5) shape and same centring (a 2.5-DVM practice = 1.0) as _staffW, so
+// entrant and competitors remain directly comparable.
+const _catchAttract=n=>Math.sqrt(Math.max(0.05,n)/2.5);
+function _catchShareAt(cell, n, wBar){
+  const cd=cell.cd; if(!cd||!cd.length) return null;
+  const A=_catchAttract(n);
   let sh=0;
-  for(let n=0;n<cd.length;n++) sh+=cd[n]/(1+n*wBar);
+  for(let k=0;k<cd.length;k++) sh+=cd[k]*A/(A + k*wBar);
   return Math.max(0,Math.min(1,sh));
+}
+// ── SIZED ENTRANT (2026-07-27, user: "the best sites would support higher revenue clinics") ──
+// The entrant used to be a FIXED 2.5-DVM probe, so the model was really asking "how much could a
+// small clinic win here" and was structurally unable to answer "this supports a 7-doctor practice".
+// Measured against 576 clinics with scraped rosters, it tracked the median (1.9 vs 2.0) and then
+// collapsed: p75 0.64x, p90 0.45x, ceiling 4.8 DVM against an observed 20. Meanwhile we already
+// size every COMPETITOR via _staffW — sizing every rival but not ourselves is an inconsistency in
+// the model, not a modelling choice.
+//
+// Orthodox Huff: attraction is a property of the facility, so solve the fixed point —
+//     share(n) = A(n)/(A(n)+k*wBar)   summed over the cd[k] buckets,  A(n)=_staffW(n)
+//     find n where   reach * share(n) = n * DVM_VISIT_CAPACITY
+// i.e. the size at which a practice can fill exactly what it can win. The root is UNIQUE: share
+// rises monotonically but is BOUNDED above by 1, so reach*share(n) is bounded by reach, while
+// capacity n*DVM_VISIT_CAPACITY grows without limit — they cross exactly once. No tuning knob,
+// nothing to game. (Verified numerically: share monotonic in n, and at the solved size
+// reach*share == n*capacity to 0 decimal places.)
+// Effect: ceiling 4.8 -> 7.7 DVM, and winners shift toward dense affluent markets (top-5 mean
+// catchment income $96k -> $100k) because a fixed small entrant was being crushed precisely where
+// a bigger practice would be needed to compete.
+// KNOWN AND ACCEPTED: this lowers the median slightly (1.9 -> 1.5) because a small entrant in a
+// weak market now correctly sizes DOWN. That is more truthful, not a regression.
+function _catchEquilibrium(cell, reach, wBar){
+  if(!(reach>0)) return 0;
+  let lo=0.05, hi=40;   // lo matches _catchAttract's floor so weak cells converge instead of clamping
+  for(let i=0;i<44;i++){
+    const mid=(lo+hi)/2, sh=_catchShareAt(cell,mid,wBar);
+    if(sh==null) return 0;
+    if(reach*sh > mid*DVM_VISIT_CAPACITY) lo=mid; else hi=mid;
+  }
+  return (lo+hi)/2;
 }
 const EVAL_STRONG=0.22, EVAL_FLOOR=0.12;   // fair-fight scale (A_OWN=1.0): contested-market ceiling ~0.25-0.30, open-market ~0.6+
 // 'Strong' additionally requires REAL commercial fabric at the site: g.ret is the ABSOLUTE
@@ -8529,10 +8577,13 @@ function _evalComputeAndRender(){
       // downstream consumer (normalisation, bars, cards, CSV) is untouched — but `dem` is now
       // decay-weighted annual VISITS inside the real 8/10/12/15-min drive polygons rather than a
       // gravity sum over a disc. maxDem normalisation makes the unit change cancel.
-      if(_cc){ _cell.cc=_cc; _cell.cShare=_catchShare(_cc); _cell.cUncon=(_cc.cd&&_cc.cd[0])||0;
+      if(_cc){ _cell.cc=_cc; _cell.cUncon=(_cc.cd&&_cc.cd[0])||0;
                _cell.cRaw=_catchDecayed(_cc,_catchVisits);
                _cell.cInc=_catchIncome(_cc); _cell.cSpend=_catchSpendF(_cell.cInc);
                _cell.cReach=_cell.cRaw*_cell.cSpend;   // reachable visits the market can actually PAY for
+               _cell.cWBar=_catchWBar(_cc);
+               _cell.cEq=_catchEquilibrium(_cc,_cell.cReach,_cell.cWBar);        // supportable practice size
+               _cell.cShare=_catchShareAt(_cc,_cell.cEq,_cell.cWBar);            // share AT that size
                // heatmap rect + hover hit-test read stepLa/stepLo — capture cells sit on the
                // artifact's 0.61-mi grid, NOT the 36x36 metro step, or the surface draws 3-mi blocks
                const _gm=(_catchData&&_catchData.grid)||0.61;
@@ -8615,7 +8666,14 @@ function _evalComputeAndRender(){
     const accessMult = (hasRoads||hasAADT) ? 0.65+0.40*g.accessN : 1;
     const retailBonus = hasRetail ? 0.88+0.24*g.retailN : 1;
     g.score = Math.max(0, Math.min(1, core*accessMult*retailBonus));
-    if(g.cReach!=null) g.winVis = g.cReach*g.share;   // the business quantity the score encodes
+    // Capture mode: the score IS the supportable practice size. By the fixed point, winnable
+    // visits == cEq * DVM_VISIT_CAPACITY exactly, and CATCH_REACH_FULL is 10x that capacity — so
+    // score = cEq/10, i.e. a ten-doctor site reads 1.0 and EVAL_STRONG 0.22 is a 2.2-DVM practice.
+    // Same meaning as before the sized entrant, so every threshold and _evalDisp anchor still holds.
+    if(g.cEq!=null){
+      g.winVis = g.cEq*DVM_VISIT_CAPACITY;
+      g.score = Math.max(0, Math.min(1, (g.winVis/CATCH_REACH_FULL)*accessMult*retailBonus));
+    }
   }
   evalCells=grid;
   // ── Ranked land plays: same engine, retail term NEUTRAL (fabric assumed to arrive) ──
@@ -9098,7 +9156,7 @@ function _evalRenderSidebar(){
         ${_leaseBlock(g)}
       </div>`;
     }
-    const metroNote=evalMetroRun?`<div style="font-size:10.5px;color:#475569;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:5px 9px;margin:6px 0 2px">${evalCaptureOn?`Drive-time capture model${g.cReach?` — reaches <b>${Math.round(g.cReach).toLocaleString()}</b> distance-weighted visits/yr, ${Math.round((g.share||0)*100)}% winnable = <b>${Math.round(g.winVis||0).toLocaleString()}</b>/yr (~${((g.winVis||0)/DVM_VISIT_CAPACITY).toFixed(1)} DVMs)${g.cUncon>0.02?` · ${Math.round(g.cUncon*100)}% of households reached by no competitor`:''}${g.cSpend!=null&&g.cSpend<0.97?` · spend power ${Math.round(g.cSpend*100)}% (catchment median income $${Math.round((g.cInc||0)/1000)}k) — reach discounted accordingly`:''}`:''}.`:`~3-mile screening area${g.snapMi?` — pin placed on the nearest commercial corridor (${g.snapMi.toFixed(1)} mi off the cell center)`:''}.`} <b>Refine</b> runs the full parcel-level analysis here.</div>`:'';
+    const metroNote=evalMetroRun?`<div style="font-size:10.5px;color:#475569;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:5px 9px;margin:6px 0 2px">${evalCaptureOn?`Drive-time capture model${g.cReach?` — reaches <b>${Math.round(g.cReach).toLocaleString()}</b> distance-weighted visits/yr, ${Math.round((g.share||0)*100)}% winnable at equilibrium = <b>${Math.round(g.winVis||0).toLocaleString()}</b>/yr, supporting a <b>~${((g.winVis||0)/DVM_VISIT_CAPACITY).toFixed(1)}-doctor</b> practice${g.cUncon>0.02?` · ${Math.round(g.cUncon*100)}% of households reached by no competitor`:''}${g.cSpend!=null&&g.cSpend<0.97?` · spend power ${Math.round(g.cSpend*100)}% (catchment median income $${Math.round((g.cInc||0)/1000)}k) — reach discounted accordingly`:''}`:''}.`:`~3-mile screening area${g.snapMi?` — pin placed on the nearest commercial corridor (${g.snapMi.toFixed(1)} mi off the cell center)`:''}.`} <b>Refine</b> runs the full parcel-level analysis here.</div>`:'';
     return `<div class="eval-card" onclick="evalFlyTo(${i})"${g.tier!=='strong'?' style="opacity:.92"':''}>
       <div class="eval-card-head"><span class="eval-rank"${g.tier!=='strong'?' style="background:#94a3b8"':''}>${i+1}</span><span class="eval-card-title">${evalMetroRun?'Area':'Site'} ${i+1}</span>${chipT}<span class="eval-score"${g.tier!=='strong'?' style="color:#64748b"':''}>${headline}</span></div>
       <div class="eval-why">${nearStr}${roadStr?' · '+roadStr:''}</div>

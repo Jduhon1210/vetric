@@ -375,6 +375,62 @@ before scoring. Capture-mode cells now skip the retail-proximity test (zoning EX
 applies). Scored cells went 433 -> **8,830**, and the offline prediction and the in-app result then
 agreed exactly — which is what confirms the wiring is faithful to the validated model.
 
+#### W4a — SIZED ENTRANT (2026-07-27, user: "the best sites would support higher revenue clinics")
+
+**The user was right, and the miss was mine.** My W1 validation checked ONE point of the
+distribution (median 1.90 model vs 2.0 roster), declared the curve validated, and moved on. Checking
+the whole distribution against 576 clinics with scraped rosters shows the model tracked the median
+and then collapsed:
+
+| | p25 | p50 | p75 | p90 | max |
+|---|---|---|---|---|---|
+| fixed 2.5-DVM probe | 1.2 | 1.9 | 2.6 | 3.1 | 4.8 |
+| actual roster | 1.0 | 2.0 | 4.0 | 7.0 | 25 |
+| ratio | — | 0.95 | **0.64** | **0.45** | — |
+
+**Cause is structural, not calibration.** `A_OWN` was a CONSTANT — "one more typical 2-3 DVM
+clinic" — so the model was really asking *"how much could a small clinic win here"* and was
+incapable of returning "this supports seven doctors". Meanwhile we already size every COMPETITOR
+through `_staffW`. Sizing every rival but not ourselves is an inconsistency in the model.
+
+**Fix — orthodox Huff with a fixed-point solve.** Attraction is a property of the facility:
+`share(n) = A(n)/(A(n)+k*wBar)` over the `cd[k]` buckets; solve for `reach*share(n) = n*3200`, the
+size at which a practice fills exactly what it can win. The root is unique: share rises but is
+bounded by 1, so `reach*share(n)` is bounded while capacity grows without limit — exactly one
+crossing. No tuning knob.
+
+**Two confounds found and removed on the way:**
+1. *Measurement, not model* — the roster's top end included ER/urgent-care practices that draw
+   regionally rather than from a 15-minute GP catchment (max=25 is an urgent care). Excluding them
+   moved the p90 ratio 0.45 -> 0.62 on its own. This was my measurement error, not a model gain.
+2. *A real bug the verification caught* — the solver first used `_staffW` for the entrant, which is
+   NON-MONOTONIC across fractional sizes (`_staffW(0.5)=1.0` but `_staffW(1)=0.8`, because of its
+   "unknown roster" sentinel) and clamps to [0.8,1.8] to guard against roster-scrape undercounting.
+   Both are correct for an OBSERVED competitor and wrong for a solved-for entrant. The fixed point
+   landed on nonsense (0.42 DVM) until `_catchAttract` was split out: same sqrt(n/2.5) shape and
+   centring, no sentinel, no measurement clamp. Verified monotonic, and the identity
+   `reach*share == n*capacity` holds to 0 decimal places at the solution.
+
+**Result (live DFW):** ceiling 4.8 -> 7.7 DVM. Ratios are now roughly UNIFORM at ~0.65-0.76 across
+the distribution instead of 0.95 at the median collapsing to 0.45 at p90 — a shape-correct model
+with a known scale factor, which is far more useful than one right in the middle and wrong at both
+ends. Dense high-reach markets became competitive for the first time: a Plano/Frisco cell reaching
+105,658 visits at only 14% share now supports 4.7 doctors.
+
+**The residual ~0.7 ratio is probably CORRECT and should not be tuned away.** The model predicts
+what a NEW entrant can win; an incumbent has a client base built over years. That gap is the
+incumbency premium, and a site-selection model should not claim to predict decades of reputation
+from geography. Honest target is matching p75, not the max.
+
+**KNOWN AND ACCEPTED:** this lowers the median (1.9 -> 1.5) because a small entrant in a weak market
+now correctly sizes DOWN.
+
+**NOT fixed by this:** the user's second intuition, that the best sites should sit in higher-income
+areas. Top-5 mean catchment income is $89k against a DFW median of $95k — the sized entrant made
+dense MID-income markets competitive rather than tilting toward affluence. Shifting that would be a
+deliberate weighting preference, not a literature-derived correction, so it is left as an explicit
+open choice rather than quietly tuned into `_catchSpendF`.
+
 ### W2 — Overlap is area-weighted, not household-weighted
 `overlapFrac` samples the candidate ring on a uniform grid and asks what share of that AREA a
 competitor also covers. But households are not uniform inside a catchment, so a competitor covering
