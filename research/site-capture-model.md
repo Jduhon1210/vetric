@@ -564,6 +564,73 @@ doctors, urbanicity mix 24% rural / 31% exurban / 33% suburban / 13% urban.
 **Trade-off accepted:** a `dfw-pipeline.json` refresh now needs a derive rerun (~25 min, no OSRM).
 Cadence is 30 days.
 
+#### W4 / W5 — BOTH TESTED AND REJECTED (2026-07-28, multi-agent research pass)
+
+Neither is a fix path any more. Do not re-litigate without the new evidence named at the end of each.
+
+**W4 — attractiveness beyond size: REJECTED.** The decisive test is the mechanism one: if rating
+drove CAPTURE, a clinic surrounded by high-rated rivals must be SUPPRESSED. Measured on 619 GP
+clinics with scraped rosters, controlling for urbanicity + catchment income + modelled size, it comes
+back **WRONG-SIGNED** — neighbour rating b=+0.638 (t=3.30), *three times* the own-rating coefficient
+(+0.214, t=2.89). Rating is a neighbourhood effect, not a facility-competition effect. Under the only
+Huff-consistent specification (own minus neighbourhood mean) the coefficient collapses 0.302 -> 0.162
+and R2 rises 0.5666 -> 0.5706 on the identical sample: **+0.4% of residual variance**. Applied to all
+9,627 cells at a deliberately over-generous 0.30/star clamp, Spearman rank correlation is **0.99851**
+with 48/50 of the top 50 unchanged. Reviews (t=1.02), service-code count (t=-0.17) and days/week
+(t=0.68) have no signal at all.
+The `_revW` pathology also REPRODUCES WITH THE SIGN FLIPPED: across 3,473 rated TX clinics, **66% of
+those with 0-5 reviews sit at exactly 5.0 stars**. `_revW` under-weighted the 1-review PE clinic; a
+rating term would OVER-weight it.
+Supporting literature: Applebaum et al., Animals 2020;10(3):483 (n=997) ranks LOCATION first (62% of
+dog owners) — distance already carries the top factor — and found **48% of owners who believed they
+used an independent were actually at a chain affiliate**, so a brand term has no behavioural basis.
+Luca (HBS 12-016) finds the Yelp rating effect is zero for chain-affiliated firms. Extended-Huff
+healthcare models that do add attractiveness use STRUCTURAL indicators (beds, staffing) — which is
+exactly what `_staffW` already is.
+Architectural ceiling regardless: `cd[band][i]` collapses competitor identity into a histogram and
+roster strength enters only through the scalar `wb`, so a per-competitor term is impossible at
+runtime and would need a ~90-min rebuild per metro. Cross-cell dispersion of mean competitor rating
+is 4.36-4.75 — a 0.39-star spread across the entire metroplex.
+REVERSES ONLY ON: client-supplied per-clinic visit or revenue counts (the W3 Benchmark tier), which
+would let the mechanism test be run on actual volumes.
+
+**W5 — competitor utilization: REJECTED.** Wang's i2SFCA (IJGIS 35(3), 2021) is the only peer-reviewed
+framework formally handling capacity in a Huff-derived model, and it puts capacity in the attraction
+NUMERATOR while computing crowdedness as an OUTPUT with no feedback — which is precisely what
+`_staffW` already does. The OR literature that does feed congestion back (Zhang/Berman/Verter, EJOR
+198(3):922-935) is normative network design whose M/M/1 wait term is **undefined at rho>=1**, and our
+implied rho has median 1.01 / p95 2.98.
+The empirical premise is also currently FALSE: AVMA Aug-2023 to Aug-2024 shows patient visits -2.3%,
+new clients -8.6%, and mean interval between visits 57.6 -> 85.8 days; Brakke Nov-2025 (n~350) finds
+nearly all practices scheduling routine appointments within a week. The 2021-22 backlog reversed.
+Feasible effect size is negligible anyway: the only runtime-feasible form is a mean-field multiplier
+over ~33 effective competitors per cell, giving a 1.24-1.48x cell spread against a demand term
+spanning **27x**. And its DIRECTION is perverse — mean multiplier 0.916 in dense cells vs 1.083 in
+exurban ones, i.e. it would WEAKEN competition exactly where share is already overstated.
+NOTE: W5 is also MISCLASSIFIED in this register as a runtime scoring change. `cd`/`ov` destroy
+per-competitor identity, so any real version needs an artifact rebuild.
+
+#### TWO CROSS-CUTTING FINDINGS THAT OUTRANK THE REGISTER
+
+**1. A K=8.0 BUCKET CEILING IN THE ARTIFACT (build-catchments.mjs:488 `KBUCKETS=17, KSTEP=0.5`, clip
+at :565).** Straight from the shipped file: the median cell has **84-88% of each band's households in
+the clipped top bucket**, and 58% of cells exceed the ceiling with median true K 17.5 — implying
+median share inflation ~2.05x.
+**DO NOT FIX IT ALONE.** `CATCH_MAX_BAND=5` was chosen EMPIRICALLY to make the roster gate read ~1.0
+*with the clip in place*. They are offsetting errors: an approximate un-clip drops implied rho from
+median 1.01 to ~0.4-0.6, i.e. the gate would fail badly. Raising KBUCKETS to ~64 costs ~2.4KB/cell and
+a derive rerun, but requires jointly re-deriving CATCH_MAX_BAND (and possibly theta) against the gate,
+publishing before/after percentiles so the recalibration is visible rather than silent.
+
+**2. THE MODEL HAS NO VALIDATED FIRM-LEVEL SIGNAL.** corr(log modelled size, log actual roster) =
+**0.002** across 619 subjects (Spearman -0.003), and it stays ~0 in every subset. But at MARKET level
+r = **0.697** (n=630 cells) between log 10-min market visits and log DVMs operating inside it.
+The engine identifies WHERE DEMAND IS; it has no demonstrated ability to say how big a particular
+practice at a particular address will be. **This means the roster gate as currently framed — quantile
+match, p50 1.06 — can be passed by a model with zero per-site discrimination.** It also hides an
+urbanicity bias (mean modelled vs actual: rural 1.59 vs 3.79, exurban 1.11 vs 3.02, suburban 2.78 vs
+2.91, urban 5.21 vs 3.50). Any future gate must add a RANK-correlation test, not just quantiles.
+
 #### W10 — FOUR BUGS FOUND BY ACTUALLY RUNNING AN EVALUATION (2026-07-28)
 
 Every one was invisible to `node --check` and to unit-testing the helpers. Only a full end-to-end

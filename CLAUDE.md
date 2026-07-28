@@ -315,6 +315,29 @@ removed from its own competitor distribution by shifting the bucket index down `
 `demandN` derives from WINNABLE visits, NOT `cReach` — since decay moved into the share, `cReach` is
 every visit in the catchment (~530k for a Plano cell) and reach/anchor pinned at 1.0 everywhere.
 
+### W4 / W5 are CLOSED — tested and rejected 2026-07-28, do not re-litigate
+- **W4 (attractiveness beyond roster size)**: the mechanism test is WRONG-SIGNED — neighbour rating
+  b=+0.638 vs own +0.214, where Huff requires negative. Huff-consistent form adds +0.4% of residual
+  variance; ranking impact Spearman 0.99851. And `_revW` reproduces with the sign flipped: **66% of
+  clinics with 0-5 reviews sit at exactly 5.0 stars**, so a rating term hands MAX attractiveness to
+  the least-established competitor. `_staffW`/`_catchAttract` stay the sole attractiveness axis.
+- **W5 (competitor utilization)**: i2SFCA puts capacity in the attraction numerator (which `_staffW`
+  does); congested-facility OR models are undefined at rho>=1 and our median rho is 1.01; and the
+  premise is currently false (AVMA 2023-24 visits -2.3%, Brakke Nov-2025 finds no queue). Feasible
+  effect is a 1.24-1.48x spread against a 27x demand term, in the perverse direction.
+- Both reverse ONLY on client-supplied per-clinic visit/revenue data (the W3 Benchmark tier).
+
+### TWO KNOWN DEFECTS THAT ARE COUPLED — never fix one alone
+- **K=8.0 bucket ceiling** (`build-catchments.mjs` `KBUCKETS=17, KSTEP=0.5`): 84-88% of the median
+  cell's households sit in the clipped top bucket; 58% of cells exceed it (median true K 17.5),
+  inflating share ~2.05x. **But `CATCH_MAX_BAND=5` was chosen empirically to make the roster gate
+  read ~1.0 WITH that clip.** They are offsetting errors — un-clipping alone drops implied rho to
+  ~0.4-0.6 and the gate fails. Fix requires jointly re-deriving CATCH_MAX_BAND against the gate.
+- **No validated firm-level signal**: corr(modelled size, actual roster) = **0.002** per clinic, but
+  **0.697** at market level. The engine says where demand is, NOT how big a practice at a given
+  address will be. The quantile gate can therefore be passed by a model with zero per-site
+  discrimination — any future gate must add a RANK-correlation test.
+
 ### Known gaps (documented, not bugs)
 - Saturation KPI + Opportunity list remain crow-flies, so they can disagree with an eval on screen.
 - `evalOverlap` still calls the live Routes API even though the overlap numbers are precomputed.
