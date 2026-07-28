@@ -7702,6 +7702,9 @@ const CATCH_DECAY_BETA=1.5;
 // plain reading: EVAL_STRONG 0.22 = ~7,000 winnable visits/yr = a viable 2-DVM practice;
 // EVAL_FLOOR 0.12 = ~3,800 = a marginal solo. Both fall out of constants we already ship.
 const CATCH_REACH_FULL=10*DVM_VISIT_CAPACITY;
+// Same anchor expressed in dollars: ten doctors billing at full-price ACT. Keeps EVAL_STRONG 0.22
+// meaning what it meant before (~2.2 doctors' worth of revenue), so no threshold moves.
+const CATCH_REV_FULL=10*REV_PER_DVM;
 const CATCH_BANDS=[[0.5,8],[8,10],[10,12],[12,15]];   // minutes; must match the artifact's budgets
 const CATCH_RING_W=(function(b){
   const w=CATCH_BANDS.map(([t1,t2])=>{ let n=0,q=0;
@@ -7727,9 +7730,26 @@ const CATCH_RING_W=(function(b){
 //   - BLS also puts the behavioural inflection at $65-75k, which the curve passes through near 0.70.
 // Anchors: $25k -> 0.42 (floor), $110k+ -> 1.00 (no boost above it — affluence must not inflate,
 // only poverty deflates, same asymmetry as _incDampF).
-function _catchSpendF(inc){
-  if(inc==null) return 0.85;                       // unknown income: mild haircut, never a free pass
-  return Math.max(0.42, Math.min(1, 0.42+0.58*(inc-25000)/85000));
+// The income effect is NOT one number — it splits into VISITS and PRICE, and conflating them
+// ranks markets wrongly (2026-07-27, user: "are you sure we shouldn't aim for higher income").
+// Decomposition of the BLS bottom/top quintile pet-spend ratio:
+//     0.36 total  =  0.85 ownership  x  0.74 visits per owner  x  0.57 price per visit
+//                    (_incDampF)        (AVMA: 69% of owners     (the residual)
+//                                        under $20k see a vet
+//                                        annually vs 93% at $100k+)
+// The first version applied a single 0.42 floor to VISITS and left price flat at REV_PER_VISIT.
+// Total spend came out right (0.85 x 0.42 = 0.36) so the BLS check passed — but BOTH halves were
+// wrong, and the errors do NOT cancel in the ranking, because the score is a VISIT-volume metric.
+// A poor market genuinely supports MORE doctors (more visits per dollar of income) and LESS
+// revenue. Ranking on doctors put a $59k catchment first; ranking on revenue puts a $97k one first.
+// A PE buyer underwrites revenue, so the score is revenue and the two dampers are separate.
+function _catchSpendF(inc){                        // VISITS — AVMA participation gradient
+  if(inc==null) return 0.87;                       // unknown income: mild haircut, never a free pass
+  return Math.max(0.74, Math.min(1, 0.74+0.26*(inc-25000)/85000));
+}
+function _catchACTF(inc){                          // PRICE per visit — average client transaction
+  if(inc==null) return 0.79;
+  return Math.max(0.57, Math.min(1, 0.57+0.43*(inc-25000)/85000));
 }
 // Catchment income = the decay- and household-weighted mean across the ZIPs a site actually
 // reaches, NOT the single ZIP it sits in — a corner site can serve three ZIPs of different means.
@@ -8580,7 +8600,8 @@ function _evalComputeAndRender(){
       if(_cc){ _cell.cc=_cc; _cell.cUncon=(_cc.cd&&_cc.cd[0])||0;
                _cell.cRaw=_catchDecayed(_cc,_catchVisits);
                _cell.cInc=_catchIncome(_cc); _cell.cSpend=_catchSpendF(_cell.cInc);
-               _cell.cReach=_cell.cRaw*_cell.cSpend;   // reachable visits the market can actually PAY for
+               _cell.cACT=_catchACTF(_cell.cInc);      // price per visit, separate from visit COUNT
+               _cell.cReach=_cell.cRaw*_cell.cSpend;   // visits the market will actually make
                _cell.cWBar=_catchWBar(_cc);
                _cell.cEq=_catchEquilibrium(_cc,_cell.cReach,_cell.cWBar);        // supportable practice size
                _cell.cShare=_catchShareAt(_cc,_cell.cEq,_cell.cWBar);            // share AT that size
@@ -8671,8 +8692,9 @@ function _evalComputeAndRender(){
     // score = cEq/10, i.e. a ten-doctor site reads 1.0 and EVAL_STRONG 0.22 is a 2.2-DVM practice.
     // Same meaning as before the sized entrant, so every threshold and _evalDisp anchor still holds.
     if(g.cEq!=null){
-      g.winVis = g.cEq*DVM_VISIT_CAPACITY;
-      g.score = Math.max(0, Math.min(1, (g.winVis/CATCH_REACH_FULL)*accessMult*retailBonus));
+      g.winVis = g.cEq*DVM_VISIT_CAPACITY;                       // visits won at equilibrium
+      g.winRev = g.winVis*REV_PER_VISIT*(g.cACT||1);             // ...priced at the local ACT
+      g.score  = Math.max(0, Math.min(1, (g.winRev/CATCH_REV_FULL)*accessMult*retailBonus));
     }
   }
   evalCells=grid;
@@ -9156,7 +9178,7 @@ function _evalRenderSidebar(){
         ${_leaseBlock(g)}
       </div>`;
     }
-    const metroNote=evalMetroRun?`<div style="font-size:10.5px;color:#475569;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:5px 9px;margin:6px 0 2px">${evalCaptureOn?`Drive-time capture model${g.cReach?` — reaches <b>${Math.round(g.cReach).toLocaleString()}</b> distance-weighted visits/yr, ${Math.round((g.share||0)*100)}% winnable at equilibrium = <b>${Math.round(g.winVis||0).toLocaleString()}</b>/yr, supporting a <b>~${((g.winVis||0)/DVM_VISIT_CAPACITY).toFixed(1)}-doctor</b> practice${g.cUncon>0.02?` · ${Math.round(g.cUncon*100)}% of households reached by no competitor`:''}${g.cSpend!=null&&g.cSpend<0.97?` · spend power ${Math.round(g.cSpend*100)}% (catchment median income $${Math.round((g.cInc||0)/1000)}k) — reach discounted accordingly`:''}`:''}.`:`~3-mile screening area${g.snapMi?` — pin placed on the nearest commercial corridor (${g.snapMi.toFixed(1)} mi off the cell center)`:''}.`} <b>Refine</b> runs the full parcel-level analysis here.</div>`:'';
+    const metroNote=evalMetroRun?`<div style="font-size:10.5px;color:#475569;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:5px 9px;margin:6px 0 2px">${evalCaptureOn?`Drive-time capture model${g.cReach?` — reaches <b>${Math.round(g.cReach).toLocaleString()}</b> distance-weighted visits/yr, ${Math.round((g.share||0)*100)}% winnable at equilibrium = <b>${Math.round(g.winVis||0).toLocaleString()}</b> visits/yr supporting a <b>~${((g.winVis||0)/DVM_VISIT_CAPACITY).toFixed(1)}-doctor</b> practice at <b>${_fmtM(g.winRev||0)}</b> revenue${g.cACT!=null&&g.cACT<0.97?` (visit prices run ~${Math.round(g.cACT*100)}% of a high-income market)`:''}${g.cUncon>0.02?` · ${Math.round(g.cUncon*100)}% of households reached by no competitor`:''}${g.cSpend!=null&&g.cSpend<0.97?` · catchment median income $${Math.round((g.cInc||0)/1000)}k — visits ${Math.round(g.cSpend*100)}%, prices ${Math.round((g.cACT||1)*100)}% of a high-income market`:''}`:''}.`:`~3-mile screening area${g.snapMi?` — pin placed on the nearest commercial corridor (${g.snapMi.toFixed(1)} mi off the cell center)`:''}.`} <b>Refine</b> runs the full parcel-level analysis here.</div>`:'';
     return `<div class="eval-card" onclick="evalFlyTo(${i})"${g.tier!=='strong'?' style="opacity:.92"':''}>
       <div class="eval-card-head"><span class="eval-rank"${g.tier!=='strong'?' style="background:#94a3b8"':''}>${i+1}</span><span class="eval-card-title">${evalMetroRun?'Area':'Site'} ${i+1}</span>${chipT}<span class="eval-score"${g.tier!=='strong'?' style="color:#64748b"':''}>${headline}</span></div>
       <div class="eval-why">${nearStr}${roadStr?' · '+roadStr:''}</div>

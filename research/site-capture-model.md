@@ -431,6 +431,47 @@ dense MID-income markets competitive rather than tilting toward affluence. Shift
 deliberate weighting preference, not a literature-derived correction, so it is left as an explicit
 open choice rather than quietly tuned into `_catchSpendF`.
 
+#### W6b — VISITS vs PRICE, and ranking on REVENUE (2026-07-27, user: "what matters is revenue")
+
+**A real error, surfaced by the user asking whether a $59k catchment should really rank first.**
+The income effect is not one number. It decomposes:
+
+    0.36 total  =  0.85 ownership  x  0.74 visits per owner  x  0.57 price per visit
+    (BLS)          (_incDampF)        (AVMA participation:      (the residual)
+                                       69% of owners under
+                                       $20k see a vet annually
+                                       vs 93% at $100k+)
+
+The first version applied a single **0.42 floor to VISITS** and left price flat at `REV_PER_VISIT`.
+Total spend came out right (0.85 x 0.42 = 0.36) **so the BLS check passed** — but both halves were
+wrong, and the errors do NOT cancel in the ranking, because the score was a VISIT-VOLUME metric.
+A poor market genuinely supports MORE doctors (more visits per dollar of income) and LESS revenue.
+
+Proof, ranking the same corrected model two ways:
+
+| ranking metric | #1 catchment | top-5 mean income |
+|---|---|---|
+| doctors | $63k, 10.2 doctors | $95k |
+| **revenue** | **$97k, $5.67M** | **$100k** |
+
+Fixed: `_catchSpendF` floor 0.42 -> **0.74** (visits only), new `_catchACTF` floor **0.57** (price
+per visit), and the score is now `winRev / CATCH_REV_FULL` where the anchor is ten doctors billing
+at full-price ACT — so EVAL_STRONG 0.22 still means the same thing, now readable as **$1.36M
+revenue**. Verified end to end: 0.85 x 0.74 x 0.57 = 0.359 against the BLS 0.36, top end exactly 1.0.
+
+**HONEST OUTCOME: this did NOT flip the ranking to high-income markets.** Live DFW still puts a
+$63k SE Dallas catchment first, now at $4.44M revenue, and top-5 mean income moved only $89k ->
+$91k. The offline estimate that predicted a $97k #1 used STUB rosters (every competitor assumed 2
+DVMs); the live run reads REAL rosters, and dense affluent markets carry bigger incumbent rosters,
+which raises `wBar` and cuts their share. That gap between the stub prediction and the live result
+is a caution about trusting offline estimates that stub out a live input.
+
+So after correcting a genuine modelling error, the model's answer is unchanged in direction: SE
+Dallas leads on revenue because the market is large AND uncontested, not because of a metric
+artifact. Any further tilt toward affluence would now be a TARGET-MARKET PREFERENCE applied on top
+of a corrected model — a legitimate product feature (a filter or a weight the user sets), but not a
+correction, and it should not be buried inside `_catchSpendF`.
+
 ### W2 — Overlap is area-weighted, not household-weighted
 `overlapFrac` samples the candidate ring on a uniform grid and asks what share of that AREA a
 competitor also covers. But households are not uniform inside a catchment, so a competitor covering
