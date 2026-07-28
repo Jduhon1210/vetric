@@ -7693,43 +7693,51 @@ let EVAL_MODEL='capture';
 // -> 1.38), and the 60-70% primary-trade-area convention. Validated end to end: at this beta the
 // median DFW clinic models to 1.90 DVM equivalents against a scraped roster median of 2.0. Flat
 // counting says 5.33, which the roster data refutes. Retune HERE — never rebuild the artifact.
-const CATCH_DECAY_BETA=1.5;
-// Capture-mode demand is anchored ABSOLUTELY, not against the metro's biggest cell. Normalising
-// against the max would peg every suburb low just because a downtown cell reaches 120k visits, and
-// would make the score mean something different in every region. Anchor = 10 x DVM_VISIT_CAPACITY:
-// reach enough to fill ten doctors if you won all of it. Because score = demandN x share, that makes
-// the score literally WINNABLE VISITS / 32,000 — so the existing bars keep their meaning and gain a
-// plain reading: EVAL_STRONG 0.22 = ~7,000 winnable visits/yr = a viable 2-DVM practice;
-// EVAL_FLOOR 0.12 = ~3,800 = a marginal solo. Both fall out of constants we already ship.
-const CATCH_REACH_FULL=10*DVM_VISIT_CAPACITY;
-// Same anchor expressed in dollars: ten doctors billing at full-price ACT. Keeps EVAL_STRONG 0.22
-// meaning what it meant before (~2.2 doctors' worth of revenue), so no threshold moves.
-const CATCH_REV_FULL=10*REV_PER_DVM;
-const CATCH_BANDS=[[0.5,8],[8,10],[10,12],[12,15]];   // minutes; must match the artifact's budgets
-const CATCH_RING_W=(function(b){
-  const w=CATCH_BANDS.map(([t1,t2])=>{ let n=0,q=0;
-    for(let t=t1;t<t2;t+=0.02){ n+=Math.pow(t,-b)*t*0.02; q+=t*0.02; } return n/q; });
-  return w.map(x=>x/w[0]);                            // -> 1.00 / 0.28 / 0.21 / 0.15
-})(CATCH_DECAY_BETA);
-// ── SPEND POWER (2026-07-27, user: "we still need to include how important household income is") ──
-// Without this the capture model re-opened the vet-desert trap the ZIP List closed in June: raw
-// road-network geometry ranks a market on EMPTINESS, and southeast Dallas (0 clinics within 3 mi,
-// verified) topped DFW on pure reach x share. Real whitespace — but a market's ability to PAY is
-// a separate axis from its ability to reach you.
+// ── DISTANCE DECAY, VARYING BY URBANICITY (2026-07-27, user: "decay them appropriately based on
+// studies and location (rural, suburbs, city)") ────────────────────────────────────────────────
+// Form and the rural/urban spread come from a peer-reviewed study that FITS decay parameters by
+// urbanicity in TRAVEL TIME, which is our native unit — Florida hospital inpatient flows
+// (PMC6598965): log-logistic w(t)=1/(1+(t/theta)^beta) beat every alternative, with beta 2.22
+// large-metro / 2.55 small-metro / 1.82 rural, and <=60-min mean travel 12.1 min metro vs 28.0 rural
+// = a 2.31x spread. Rural shows the WEAKEST decay (lowest beta): rural households accept travel.
 //
-// LITERATURE-DERIVED, and deliberately NOT the ZIP List's percentile `_util` curve: the capture
-// score encodes absolute winnable VISITS, so the damper has to be anchored in dollars or it means
-// something different in every region.
-//   - BLS Consumer Expenditure Survey: top income quintile spends ~2.5-3x the bottom on pets,
-//     driven by spend PER PET, not pet count -> bottom/top ratio ~0.36.
-//   - That total already contains the ownership difference, which `_incDampF` models separately
-//     (0.85 floor). Netting it out leaves the utilisation+spend residual: 0.36 / 0.85 = 0.42.
-//     Applying both then reproduces the published 0.36 end to end instead of double-counting.
-//   - AVMA 2017 Pet Demographics: 69% of dog owners under $20k see a vet annually vs 93% at $100k+
-//     (82% overall) — so ~0.74 of the gap is participation and the rest is spend per visit.
-//   - BLS also puts the behavioural inflection at $65-75k, which the curve passes through near 0.70.
-// Anchors: $25k -> 0.42 (floor), $110k+ -> 1.00 (no boost above it — affluence must not inflate,
-// only poverty deflates, same asymmetry as _incDampF).
+// SCALE is NOT taken from that study — hospital inpatient care is travelled much further than a
+// routine vet visit. theta is refit to OUR vet anchors (Pfizer Practice Evaluation Survey: mean
+// client travel 5.3 mi, 27% within 2 mi) converted at the MEASURED ring speed of ~20 mph, giving
+// theta 4.0 min suburban. Only the FORM and the urban/rural RATIO transfer.
+//
+// Sanity check that this refines rather than discards earlier work: the suburban row comes out
+// 1.00/0.36/0.25/0.16, within a rounding of the power-law curve validated against the roster
+// distribution (1.00/0.28/0.21/0.15). Rural is where it genuinely differs — a household 20-25 min
+// out counts 0.23 rural vs 0.05 urban, a 4.6x difference.
+const CATCH_BANDS=[[0.5,8],[8,10],[10,12],[12,15],[15,20],[20,25]];   // must match the artifact's budgets
+// Thresholds are inner-ring households/sq mi, cut at natural breaks in the DFW distribution
+// (p25 158, p50 503, p75 1103, p90 1481) -> 24% rural / 31% exurban / 33% suburban / 13% urban.
+const CATCH_URBANICITY=[
+  { k:'rural',    below:150,      beta:1.82, theta:9.2 },
+  { k:'exurban',  below:600,      beta:2.55, theta:6.0 },
+  { k:'suburban', below:1400,     beta:2.22, theta:4.0 },
+  { k:'urban',    below:Infinity, beta:2.22, theta:3.4 }
+];
+// Band weight = population-weighted mean of the log-logistic kernel inside each band, normalised
+// to the inner ring (mass at travel time t grows as t for a roughly disc-shaped catchment).
+for(const c of CATCH_URBANICITY){
+  const w=CATCH_BANDS.map(([t1,t2])=>{ let n=0,q=0;
+    for(let t=t1;t<t2;t+=0.02){ n+=(1/(1+Math.pow(t/c.theta,c.beta)))*t*0.02; q+=t*0.02; }
+    return n/q; });
+  c.w=w.map(x=>x/w[0]);
+}
+// Non-circular urbanicity signal: household density inside the INNER ring only. Deliberately not
+// derived from reach, which the decay weights themselves produce — that would be circular.
+function _catchUrbanClass(cell){
+  if(cell._uc) return cell._uc;
+  let H=0;
+  for(const [z,f] of (cell.b&&cell.b[0]?cell.b[0]:[])){ const dd=dogData[z]; if(dd) H+=(dd.households||0)*f; }
+  const dens=cell.a8>0? H/cell.a8 : 0;
+  let cls=CATCH_URBANICITY[CATCH_URBANICITY.length-1];
+  for(const c of CATCH_URBANICITY) if(dens<c.below){ cls=c; break; }
+  return (cell._uc=cls);
+}
 // The income effect is NOT one number — it splits into VISITS and PRICE, and conflating them
 // ranks markets wrongly (2026-07-27, user: "are you sure we shouldn't aim for higher income").
 // Decomposition of the BLS bottom/top quintile pet-spend ratio:
@@ -7754,11 +7762,12 @@ function _catchACTF(inc){                          // PRICE per visit — averag
 // Catchment income = the decay- and household-weighted mean across the ZIPs a site actually
 // reaches, NOT the single ZIP it sits in — a corner site can serve three ZIPs of different means.
 function _catchIncome(cell){
+  const W=_catchUrbanClass(cell).w;
   let n=0,q=0;
-  for(let b=0;b<4;b++) for(const [z,f] of (cell.b[b]||[])){
+  for(let b=0;b<W.length;b++) for(const [z,f] of (cell.b[b]||[])){
     const dd=dogData[z], inc=modelIncome[z];
     if(!dd||inc==null) continue;
-    const w=f*(dd.households||0)*CATCH_RING_W[b];
+    const w=f*(dd.households||0)*W[b];
     n+=inc*w; q+=w;
   }
   return q>0?n/q:null;
@@ -7766,7 +7775,7 @@ function _catchIncome(cell){
 let _catchData=null, _catchP=null, _catchIdx=null;
 function _loadCatchments(){
   if(_catchP) return _catchP;
-  _catchP=fetch('dfw-catchments.json?v=2',{cache:'force-cache'}).then(r=>r.ok?r.json():null).then(d=>{
+  _catchP=fetch('dfw-catchments.json?v=3',{cache:'force-cache'}).then(r=>r.ok?r.json():null).then(d=>{
     if(!d||!d.cells) return null;
     _catchData=d;
     _catchIdx=new Map();                              // 0.01 deg buckets -> cells, for nearest lookup
@@ -7794,8 +7803,9 @@ function _catchCellsIn(bb){
 // ships geometry-derived ZIP coverage only. The four band mixes are DISJOINT, so this is a plain
 // weighted sum with nothing to difference.
 function _catchDecayed(cell, valOf){
+  const W=_catchUrbanClass(cell).w;
   let t=0;
-  for(let b=0;b<4;b++) for(const [z,f] of (cell.b[b]||[])) t+=f*(valOf(z)||0)*CATCH_RING_W[b];
+  for(let b=0;b<W.length;b++) for(const [z,f] of (cell.b[b]||[])) t+=f*(valOf(z)||0)*W[b];
   return t;
 }
 // Capture share from the household-weighted competitor-count distribution. cd[n] is the share of
@@ -7831,12 +7841,53 @@ function _catchWBar(cell){
 // neither. Same sqrt(n/2.5) shape and same centring (a 2.5-DVM practice = 1.0) as _staffW, so
 // entrant and competitors remain directly comparable.
 const _catchAttract=n=>Math.sqrt(Math.max(0.05,n)/2.5);
-function _catchShareAt(cell, n, wBar){
-  const cd=cell.cd; if(!cd||!cd.length) return null;
+// Per-band decayed demand. Kept as an ARRAY rather than a total because competition differs by
+// band — a 20-minute household faces a different competitive set than a 5-minute one.
+// HOW FAR DEMAND MAY BE CREDITED. Competitors are represented by their 10-MINUTE rings, so beyond
+// ~15 minutes the comparison stops being symmetric: a household 20 min from us sits outside almost
+// every competitor's 10-min ring and reads as uncontested when it is not. Measured on 525 GP
+// clinics (ratio of modelled to actual roster; ~0.7-1.0 is incumbency-consistent):
+//     credit to 15 min -> p25 0.87  p50 0.77  p75 0.63  p90 0.56
+//     credit to 20 min -> p25 1.70  p50 1.30  p75 0.96  p90 0.83
+//     credit to 25 min -> p25 2.49  p50 1.82  p75 1.29  p90 1.09
+// The extra range genuinely FIXES the top end (p90 0.56 -> 0.83) and breaks the bottom, which is
+// the asymmetry's signature: over-credit is worst where competitors are sparse. Capped at 15 min
+// until competitor decay moves INSIDE the Huff share (so two equally-distant clinics split 50/50
+// rather than both reading as uncontested) — see the register entry. The 20/25-min bands are BUILT
+// and ship in the artifact; this is the only line gating their use.
+const CATCH_MAX_BAND=4;   // 4 = credit demand out to 15 min; 6 = the full 25 min, after the redesign
+function _catchBandDemand(cell, valOf){
+  const W=_catchUrbanClass(cell).w, out=[];
+  for(let b=0;b<W.length;b++){
+    let t=0;
+    if(b<CATCH_MAX_BAND) for(const [z,f] of (cell.b[b]||[])) t+=f*(valOf(z)||0);
+    out.push(t*W[b]);
+  }
+  return out;
+}
+// Capture share within ONE band, for an entrant of size n. cd[b][k] is the household-weighted share
+// of that band's households reached by exactly k competitors, so the split happens per household and
+// is then averaged — NOT 1/(1+sum-of-overlaps), which over-penalises by Jensen's inequality.
+function _catchShareBand(cell, b, n, wBar){
+  const cd=cell.cd && cell.cd[b]; if(!cd||!cd.length) return null;
   const A=_catchAttract(n);
   let sh=0;
   for(let k=0;k<cd.length;k++) sh+=cd[k]*A/(A + k*wBar);
   return Math.max(0,Math.min(1,sh));
+}
+// Visits winnable at size n, summed across bands. Measuring competition on the 10-minute ring while
+// summing demand to 25 minutes credited distant households at the INNER ring's share — they have
+// far more nearby options than that implies. Measured cost of the mismatch: the model read
+// 1.4-1.5x actual rosters instead of the ~0.7x incumbency-consistent level, and rural cells
+// inflated 9.4x. Each band is now split against the clinics that actually reach it.
+function _catchWinnable(cell, dem, n, wBar){
+  let t=0;
+  for(let b=0;b<dem.length;b++){
+    if(!(dem[b]>0)) continue;
+    const s=_catchShareBand(cell,b,n,wBar);
+    if(s!=null) t+=dem[b]*s;
+  }
+  return t;
 }
 // ── SIZED ENTRANT (2026-07-27, user: "the best sites would support higher revenue clinics") ──
 // The entrant used to be a FIXED 2.5-DVM probe, so the model was really asking "how much could a
@@ -7859,13 +7910,12 @@ function _catchShareAt(cell, n, wBar){
 // a bigger practice would be needed to compete.
 // KNOWN AND ACCEPTED: this lowers the median slightly (1.9 -> 1.5) because a small entrant in a
 // weak market now correctly sizes DOWN. That is more truthful, not a regression.
-function _catchEquilibrium(cell, reach, wBar){
-  if(!(reach>0)) return 0;
+function _catchEquilibrium(cell, dem, wBar){
+  if(!dem || !dem.some(x=>x>0)) return 0;
   let lo=0.05, hi=40;   // lo matches _catchAttract's floor so weak cells converge instead of clamping
   for(let i=0;i<44;i++){
-    const mid=(lo+hi)/2, sh=_catchShareAt(cell,mid,wBar);
-    if(sh==null) return 0;
-    if(reach*sh > mid*DVM_VISIT_CAPACITY) lo=mid; else hi=mid;
+    const mid=(lo+hi)/2;
+    if(_catchWinnable(cell,dem,mid,wBar) > mid*DVM_VISIT_CAPACITY) lo=mid; else hi=mid;
   }
   return (lo+hi)/2;
 }
@@ -8598,13 +8648,16 @@ function _evalComputeAndRender(){
       // decay-weighted annual VISITS inside the real 8/10/12/15-min drive polygons rather than a
       // gravity sum over a disc. maxDem normalisation makes the unit change cancel.
       if(_cc){ _cell.cc=_cc; _cell.cUncon=(_cc.cd&&_cc.cd[0])||0;
-               _cell.cRaw=_catchDecayed(_cc,_catchVisits);
                _cell.cInc=_catchIncome(_cc); _cell.cSpend=_catchSpendF(_cell.cInc);
                _cell.cACT=_catchACTF(_cell.cInc);      // price per visit, separate from visit COUNT
-               _cell.cReach=_cell.cRaw*_cell.cSpend;   // visits the market will actually make
+               const _bd=_catchBandDemand(_cc,_catchVisits).map(v=>v*_cell.cSpend);
+               _cell.cRaw=_bd.reduce((a,b)=>a+b,0)/(_cell.cSpend||1);
+               _cell.cReach=_bd.reduce((a,b)=>a+b,0);  // visits the market will actually make
+               _cell.cUrb=_catchUrbanClass(_cc).k;
                _cell.cWBar=_catchWBar(_cc);
-               _cell.cEq=_catchEquilibrium(_cc,_cell.cReach,_cell.cWBar);        // supportable practice size
-               _cell.cShare=_catchShareAt(_cc,_cell.cEq,_cell.cWBar);            // share AT that size
+               _cell.cEq=_catchEquilibrium(_cc,_bd,_cell.cWBar);                 // supportable practice size
+               const _wv=_catchWinnable(_cc,_bd,_cell.cEq,_cell.cWBar);
+               _cell.cShare=_cell.cReach>0? _wv/_cell.cReach : 0;                // blended share across bands
                // heatmap rect + hover hit-test read stepLa/stepLo — capture cells sit on the
                // artifact's 0.61-mi grid, NOT the 36x36 metro step, or the surface draws 3-mi blocks
                const _gm=(_catchData&&_catchData.grid)||0.61;
@@ -9178,7 +9231,7 @@ function _evalRenderSidebar(){
         ${_leaseBlock(g)}
       </div>`;
     }
-    const metroNote=evalMetroRun?`<div style="font-size:10.5px;color:#475569;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:5px 9px;margin:6px 0 2px">${evalCaptureOn?`Drive-time capture model${g.cReach?` — reaches <b>${Math.round(g.cReach).toLocaleString()}</b> distance-weighted visits/yr, ${Math.round((g.share||0)*100)}% winnable at equilibrium = <b>${Math.round(g.winVis||0).toLocaleString()}</b> visits/yr supporting a <b>~${((g.winVis||0)/DVM_VISIT_CAPACITY).toFixed(1)}-doctor</b> practice at <b>${_fmtM(g.winRev||0)}</b> revenue${g.cACT!=null&&g.cACT<0.97?` (visit prices run ~${Math.round(g.cACT*100)}% of a high-income market)`:''}${g.cUncon>0.02?` · ${Math.round(g.cUncon*100)}% of households reached by no competitor`:''}${g.cSpend!=null&&g.cSpend<0.97?` · catchment median income $${Math.round((g.cInc||0)/1000)}k — visits ${Math.round(g.cSpend*100)}%, prices ${Math.round((g.cACT||1)*100)}% of a high-income market`:''}`:''}.`:`~3-mile screening area${g.snapMi?` — pin placed on the nearest commercial corridor (${g.snapMi.toFixed(1)} mi off the cell center)`:''}.`} <b>Refine</b> runs the full parcel-level analysis here.</div>`:'';
+    const metroNote=evalMetroRun?`<div style="font-size:10.5px;color:#475569;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:5px 9px;margin:6px 0 2px">${evalCaptureOn?`Drive-time capture model${g.cReach?` — reaches <b>${Math.round(g.cReach).toLocaleString()}</b> distance-weighted visits/yr, ${Math.round((g.share||0)*100)}% winnable at equilibrium = <b>${Math.round(g.winVis||0).toLocaleString()}</b> visits/yr supporting a <b>~${((g.winVis||0)/DVM_VISIT_CAPACITY).toFixed(1)}-doctor</b> practice at <b>${_fmtM(g.winRev||0)}</b> revenue${g.cACT!=null&&g.cACT<0.97?` (visit prices run ~${Math.round(g.cACT*100)}% of a high-income market)`:''}${g.cUncon>0.02?` · ${Math.round(g.cUncon*100)}% of households reached by no competitor`:''}${g.cSpend!=null&&g.cSpend<0.97?` · catchment median income $${Math.round((g.cInc||0)/1000)}k — visits ${Math.round(g.cSpend*100)}%, prices ${Math.round((g.cACT||1)*100)}% of a high-income market`:''}${g.cUrb?` · <b>${g.cUrb}</b> decay curve (${g.cUrb==='rural'?'rural households accept longer drives, so the outer bands count more':'denser markets decay faster'})`:''}`:''}.`:`~3-mile screening area${g.snapMi?` — pin placed on the nearest commercial corridor (${g.snapMi.toFixed(1)} mi off the cell center)`:''}.`} <b>Refine</b> runs the full parcel-level analysis here.</div>`:'';
     return `<div class="eval-card" onclick="evalFlyTo(${i})"${g.tier!=='strong'?' style="opacity:.92"':''}>
       <div class="eval-card-head"><span class="eval-rank"${g.tier!=='strong'?' style="background:#94a3b8"':''}>${i+1}</span><span class="eval-card-title">${evalMetroRun?'Area':'Site'} ${i+1}</span>${chipT}<span class="eval-score"${g.tier!=='strong'?' style="color:#64748b"':''}>${headline}</span></div>
       <div class="eval-why">${nearStr}${roadStr?' · '+roadStr:''}</div>

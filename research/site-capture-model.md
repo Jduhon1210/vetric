@@ -472,6 +472,110 @@ artifact. Any further tilt toward affluence would now be a TARGET-MARKET PREFERE
 of a corrected model — a legitimate product feature (a filter or a weight the user sets), but not a
 correction, and it should not be buried inside `_catchSpendF`.
 
+#### W7 — DECAY BY URBANICITY + the 20/25-minute bands (2026-07-27, user: "as long as you decay them appropriately based on studies and location (rural, suburbs, city)")
+
+**Why the extra bands.** Our 15-minute ring has a measured equivalent radius of **5.33 mi**, and the
+Pfizer survey's MEAN client travel is **5.3 mi** — the average client was sitting exactly on the old
+boundary. Effective speed across the rings is only **18-21 mph**, much slower than assumed, so
+15 minutes is 5.3 miles and not the 7.5 previously carried in the analysis.
+
+Share of a real clientele captured, under the joint-fit distribution:
+
+| boundary | radius | share of clientele |
+|---|---|---|
+| 8 min | 2.4 mi | 38% |
+| 10 min | 3.1 mi | 45% |
+| **15 min** | **5.3 mi** | **62%**  <- the old boundary |
+| 20 min | 7.1 mi | 73% |
+| 25 min | 8.9 mi | 82% |
+
+62% is the textbook **primary trade area** (60-70%). We were modelling the primary tier and treating
+it as the entire market; the **secondary** tier (another 20-25% of customers) was being discarded.
+Even at 25 min we stop at 8.9 mi against the ~13-mi effective range the survey joint-fit implies —
+deliberately conservative.
+
+**Why the decay must vary by location.** Source: a peer-reviewed study that fits decay parameters by
+urbanicity **in travel time**, our native unit — Florida hospital inpatient flows (PMC6598965).
+Log-logistic `w(t)=1/(1+(t/theta)^beta)` beat every alternative form; beta 2.22 large-metro /
+2.55 small-metro / 1.82 rural; <=60-min mean travel 12.1 min metro vs 28.0 rural = a **2.31x spread**.
+Rural shows the WEAKEST decay (lowest beta) — rural households accept travel.
+
+**What transfers and what does not.** Only the FORM and the urban/rural RATIO. The study is hospital
+inpatient care, travelled much further than a routine vet visit, so its absolute scale is wrong for
+us. `theta` is refit to OUR vet anchors (mean 5.3 mi, 27% within 2 mi) at the measured ~20 mph,
+giving **theta 4.0 min suburban**.
+
+Verification note: reading the study's parameters required care. Integrating `f` as a decay kernel
+against population mass did NOT reproduce its published means; treating `f` as the observed travel
+DISTRIBUTION did, matching the <=60-min truncated figures (metro 11.3 vs 12.1 published, rural 29.6
+vs 28.0). Using it directly as a band weight would therefore double-count population — so the
+kernel is refit rather than lifted.
+
+| class | 0-8 | 8-10 | 10-12 | 12-15 | 15-20 | 20-25 |
+|---|---|---|---|---|---|---|
+| Urban core | 1.00 | 0.32 | 0.21 | 0.14 | 0.08 | 0.05 |
+| Suburban | 1.00 | 0.36 | 0.25 | 0.16 | 0.09 | 0.05 |
+| Exurban | 1.00 | 0.45 | 0.30 | 0.19 | 0.11 | 0.06 |
+| Rural | 1.00 | 0.70 | 0.58 | 0.46 | 0.33 | 0.23 |
+
+A household 20-25 min out counts **0.23 rural vs 0.05 urban — 4.6x**. The suburban row lands within
+a rounding of the previously validated power-law curve (1.00/0.28/0.21/0.15), so this REFINES the
+validated calibration rather than replacing it; rural is where it genuinely differs.
+
+**Classification is deliberately non-circular:** inner-ring households per sq mi only. Deriving it
+from reach would be circular, since the decay weights are what produce reach. Thresholds cut at
+natural breaks in the DFW distribution (p25 158, p50 503, p75 1103, p90 1481): rural <150,
+exurban <600, suburban <1400, urban core above — giving 24% / 31% / 33% / 13% of cells.
+
+**Probe geometry also changed.** `maxMi` scales with the largest budget, so keeping the flat
+0.2/0.4/... FRACS over a 23.75-mi span would have put the FIRST probe at 4.75 mi — beyond the entire
+8-minute ring (2.4 mi), which then falls back to crude linear extrapolation. FRACS are now
+non-uniform and front-loaded where the rings actually live. This invalidates the v2 checkpoint, so
+v3 is a full recompute of all 911 clinics and 9,627 cells.
+
+#### W7 RESULT — bands BUILT, gated at 15 min pending a Huff redesign (2026-07-27)
+
+The 6-band artifact is built and validated structurally (0 malformed, 0 ZIP over-coverage, ring
+radii 2.2/3.0/3.8/5.2/7.8/10.7 mi). **The discrimination test PASSED**: Spearman rho 0.80 against v2
+(genuinely re-orders sites rather than lifting uniformly) and the lift ordering came out exactly as
+predicted — urban 2.03x < suburban 2.51x < exurban 3.60x < rural 11.55x.
+
+**The roster test FAILED, and the cause is structural.** Competitors are represented by their
+**10-minute** rings (`clinicIdx ... ring:r.r10`) while demand now spans 25 minutes. A household 20
+minutes from the site sits outside almost every competitor's 10-min ring and therefore reads as
+UNCONTESTED when it is not. It was a mild mismatch in v2 (15 vs 10 min); at 25 vs 10 it dominates.
+
+Band-cap sweep, ratio of modelled to actual roster on 525 GP clinics (~0.7-1.0 is
+incumbency-consistent):
+
+| demand credited to | p25 | p50 | p75 | p90 |
+|---|---|---|---|---|
+| 15 min | 0.87 | 0.77 | **0.63** | **0.56** |
+| 20 min | 1.70 | 1.30 | **0.96** | **0.83** |
+| 25 min | 2.49 | 1.82 | 1.29 | 1.09 |
+
+The extra range **fixes the top end exactly as intended** (p90 0.56 -> 0.83) and breaks the bottom —
+the asymmetry's signature, since over-credit is worst where competitors are sparse.
+
+An intermediate attempt (per-band `cd[band][k]`, v4) made it WORSE, not better (p50 1.50 -> 1.82),
+which is the same diagnosis confirming itself: splitting per band cannot help while the competitor
+set at every band is still drawn from 10-minute rings.
+
+**Gated, not reverted.** `CATCH_MAX_BAND=4` credits demand to 15 min; the 20/25-min bands ship in
+the artifact and that one constant enables them. Current behaviour reproduces the validated v2
+range with the better urbanicity-aware curves.
+
+**THE REAL FIX — decay belongs INSIDE the Huff share, not as a separate demand multiplier.** Today:
+`demand_h x W[band]`, then share from a competitor COUNT. Correct: at each household,
+`share_h = A(n)*W[b_ours] / (A(n)*W[b_ours] + sum_c staffW_c * W[b_c])`, where `b_c` is the band of
+the COMPETITOR's own catchment containing that household. Then two clinics equally distant split
+50/50 instead of both reading uncontested, and the 20/25-min bands become sound. It needs the
+competitor rings at all six budgets in the derive (they exist in the checkpoint) and a shipped
+"effective competitor weight" bucket in place of a raw count. Derive-only — no OSRM rerun.
+Second-order refinement to keep separate: participation should decay with distance to the NEAREST
+option (a household far from EVERY vet uses less care — the access-to-care finding), which is a
+different effect from choice among options.
+
 ### W2 — Overlap is area-weighted, not household-weighted
 `overlapFrac` samples the candidate ring on a uniform grid and asks what share of that AREA a
 competitor also covers. But households are not uniform inside a catchment, so a competitor covering

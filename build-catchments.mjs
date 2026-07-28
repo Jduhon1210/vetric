@@ -37,11 +37,21 @@ const DFW = { s:32.10, n:33.62, w:-98.15, e:-96.00 };
 // decide real conditions make 10-min behave like free-flow 8-min, the app switches which field it
 // reads. Headline is 10; 15 is the full-trade-area upside. Measured equivalent radius at 10 min is
 // ~3.6 mi, conservative against the 5.3-mi mean client travel distance in the industry survey.
-const BUDGETS = [480, 600, 720, 900];
+// 20- and 25-minute bands added 2026-07-27. Measured: our 15-min ring is a 5.33-mi equivalent
+// radius, and the industry survey's MEAN client travel is 5.3 mi — the average client was sitting
+// exactly on the old boundary, so 15 min captured ~62% of a clientele and we treated it as the
+// whole market. 62% is the textbook PRIMARY trade area (60-70%); the SECONDARY tier (another
+// 20-25% of customers) is precisely what was being discarded. 25 min reaches 8.9 mi / ~82%, still
+// short of the ~13-mi effective range the survey joint-fit implies — deliberately conservative.
+const BUDGETS = [480, 600, 720, 900, 1200, 1500];
 const RAYS = 72;                       // rays per polygon — 5° angular resolution. Free locally and costs
                                        // NOTHING in file size (we ship derived numbers, not geometry), so
                                        // fidelity is the cheap axis to buy accuracy on — unlike grid density.
-const FRACS = [0.2, 0.4, 0.6, 0.8, 1.0];  // probes per ray — finer interpolation of the budget edge
+// Probes per ray, NON-UNIFORM and front-loaded. maxMi scales with the largest budget, so a flat
+// 0.2/0.4/... spacing over a 23.75-mi span would put the FIRST probe at 4.75 mi — beyond the entire
+// 8-minute ring (2.4 mi), which then falls back to crude linear extrapolation. These cluster where
+// the rings actually live (2-9 mi) and thin out past them.
+const FRACS = [0.05, 0.10, 0.16, 0.23, 0.32, 0.45, 0.62, 0.80, 1.0];
 const GRID_MI = 0.61;                  // candidate grid spacing — 6x the cells of the 1.5mi first pass (user ask)
 const FABRIC_MI = 1.2;                 // prune: candidate must be within this of commercial fabric
 
@@ -434,28 +444,36 @@ async function computeSet(list, store, label){
     const ola=r.la, olo=r.lo, mLon=69.0*Math.cos(ola*Math.PI/180);
     const reaches=BUDGETS.map(b=>reachOf(r['r'+(b/60)], ola, olo));
     const rMax=Math.max(...reaches[reaches.length-1]);
-    const rb=ringBBox(r.r10);
-    // only competitors whose 10-min bbox meets this candidate's 10-min bbox can overlap it
+    const rb=ringBBox(r['r'+(BUDGETS[BUDGETS.length-1]/60)]);
+    // Prefilter against the OUTERMOST ring: competition is now measured across the whole catchment,
+    // so a clinic that only meets the 20-25 min band still competes for those households.
     const comps=clinicIdx.filter(c=> !(c.bb.maxLa<rb.minLa||c.bb.minLa>rb.maxLa||c.bb.maxLo<rb.minLo||c.bb.minLo>rb.maxLo));
 
     const SA=SAMPLE_MI*SAMPLE_MI;                  // sq mi represented by one sample
-    const bandArea=[new Map(),new Map(),new Map(),new Map()];
+    const NB=BUDGETS.length;
+    const bandArea=Array.from({length:NB},()=>new Map());
     const ovHH=new Map(); let mktHH=0;
-    const covHH=new Array(9).fill(0);              // households reached by exactly N competitors
+    // PER BAND. Measuring competition on the 10-minute ring while summing demand out to 25 minutes
+    // credited far households as winnable at the INNER ring's share — households 20 min away have
+    // many closer clinics. Measured effect of that mismatch: the model read 1.4-1.5x actual rosters
+    // instead of the ~0.7x incumbency-consistent level, and rural cells (largest outer rings
+    // relative to inner) inflated 9.4x. Each band now splits against the clinics that reach IT.
+    const covHH=Array.from({length:NB},()=>new Array(9).fill(0));
+    const mktB=new Array(NB).fill(0);
     for(let dy=-rMax; dy<=rMax; dy+=SAMPLE_MI){
       for(let dx=-rMax; dx<=rMax; dx+=SAMPLE_MI){
         // largest ring first so a sample outside everything costs exactly one test
-        if(!inStar(dy,dx,reaches[3])) continue;
-        let band=3;
-        for(let b=0;b<3;b++) if(inStar(dy,dx,reaches[b])){ band=b; break; }
+        if(!inStar(dy,dx,reaches[NB-1])) continue;
+        let band=NB-1;
+        for(let b=0;b<NB-1;b++) if(inStar(dy,dx,reaches[b])){ band=b; break; }
         const la=ola+dy/69.0, lo=olo+dx/mLon;
         const zi=rastAt(la,lo); if(zi<0) continue;
         const zip=ZLIST[zi];
         bandArea[band].set(zip,(bandArea[band].get(zip)||0)+SA);
-        if(band<=1){                                // inside the 10-min competitive market
+        {
           const w=(HD[zip]||0)*SA;                  // W2: weight by households, not area
           if(w>0){
-            mktHH+=w;
+            mktHH+=w; mktB[band]+=w;
             let nCov=0;
             for(const c of comps)
               if(inStar((la-c.la)*69.0,(lo-c.lo)*c.mLon,c.reach)){ ovHH.set(c.i,(ovHH.get(c.i)||0)+w); nCov++; }
@@ -465,7 +483,7 @@ async function computeSet(list, store, label){
             // The split has to happen per household and then be aggregated, which is build-time
             // information. Shipping the distribution lets the app do the correct average while
             // still applying its own runtime roster weights.
-            covHH[Math.min(nCov,8)] += w;
+            covHH[band][Math.min(nCov,8)] += w;
           }
         }
       }
@@ -488,8 +506,10 @@ async function computeSet(list, store, label){
       return out.sort((x,y)=>y[1]-x[1]);
     });
     // household-weighted share of this candidate's 10-min market that each competitor also reaches
-    // cd[n] = household-weighted share of this market reached by exactly n competitors
-    cell.cd = mktHH>0 ? covHH.map(w=>+(w/mktHH).toFixed(3)) : new Array(9).fill(0);
+    // cd[band][n] = household-weighted share of THAT BAND's households reached by exactly n
+    // competitors. Per band, because a 20-minute household faces a different competitive set than
+    // a 5-minute one and must not inherit the inner ring's share.
+    cell.cd = covHH.map((arr,b)=> mktB[b]>0 ? arr.map(w=>+(w/mktB[b]).toFixed(3)) : new Array(9).fill(0));
     const ov=[];
     if(mktHH>0) for(const [i,w] of ovHH){ const f=w/mktHH; if(f>0.03) ov.push([i,+f.toFixed(2)]); }
     ov.sort((a,b)=>b[1]-a[1]);
@@ -499,9 +519,10 @@ async function computeSet(list, store, label){
     cells[k]=cell;
     if(++n%400===0) process.stdout.write(`  derived ${n}…\n`);
   }
-  const doc={ v:2, built:new Date().toISOString().slice(0,10), engine:'osrm', rays:RAYS,
+  const doc={ v:4, built:new Date().toISOString().slice(0,10), engine:'osrm', rays:RAYS,
     budgets:BUDGETS, grid:GRID_MI, bbox:DFW, sampleMi:SAMPLE_MI,
-    // v2: cells carry `b` = FOUR DISJOINT band ZIP mixes (0-8, 8-10, 10-12, 12-15 min) instead of
+    // v4: `cd` is PER BAND (cd[band][n]); competition spans the whole catchment, not the 10-min ring.
+    // v3: cells carry `b` = SIX DISJOINT band ZIP mixes (0-8, 8-10, 10-12, 12-15, 15-20, 20-25 min) instead of
     // four nested cumulative mixes; `ov` is HOUSEHOLD-weighted not area-weighted; and `cd` is the
     // household-weighted distribution of competitor COUNT per household, which is what lets the
     // app compute a correct average capture share instead of 1/(1+sum-of-overlaps).
