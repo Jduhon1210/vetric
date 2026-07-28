@@ -7371,6 +7371,7 @@ let evalZoning=true;        // zoning FILTER on by default — drop residential/
 let evalFuture=true, _evalFutInfo=null, evalLandPlays=[], evalHiddenWeak=0;
 let evalMetroRun=false;   // true while the on-screen analysis is a region-scale screening pass (Evaluate Metroplex)
 let evalCaptureOn=false;  // true while the on-screen analysis ran on the drive-time capture model
+let evalLandStat=null;    // land-play funnel counts, so a zero result can be attributed
 // True while the on-screen analysis IS the evaluation of a land play (user 2026-07-26: "when
 // evaluating a land play i dont want it to give me more land plays"). You already chose the
 // corridor — this pass answers "where inside it do I build?", so nested land plays are noise.
@@ -7797,6 +7798,29 @@ function _loadCatchments(){
 // numbers from the nearest cell. Sound because a 10-minute drive polygon is ~3 mi across, so
 // shifting 0.3 mi barely changes which households it reaches. Metro runs still USE the cells as
 // candidates directly, where 0.61 mi is already finer than the old ~3-mi grid.
+// Nearest commercial-fabric node in METRES, over the COMPLETE dfw-retail set (5,905 points).
+// Capture mode needs this because `evalData.retail` is a live OSM fetch that hits its per-request
+// cap at metro bbox — measured, it cut 9,627 candidates to 433. Using the complete static set keeps
+// the site-vs-land-play distinction honest without starving the candidate pool.
+let _capRetIdx=null;
+function _capNearRetailM(la,lo){
+  if(!_oppRetailPts||!_oppRetailPts.length) return null;
+  if(!_capRetIdx){
+    _capRetIdx=new Map();
+    for(const p of _oppRetailPts){
+      const k=Math.round(p[0]*100)+'_'+Math.round(p[1]*100);
+      if(!_capRetIdx.has(k)) _capRetIdx.set(k,[]);
+      _capRetIdx.get(k).push(p);
+    }
+  }
+  const kx=Math.round(la*100), ky=Math.round(lo*100);
+  let best=Infinity;
+  for(let dx=-1;dx<=1;dx++) for(let dy=-1;dy<=1;dy++){
+    const arr=_capRetIdx.get((kx+dx)+'_'+(ky+dy)); if(!arr) continue;
+    for(const q of arr){ const d=hav(la,lo,q[0],q[1]); if(d<best) best=d; }
+  }
+  return isFinite(best)? best : null;   // null = nothing within ~0.7 deg bucket ring
+}
 function _catchNearest(la,lo){
   if(!_catchIdx) return null;
   const kx=Math.round(la*100), ky=Math.round(lo*100);
@@ -7888,6 +7912,17 @@ const _catchAttract=n=>Math.sqrt(Math.max(0.05,n)/2.5);
 // tracks actual rosters at p25 1.12 / p50 1.06 / p75 0.95 / p90 0.89 at 20 min, against
 // 0.52-0.62 at 15 min (too tight) and 1.19-1.83 at 25 min (too loose). 20 min is also ~73% of a
 // clientele by the survey distribution, inside the primary+secondary trade-area convention.
+// SCORE ANCHORS — absolute, never relative to the region's best cell. Normalising against the max
+// would peg every suburb low because one downtown cell reaches far more, and would make the score
+// mean something different in every metro. Anchor = 10 doctors: reach enough to fill ten if you won
+// all of it, and the same figure in dollars. Because score = winnable revenue / CATCH_REV_FULL,
+// EVAL_STRONG 0.22 reads as ~$1.36M of winnable revenue — a viable 2-doctor practice.
+// (Both were lost in the 2026-07-27 decay-block rewrite and referenced-but-undefined for three
+// commits; a missing const is a RUNTIME ReferenceError, so `node --check` passed and only a full
+// evaluation would have surfaced it. Unit-testing the helpers was not enough — the scoring loop is
+// the only caller.)
+const CATCH_REACH_FULL=10*DVM_VISIT_CAPACITY;
+const CATCH_REV_FULL=10*REV_PER_DVM;
 const CATCH_MAX_BAND=5;
 // Demand is NOT decayed here. Decay lives entirely in the attraction term inside _catchShareBand,
 // which is orthodox Huff — a household makes its ~2.4 visits/dog-HH wherever it lives, and distance
@@ -8037,7 +8072,22 @@ const EVAL_RET_MIN=2.0;
 // contested corners over the bar (Prosper site at 36% share touching three incumbents read
 // 'Recommended' while the same ZIP's KPIs read saturated/hub). Below the floor a site can
 // still top the list — as 'Best available', with the memo steering to acquisition/dirt.
-function _evalStrongOK(g){ return g.score>=EVAL_STRONG && g.demandN>=0.45 && g.share>=0.24 && (!evalDataOk.retail || g.ret>=EVAL_RET_MIN); }   // share floor 0.24 ≡ old 0.40 (fair-fight mapping)
+// CAPTURE MODE uses different gates, because two of the gravity-scale floors stopped meaning what
+// they were calibrated to mean. `share` was "fraction of a 3-mile disc's demand"; it is now
+// "fraction of EVERY visit inside a 20-minute drive catchment" — a far larger denominator, so the
+// median cell reads 0.025 and a 0.24 floor passed 439/9,627. `demandN` is likewise now derived from
+// the same winnable-visit figure the score already encodes, so gating on both double-counts.
+// Measured on the full DFW grid: score>=0.22 passed 2,048 cells, but ALL THREE together passed 3 —
+// i.e. the engine would have declared "no strong site" essentially everywhere.
+// What survives is the pair that still means something on this scale: the REVENUE bar (score is
+// winnable revenue / 10-doctor anchor, so EVAL_STRONG 0.22 is ~$1.36M — a viable 2-doctor practice)
+// and REAL COMMERCIAL FABRIC. Share is no longer a gate but is still shown on the card, so an
+// analyst can see "$2M of winnable revenue, but only 4% of a very crowded market" and judge the
+// entry difficulty themselves rather than having it silently rejected.
+function _evalStrongOK(g){
+  if(evalCaptureOn) return g.score>=EVAL_STRONG && (!evalDataOk.retail || g.ret>=EVAL_RET_MIN);
+  return g.score>=EVAL_STRONG && g.demandN>=0.45 && g.share>=0.24 && (!evalDataOk.retail || g.ret>=EVAL_RET_MIN);
+}   // gravity share floor 0.24 ≡ old 0.40 (fair-fight mapping)
 // DISPLAY scale for site scores (2026-07-15, user: top-ranked ZIPs read as sub-50 failing grades).
 // The multiplicative capture score is honest but its raw ceiling in a CONTESTED market is ~0.45,
 // so raw*100 shows "45/100" on a genuinely strong site — same misread the List composite solved
@@ -8676,7 +8726,13 @@ function _evalComputeAndRender(){
   const polySegs=[]; { const _g=feat.geometry, _ps=_g.type==='Polygon'?[_g.coordinates]:_g.coordinates;
     for(const poly of _ps) for(const ring of poly) for(let i=0;i+1<ring.length;i++) polySegs.push({aLon:ring[i][0],aLat:ring[i][1],bLon:ring[i+1][0],bLat:ring[i+1][1]}); }
   const grid=[], landGrid=[];
-  const _hasFut = evalFuture && evalData.resid.some(r=>r._fut);
+  // A gate-failing cell is only kept as a land-play candidate when there IS future demand to price.
+  // That test read ONLY the gravity injection (`evalData.resid` tagged `_fut`), which needs the OSM
+  // residential fetch — and that fetch returns NOTHING at metro bbox (measured: resid 0, retail 0,
+  // osmLU 0). So in capture mode every land candidate was discarded before `landGrid`, and land
+  // plays silently returned 0 with no way to tell why. Capture mode carries its own future demand
+  // in `fu[band]`, so it qualifies on that instead.
+  const _hasFut = evalFuture && (evalData.resid.some(r=>r._fut) || (_capture && !!_catchData));
   let zEx=0; // cells dropped by the zoning/landuse gate (residential/civic)
   // CAPTURE MODE (metroplex runs only). The candidate set becomes the drive-time catchment cells
   // — a 0.61-mi grid already gated on two-source commercial fabric — instead of the 36x36 metro
@@ -8728,13 +8784,17 @@ function _evalComputeAndRender(){
       // no green area. If there's neither signal, the cell is not siteable (we don't guess).
       let siteable;
       if(zgate==='allow') siteable=true;                       // GREEN — commercial land
-      // CAPTURE MODE: the candidate already PASSED a commercial-fabric gate at build time, using
-      // COMPLETE data (5,905 dfw-retail points UNION 16,868 county vacant-commercial parcels).
-      // The runtime retail test here reads `evalData.retail`, which at a metro bbox is a CAPPED
-      // OSM fetch — a worse dataset re-filtering what a better one already approved. Measured: it
-      // cut 9,627 candidates to 433 (95%) and silently dropped the verified southeast-Dallas
-      // whitespace. Zoning EXCLUDE still applies above; only the retail-proximity test is skipped.
-      else if(_cc) siteable=true;
+      // CAPTURE MODE: the runtime retail test reads `evalData.retail`, a live OSM fetch that hits
+      // its cap at metro bbox — it cut 9,627 candidates to 433 and dropped verified whitespace.
+      // But blanket-passing every catchment cell (the first fix) collapsed the site-vs-land-play
+      // distinction, because the BUILD's gate is 1.2 mi of fabric while a SITE needs 280 m — so
+      // land plays went to zero. Use the COMPLETE static retail set instead: same 280 m test, data
+      // that does not thin out at metro scale. Cells that fail still fall through to landGrid,
+      // which is exactly where a buy-dirt play belongs.
+      else if(_cc){
+        const _dr=_capNearRetailM(la,lo);
+        siteable = _dr!=null ? (_dr<SITE_COMM) : true;   // no retail data at all → don't starve
+      }
       else siteable=(hasRetail && nearRetail<SITE_COMM);       // else require BLUE — a real retail/commercial area
       // Gate-fail cells INSIDE the polygon stay alive as LAND-PLAY candidates when announced
       // development is in play (2026-07-15, user ask: rank land plays with the same logic as
@@ -8905,7 +8965,13 @@ function _evalComputeAndRender(){
     const _lpQual = g => evalCaptureOn
       ? (g.cFutTot||0) >= 2*DVM_VISIT_CAPACITY && (g.cFutTot||0) >= 0.33*(g.cReach||0)
       : (g.demF||0) >= 0.8;
-    const cand=landGrid.filter(g=>_lpQual(g) && !_lpResid(g.la,g.lo) && !_lpNearBuilt(g.la,g.lo)).sort((a,b)=>b.score-a.score);
+    // Diagnostics: land plays silently returning 0 is otherwise invisible, and each filter can
+    // legitimately empty the pool. Exposed so a zero result can be attributed instead of guessed at.
+    const _lpA=landGrid.filter(_lpQual);
+    const _lpB=_lpA.filter(g=>!_lpResid(g.la,g.lo));
+    const _lpC=_lpB.filter(g=>!_lpNearBuilt(g.la,g.lo));
+    evalLandStat={pool:landGrid.length, afterDemand:_lpA.length, afterResid:_lpB.length, afterBuilt:_lpC.length};
+    const cand=_lpC.sort((a,b)=>b.score-a.score);
     const sepLP=0.0175; // ~1.2mi fixed — land corridors are distinct at this grain
     for(const g of cand){ if(evalLandPlays.every(t=>Math.hypot(t.la-g.la,t.lo-g.lo)>sepLP)){ evalLandPlays.push(g); if(evalLandPlays.length===3) break; } }
     // Homes-in-reach uses the SAME geometry that fed demF — the injected footprint FRAGMENTS

@@ -564,6 +564,43 @@ doctors, urbanicity mix 24% rural / 31% exurban / 33% suburban / 13% urban.
 **Trade-off accepted:** a `dfw-pipeline.json` refresh now needs a derive rerun (~25 min, no OSRM).
 Cadence is 30 days.
 
+#### W10 — FOUR BUGS FOUND BY ACTUALLY RUNNING AN EVALUATION (2026-07-28)
+
+Every one was invisible to `node --check` and to unit-testing the helpers. Only a full end-to-end
+run surfaces them, and I had not done one since the decay rewrite.
+
+**1. `CATCH_REACH_FULL` and `CATCH_REV_FULL` were referenced but UNDEFINED** — deleted by the
+2026-07-27 decay-block rewrite and shipped broken across THREE commits (e3382a2, b7097a2, 7266de6).
+A missing `const` is a RUNTIME ReferenceError, so syntax checking passed; the scoring loop is the
+only caller, and the helpers I was unit-testing never touch them. Every capture evaluation in that
+window would have thrown. Restored, with the anchors' derivation documented in place.
+
+**2. `_evalStrongOK` would have declared "no strong site" essentially everywhere.** Its floors
+(`demandN>=0.45`, `share>=0.24`) were calibrated when share meant "fraction of a 3-mile disc's
+demand". It now means "fraction of EVERY visit in a 20-minute drive catchment" — a far larger
+denominator, so the median cell reads 0.025. Measured across the full DFW grid: `score>=0.22` passed
+2,048 cells, `share>=0.24` passed 439, and **all three together passed 3 of 9,627**. Capture mode now
+gates on the REVENUE bar plus real commercial fabric — the two that still mean something on this
+scale — and share is shown on the card rather than used as a silent reject.
+
+**3. The site-vs-land-play distinction collapsed.** Bypassing the runtime retail test (because the
+metro-bbox OSM fetch caps out) made EVERY catchment cell siteable, so `landGrid` got nothing. Fixed
+by testing against the COMPLETE static `dfw-retail.json` (5,905 points) at the same 280 m threshold:
+site cells 8,830 -> 4,298, with the remainder correctly falling through to land candidacy.
+
+**4. Land candidates were discarded before reaching `landGrid`.** `_hasFut` gated on the gravity
+injection (`evalData.resid` tagged `_fut`), which needs the OSM residential fetch — and that fetch
+returns NOTHING at metro bbox (measured: resid 0, retail 0, osmLU 0). Capture mode carries its own
+future demand in `fu[band]`, so it now qualifies on that.
+
+Added `evalLandStat` (pool / afterDemand / afterResid / afterBuilt) so a zero land-play result can be
+ATTRIBUTED rather than guessed at — that is how bug 4 was located, after bug 3's fix left the count
+still at zero.
+
+**Post-fix metro run:** 0 errors, 5 strong sites, ceiling **$6.03M / 10.7 doctors** in north Dallas,
+with an urban / suburban / rural spread in the top 5. Land plays remain UNVERIFIED — the run to
+confirm them was still in the Overpass fetch phase.
+
 #### W9 — CAPTURE FOR EVERY IN-REGION EVALUATION (2026-07-28, user: "Drop a site / Evaluate a ZIP / Evaluate a clinic — we need these switched to the new engine")
 
 Gate was `_metroBB && ... && !_evalSubject`; it is now `EVAL_MODEL==='capture' && _catchData &&
