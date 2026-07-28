@@ -564,6 +564,50 @@ doctors, urbanicity mix 24% rural / 31% exurban / 33% suburban / 13% urban.
 **Trade-off accepted:** a `dfw-pipeline.json` refresh now needs a derive rerun (~25 min, no OSRM).
 Cadence is 30 days.
 
+#### W9 — CAPTURE FOR EVERY IN-REGION EVALUATION (2026-07-28, user: "Drop a site / Evaluate a ZIP / Evaluate a clinic — we need these switched to the new engine")
+
+Gate was `_metroBB && ... && !_evalSubject`; it is now `EVAL_MODEL==='capture' && _catchData &&
+_catchCovers(bb)`. Outside the artifact's bbox, or with the revert switch flipped, gravity runs
+exactly as before.
+
+**Resolution had to be preserved.** A 2-mi drop-site box on the 36x36 grid is ~55m candidate
+spacing — the parcel grain "Refine this area" exists for. Catchment cells are 0.61 mi apart, so
+using them as candidates for small areas would have destroyed it. Small areas therefore keep the
+FINE grid and borrow capture numbers from the nearest cell (`_catchNearest`, 0.01-deg buckets,
+~0.27 mi typical offset). Sound because a 10-minute polygon is ~3 mi across. Metro runs still use
+the cells as candidates directly, where 0.61 mi already beats the old ~3-mi grid.
+
+**Clinic mode — the subject cannot compete with itself.** Two changes, both gated on `_evalSubject`:
+its attraction is its REAL roster (`_staffW(dvm)`) rather than a solved entrant size, and it is
+removed from its own competitor distribution. A household in band b sits roughly band b from the
+subject too (the subject IS at that cell), so it contributes about `staffW x W[b]` to that
+household's effective competitor weight; the bucket index is shifted down by that much. Approximate,
+but the alternative is leaving the clinic inside its own competition — the failure that crushed the
+Double Oak read on the gravity engine.
+
+Verified at MATCHED size: the same 4-DVM practice reads **0.1325 share as an entrant vs 0.1536 as
+the incumbent — a 15.9% lift** purely from self-exclusion, and a larger roster removes more.
+Roster is honoured (4 -> 4, solo -> 1) and a bigger clinic wins more share.
+
+**Two follow-on corrections the extension exposed:**
+- `cReach` is no longer decay-weighted (decay moved into the share in W7), so it is now EVERY visit
+  inside the catchment — a Plano cell reaches ~530k visits/yr. `demandN` was `cReach/anchor`, which
+  therefore pinned at 1.0 almost everywhere and stopped `_evalStrongOK`'s `demandN>=0.45` gate from
+  filtering anything. Now derived from WINNABLE visits.
+- The card called that figure "distance-weighted visits". It is not, any more. Relabelled.
+
+**Artifact v7 also precomputes `wb`** (competitor-strength mean) over the FULL competitor set. This
+began as a size cut and turned out to be an accuracy bug: with competitors spanning the whole
+catchment the 120-entry `ov` cap was BINDING on ~96% of cells, so the runtime mean was drawn from a
+truncated set (truncating further to 12 moved it 4.9% mean / 26% worst). `ov` trimmed to the top 8
+for display. 25.9 -> 17.6 MB raw, 5.8 -> 3.9 MB gzipped. Verified wb VARIES (36 distinct values,
+0.849-1.305) — flat would mean the roster load silently failed.
+
+GOTCHA that cost a run: `vet-staff.js` is `window.VET_STAFF = {...}` preceded by a COMMENT
+containing braces, so slicing between the first `{` and last `}` and JSON.parsing it yields garbage
+WITHOUT throwing — it reported "0 rosters" and would have flattened every competitor to an identical
+weight while still producing a plausible file. Evaluate the file, do not slice it.
+
 #### W7 FINAL — symmetric Huff, decay in the SHARE only (2026-07-28, user: "competitors represented by the same rings a demand site would have with the same distance decay algorithms")
 
 Two structural errors, fixed together. The model now tracks actual rosters at **0.89-1.12 across the

@@ -428,6 +428,32 @@ async function computeSet(list, store, label){
   const clinicRecs=Object.entries(ck.clinics).filter(([,r])=>!r.fail);
   // Competitor references are the clinic's INDEX in the shipped clinics array, not its cell key —
   // at ~30 competitors per cell across thousands of cells the 12-char keys dominated the file.
+  // Rosters, for the competitor-strength mean. Computing wBar in the BUILD fixes a real accuracy
+  // bug and a size problem at once: with competitors spanning the whole catchment rather than a
+  // 10-minute ring, the 120-competitor cap on `ov` was BINDING on ~96% of cells, so the runtime mean
+  // was drawn from a truncated set (truncating further to 12 moved it 4.9% on average, 26% worst).
+  // Ships as ONE number instead of ~120 pairs -- `ov` was 36% of a 25.9 MB file and fed nothing else.
+  // Cost: analyst DVM overrides no longer move it. Acceptable — wBar is a mean across ~120
+  // competitors, so a single override barely shifts it, and the alternative was a truncated mean.
+  // vet-staff.js is `window.VET_STAFF = {...}` with a COMMENT containing braces above it, so
+  // slicing between the first { and last } and JSON.parsing it silently yields garbage — it fails
+  // to a uniform default weight, erasing every roster difference without erroring. Evaluate it.
+  let STAFF={};
+  try{
+    const src=fs.readFileSync(path.join(HERE,'vet-staff.js'),'utf8');
+    const w={}; new Function('window', src)(w);
+    STAFF=w.VET_STAFF||{};
+  }catch(e){ console.warn('  vet-staff.js unreadable — competitor strength falls back to the median'); }
+  if(!Object.keys(STAFF).length) console.warn('  WARNING: 0 rosters loaded, wBar will be flat');
+  const staffAt=(la,lo)=>{
+    const kx=Math.round(la*1000), ky=Math.round(lo*1000);
+    for(let dx=-3;dx<=3;dx++) for(let dy=-3;dy<=3;dy++){
+      const e=STAFF[(kx+dx)+'_'+(ky+dy)]; if(e&&e.n>0&&e.n<=40) return e.n; }
+    return 2;   // observed median when the roster scrape found nothing
+  };
+  const staffW=n=>(!n||n<1)?1:Math.min(1.8,Math.max(0.8,Math.sqrt(n/2.5)));
+  console.log(`  rosters for wBar: ${Object.keys(STAFF).length} clinics`);
+
   // SYMMETRY (2026-07-28, user: "competitors represented by the same rings a demand site would
   // have with the same distance decay algorithms"). Previously a competitor was a single 10-minute
   // ring — a binary in/out test — while a candidate's demand spanned 25 minutes. A household 20 min
@@ -446,6 +472,7 @@ async function computeSet(list, store, label){
     c.reach=reachOf(c.ring, c.la, c.lo);                       // outermost, for the bbox/skip test
     c.reaches=c.rings.map(rg=>reachOf(rg, c.la, c.lo));        // all six, for the decay weight
     c.mLon=69.0*Math.cos(c.la*Math.PI/180);
+    c.sw=staffW(staffAt(c.la,c.lo));                           // competitor strength, scraped roster
   }
   // The decay curve applied to a competitor is the SAME one applied to the site. Urbanicity is a
   // runtime classification (it needs the app's household model), so the build uses the SUBURBAN
@@ -477,6 +504,7 @@ async function computeSet(list, store, label){
     console.log(`  future demand: ${PIPE.length} residential projects, ${PIPE.reduce((a,r)=>a+r.u,0).toLocaleString()} units`);
   }catch(e){ console.warn('  dfw-pipeline.json missing — future demand will be absent'); }
 
+  const CBYI=new Map(clinicIdx.map(c=>[c.i,c]));   // index lookup — a .find() here is O(n) per competitor
   const cells={};
   let n=0;
   for(const [k,r] of Object.entries(ck.grid)){
@@ -576,17 +604,24 @@ async function computeSet(list, store, label){
     // competitor weight of i*0.5 (decay-weighted, not a raw count). Runtime reads bucket i as
     // K = i*0.5 and computes A*W[band] / (A*W[band] + wBar*K).
     cell.cd = covHH.map((arr,b)=> mktB[b]>0 ? arr.map(w=>+(w/mktB[b]).toFixed(3)) : new Array(17).fill(0));
+    // wBar over the FULL competitor set — no cap, no truncation bias.
+    let _swSum=0, _fSum=0;
+    if(mktHH>0) for(const [i,w] of ovHH){ const f=w/mktHH; const cl=CBYI.get(i);
+      if(cl){ _swSum+=cl.sw*f; _fSum+=f; } }
+    cell.wb=_fSum>0? +(_swSum/_fSum).toFixed(3) : 1;
     const ov=[];
     if(mktHH>0) for(const [i,w] of ovHH){ const f=w/mktHH; if(f>0.03) ov.push([i,+f.toFixed(2)]); }
     ov.sort((a,b)=>b[1]-a[1]);
     // Cap at 120 (effectively uncapped): a 20-cap was truncating a MEANINGFUL (>0.10) competitor on 615 of 1,146
     // cells — understating competition exactly in the dense markets where it decides the ranking.
-    cell.ov=ov.slice(0,120);
+    cell.ov=ov.slice(0,8);   // top few only, for display/debug — wBar no longer reads this
     cells[k]=cell;
     if(++n%400===0) process.stdout.write(`  derived ${n}…\n`);
   }
-  const doc={ v:6, built:new Date().toISOString().slice(0,10), engine:'osrm', rays:RAYS,
+  const doc={ v:7, built:new Date().toISOString().slice(0,10), engine:'osrm', rays:RAYS,
     budgets:BUDGETS, grid:GRID_MI, bbox:DFW, sampleMi:SAMPLE_MI, kStep:0.5,
+    // v7: `wb` = competitor-strength mean over the FULL set (was a 120-capped runtime scan of `ov`,
+    //     which was truncating on ~96% of cells); `ov` trimmed to the top 8 for display only.
     // v6: `fu[band]` = announced residential units (NCTCOG) per band, on the same rings, so future
     //     demand runs through the same decay/share machinery instead of a parallel gravity sum.
     // v5: competitors carry all six of their OWN rings and are decay-weighted with the same curve a

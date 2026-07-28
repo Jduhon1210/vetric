@@ -305,11 +305,22 @@ sized entrant and symmetric competition, equilibrium size IS what a mature marke
 re-orders rather than uniformly lifting). Earlier entries arguing ~0.7× was correct belonged to the
 fixed-probe era — that reasoning is retired.
 
+### Scope — EVERY evaluation inside the artifact's bbox (2026-07-28)
+Gate is `EVAL_MODEL==='capture' && _catchData && _catchCovers(bb)`. Metro runs use the catchment
+cells AS candidates; drop-site / ZIP / clinic keep their FINE 36x36 grid (a 2-mi box is ~55m
+spacing — the parcel grain Refine exists for) and borrow capture numbers from the nearest cell via
+`_catchNearest`. **Clinic mode**: attraction is the subject's REAL roster, and the subject is
+removed from its own competitor distribution by shifting the bucket index down `staffW x W[b]`
+(verified: same 4-DVM practice reads 0.1325 as entrant vs 0.1536 as incumbent, +15.9%).
+`demandN` derives from WINNABLE visits, NOT `cReach` — since decay moved into the share, `cReach` is
+every visit in the catchment (~530k for a Plano cell) and reach/anchor pinned at 1.0 everywhere.
+
 ### Known gaps (documented, not bugs)
-- Capture applies to METRO runs only. Drop-site, ZIP and clinic evaluations still use gravity;
-  clinic evaluation on real catchments is the highest-value next step.
 - Saturation KPI + Opportunity list remain crow-flies, so they can disagree with an eval on screen.
 - `evalOverlap` still calls the live Routes API even though the overlap numbers are precomputed.
+- `vet-staff.js` must be EVALUATED, not sliced-and-JSON.parsed: a brace-containing comment above the
+  object makes slicing yield garbage silently (reported "0 rosters", would have flattened every
+  competitor to one weight while still writing a plausible file).
 - Non-DFW regions have no artifact and silently fall back to gravity (~90 min per metro to build).
 - The BUILD weights competitors with the suburban reference curve (urbanicity is a runtime
   classification). Per-class competitor curves are a refinement, not a correction.
