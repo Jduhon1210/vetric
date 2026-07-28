@@ -248,6 +248,74 @@ Identifies the OWNER of each INDEPENDENT clinic from TX franchise-tax filings (p
 ## Find-spaces-to-lease deep-link (Crexi / LoopNet)
 Each recommended site in the Evaluate sidebar (`_evalRenderSidebar` cards) carries a handoff block (`_leaseBlock(g)`): an **expectation line** set from the site's retail-access score (`g.retailN`: <0.35 → amber "Sparse retail — likely a build-to-suit or land play; try Land first", ≥0.6 → green "Established retail nearby — lease space more likely", shown only when `evalDataOk.retail`) + two link rows, **Lease space** and **Land to build**, each into Crexi + LoopNet. Crexi/LoopNet have NO free public API and block scraping, so this is a **location-filtered deep-link handoff**, not a data pull (stays inside the free-usage rule + their ToS). `openLeaseSearch(lat,lon,site,mode)` reverse-geocodes the site's coords via Nominatim (`_leaseGeo`, cached in `_leaseGeoCache`, reads city + `ISO3166-2-lvl4` state) then opens by `mode`: LEASE → Crexi `/lease/properties/{ST}/{City}`, LoopNet `.../{city-slug}-{st}/for-lease/`; LAND (buy land to build — the exurb whitespace play where lease inventory is thin but land isn't) → Crexi `/properties/{ST}/{City}/Commercial-Land`, LoopNet `.../{city-slug}-{st}/for-sale/`. All four formats verified against live indexed pages (single- + multi-word cities). **Popup-blocker-safe**: opens `window.open('','_blank')` SYNCHRONOUSLY inside the click gesture, then sets `.location` after the async geocode resolves (also nulls `opener`). Falls back to the state-level page if the city can't be resolved. Verified URL formats for single- + multi-word cities; the marketplaces 403 automated fetchers (bot protection) but serve real browser tabs normally.
 
+## Drive-time capture model (2026-07-27/28) — METROPLEX RUNS ONLY
+Design + full validation record: `research/site-capture-model.md`. Replaces the two circles that
+matter — demand and competition — with measured road-network reach. **`EVAL_MODEL='capture'` is the
+switch; set it to `'gravity'` to put metro runs back on the crow-flies engine exactly as it was.**
+Ordinary ZIP / drop-site / clinic evaluations NEVER consult it and are untouched.
+
+**`dfw-catchments.json`** (built by `build-catchments.mjs` against a LOCAL OSRM container — Docker,
+`ghcr.io/project-osrm/osrm-backend`, DFW-clipped OSM extract, port 5001). No API cost, no request
+cap, no redistribution restriction (ORS was rejected on LICENSING, not capability — its free tier
+forbids redistributing hosted output, which is what shipping it in a commercial product would be).
+Ships **derived numbers, never road geometry**, which keeps us on the produced-work side of ODbL.
+Per candidate cell (0.61-mi grid, two-source commercial-fabric gate = OSM retail ∪ county vacant-
+commercial parcels): `b[band]` = ZIP coverage per travel-time band, `cd[band][i]` = household-
+weighted distribution of EFFECTIVE competitor weight (i×0.5), `ov` = per-competitor household
+overlap, `fu[band]` = announced NCTCOG units, `a8..a25` = ring areas. Budgets 8/10/12/15/20/25 min.
+
+### The four things that were WRONG and are load-bearing now — do not undo
+1. **Decay lives ONLY in the share, never on demand.** A household makes its ~2.4 visits/dog-HH
+   wherever it lives; distance decides WHICH clinic wins them. Multiplying demand by `W[b]` as well
+   double-counts distance — measured at **0.27-0.31× actual rosters, a 3× undershoot**.
+2. **Competitors carry ALL SIX of their own rings, weighted by the same curve a site uses.** A
+   single 10-min ring made a household 20 min out read UNCONTESTED (it sat outside nearly every
+   competitor ring) — the model read 1.4-1.8× rosters.
+3. **The entrant is SIZED, not a fixed 2.5-DVM probe** (`_catchEquilibrium`): solve
+   `reach × share(n) = n × DVM_VISIT_CAPACITY`. A constant `A_OWN` asked "how much could a SMALL
+   clinic win here" and could never return 7 doctors — ceiling was 4.8 DVM against an observed 20.
+   `_catchAttract` is deliberately NOT `_staffW`: that carries an unknown-roster sentinel (making it
+   NON-MONOTONIC across fractional sizes — `_staffW(0.5)=1.0` but `_staffW(1)=0.8`) and a [0.8,1.8]
+   measurement clamp. Both are right for an OBSERVED competitor, wrong for a solved-for entrant.
+4. **The score is REVENUE, not doctors.** The income effect splits
+   `0.36 total = 0.85 ownership × 0.74 visits × 0.57 price` (BLS ÷ `_incDampF` ÷ AVMA participation).
+   Applying one combined floor to VISITS made total spend right — so the BLS check PASSED — while
+   both halves were wrong. A poor market supports MORE doctors and LESS revenue; ranking on doctors
+   put a $59k catchment first, ranking on revenue puts a $97k one first. `_catchSpendF` (visits,
+   floor 0.74) and `_catchACTF` (price, floor 0.57) are separate on purpose.
+
+### Distance decay varies by URBANICITY (user ask: "based on studies and location")
+Log-logistic `w(t)=1/(1+(t/θ)^β)`, form + urban/rural ratio from a study fitting decay by urbanicity
+in TRAVEL TIME (Florida hospital inpatient flows, PMC6598965: β 2.22 metro / 1.82 rural, ≤60-min
+mean 12.1 vs 28.0 min = 2.31×). **Only the FORM and the RATIO transfer** — that is inpatient care,
+travelled far further than a routine vet visit — so θ is refit to the Pfizer vet anchors (mean 5.3
+mi, 27% within 2 mi) giving θ 4.0 min suburban. GOTCHA: integrating `f` as a kernel does NOT
+reproduce the study's published means; `f` IS the observed travel distribution, so using it directly
+as a band weight would double-count population. Classification is `_catchUrbanClass` on INNER-RING
+household density only — never reach, which the weights themselves produce (circular).
+`CATCH_MAX_BAND=5` credits demand to 20 min: empirically 0.89-1.12 vs rosters, against 0.52-0.62 at
+15 min and 1.19-1.83 at 25. The 25-min band ships and is one constant away.
+
+### Validation — the gate that must keep passing
+`research/decay-validate.mjs` + the scratchpad validators compare modelled practice size against
+**scraped DVM rosters** at real clinic locations (GP-only; ER/urgent-care draw regionally and must
+be excluded as SUBJECTS or they flatter the top end). Target ~1.0 across the distribution: with a
+sized entrant and symmetric competition, equilibrium size IS what a mature market supports. Current:
+**p25 1.12 / p50 1.06 / p75 0.95 / p90 0.89**, Spearman ρ 0.64 vs the previous build (so it
+re-orders rather than uniformly lifting). Earlier entries arguing ~0.7× was correct belonged to the
+fixed-probe era — that reasoning is retired.
+
+### Known gaps (documented, not bugs)
+- Capture applies to METRO runs only. Drop-site, ZIP and clinic evaluations still use gravity;
+  clinic evaluation on real catchments is the highest-value next step.
+- Saturation KPI + Opportunity list remain crow-flies, so they can disagree with an eval on screen.
+- `evalOverlap` still calls the live Routes API even though the overlap numbers are precomputed.
+- Non-DFW regions have no artifact and silently fall back to gravity (~90 min per metro to build).
+- The BUILD weights competitors with the suburban reference curve (urbanicity is a runtime
+  classification). Per-class competitor curves are a refinement, not a correction.
+- A `dfw-pipeline.json` refresh now requires a derive rerun (~25 min, no OSRM) since `fu[band]` is
+  baked in.
+
 ## Catchment-overlap analysis (2026-07-16, user idea: overlap the site's 10-min catchment with every nearby clinic's)
 `evalOverlap(i,btn)` — button in the site card's Catchment tab. Computes the SITE's 10-min isochrone + the nearest ≤6 in-range clinics' (each clinic's ring cached PERMANENTLY in localStorage `vf_iso_<cellkey>` — clinic catchments never change; ~1 Routes call each first time, free after). Samples the site catchment on a 42×42 household-weighted grid (rooftop gravity within 1.2km, `_fut` excluded, 0.05 area floor) and reports: household-weighted per-clinic overlap %, uncontested %, and a **network-adjusted winnable share** — within each sample point the entrant splits demand `1/(1+Σ _staffW(covering clinics))`, i.e. the road network supplies the geometry and fair-fight Huff supplies the split (consistent with A_OWN=1.0). Displayed alongside the gravity share with an agree/diverge interpretation line (diverge ⇒ a road barrier the crow-flies model can't see). VALIDATION INVARIANT: with uniform circular catchments the network share converges to the gravity share (verified with stubbed isochrones — 30%=30%) — if they diverge under stubs, the split arithmetic drifted. Phase 2 (not built): `build-catchments.mjs` batch-precompute of all ~3,765 TX clinic catchments via self-hosted OSRM (free) → ship as a static file feeding the same vf_iso_ format, then use measured overlaps to calibrate `_grav` itself.
 

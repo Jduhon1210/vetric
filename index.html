@@ -7874,6 +7874,25 @@ function _catchBandDemand(cell, valOf){
   }
   return out;
 }
+// ── FUTURE DEMAND ON THE SAME ENGINE (2026-07-28, user: "transition it to the new engine, remove
+// gravity scale") ───────────────────────────────────────────────────────────────────────────────
+// Land plays used to qualify on a crow-flies gravity sum (`demF`) while sites were scored on the
+// road network, so a site and the land play beside it were not measured the same way. `fu[band]` is
+// announced residential units counted inside the SAME drive polygons, so future demand now runs
+// through the same decay and share machinery as today's rooftops.
+// Pet profile is the app's established young-family MPC assumption: 0.55 dog-HH + 0.25 cat-HH per
+// home, and the same visits-per-household constants used everywhere else.
+const CATCH_FUT_VISITS_PER_UNIT = 0.55*OPP_VISITS_PER_DOGHH + 0.25*OPP_VISITS_PER_CATHH;   // 1.62
+// Announced units are not built units. The gravity injector discounted 0.6 selling / 0.4 announced;
+// NCTCOG status is not shipped per band, so a single mid discount stands in — documented, not hidden.
+const CATCH_FUT_CONF = 0.5;
+function _catchFutureDemand(cell){
+  const fu=cell.fu; if(!fu) return null;
+  const out=[];
+  for(let b=0;b<CATCH_BANDS.length;b++)
+    out.push(b<CATCH_MAX_BAND ? (fu[b]||0)*CATCH_FUT_VISITS_PER_UNIT*CATCH_FUT_CONF : 0);
+  return out.some(v=>v>0) ? out : null;
+}
 // Capture share within ONE band, for an entrant of size n. cd[b][k] is the household-weighted share
 // of that band's households reached by exactly k competitors, so the split happens per household and
 // is then averaged — NOT 1/(1+sum-of-overlaps), which over-penalises by Jensen's inequality.
@@ -8670,11 +8689,29 @@ function _evalComputeAndRender(){
                const _bd=_catchBandDemand(_cc,_catchVisits).map(v=>v*_cell.cSpend);
                _cell.cRaw=_bd.reduce((a,b)=>a+b,0)/(_cell.cSpend||1);
                _cell.cReach=_bd.reduce((a,b)=>a+b,0);  // visits the market will actually make
+               // Announced development, measured on the same rings. Same spend-power discount:
+               // future rooftops in a low-income catchment buy the same way today's do.
+               const _fd=_catchFutureDemand(_cc);
+               _cell.cFut=_fd? _fd.map(v=>v*_cell.cSpend) : null;
+               _cell.cFutTot=_cell.cFut? _cell.cFut.reduce((a,b)=>a+b,0) : 0;
+               _cell.fuTot=_cc.fu? _cc.fu.slice(0,CATCH_MAX_BAND).reduce((a,b)=>a+b,0) : 0;   // announced UNITS in reach
+               // SITES SCORE ON TODAY'S ROOFTOPS. Announced units are DISCLOSED on the card but do
+               // NOT enter a site's score — the user's own framing ("future demand should be nice to
+               // have on a site, but should mainly be for land plays"), and the conservative call:
+               // NCTCOG's forward pipeline is 578,335 units metro-wide, so a median cell reaches
+               // ~20,000 announced units inside 20 minutes — comparable to its ENTIRE current
+               // demand. Those homes deliver over years, and the artifact does not carry delivery
+               // year per band, so any near-term confidence factor would be invented rather than
+               // derived. Land plays, whose whole thesis IS future demand, use it in full below.
+               const _sd=_bd;
                _cell.cUrb=_catchUrbanClass(_cc).k;
                _cell.cWBar=_catchWBar(_cc);
-               _cell.cEq=_catchEquilibrium(_cc,_bd,_cell.cWBar);                 // supportable practice size
-               const _wv=_catchWinnable(_cc,_bd,_cell.cEq,_cell.cWBar);
-               _cell.cShare=_cell.cReach>0? _wv/_cell.cReach : 0;                // blended share across bands
+               _cell.cEq=_catchEquilibrium(_cc,_sd,_cell.cWBar);                 // supportable practice size
+               const _wv=_catchWinnable(_cc,_sd,_cell.cEq,_cell.cWBar);
+               const _sdTot=_sd.reduce((a,b)=>a+b,0);
+               _cell.cShare=_sdTot>0? _wv/_sdTot : 0;                            // blended share across bands
+               // land plays are scored on FUTURE demand alone — that is what a land play IS
+               _cell.cEqFut=_cell.cFut? _catchEquilibrium(_cc,_cell.cFut,_cell.cWBar) : 0;
                // heatmap rect + hover hit-test read stepLa/stepLo — capture cells sit on the
                // artifact's 0.61-mi grid, NOT the 36x36 metro step, or the surface draws 3-mi blocks
                const _gm=(_catchData&&_catchData.grid)||0.61;
@@ -8781,6 +8818,14 @@ function _evalComputeAndRender(){
       if(g.nearPE < PE_NEAR_HARD) g.share = Math.min(g.share, 0.10);
       const accessMult = (hasRoads||hasAADT) ? 0.65+0.40*g.accessN : 1;
       g.score = Math.max(0, Math.min(1, g.demandN * Math.pow(Math.min(g.share,0.85), GAMMA) * accessMult));
+      // CAPTURE MODE: a land play is scored on FUTURE demand alone — that is what a land play IS —
+      // measured on the same drive polygons as the sites beside it. Previously land plays ran on a
+      // crow-flies gravity sum while sites ran on the road network, so the two were not comparable.
+      if(g.cEqFut!=null && g.cFutTot>0){
+        g.winVis = g.cEqFut*DVM_VISIT_CAPACITY;
+        g.winRev = g.winVis*REV_PER_VISIT*(g.cACT||1);
+        g.score  = Math.max(0, Math.min(1, (g.winRev/CATCH_REV_FULL)*accessMult));   // retail NEUTRAL
+      }
     }
     // qualify: meaningful FUTURE demand (it's a land play, not a today-site that lacks retail),
     // AND genuinely open dirt (2026-07-15, user: sprouts landed mid-neighborhood): a vacant
@@ -8791,7 +8836,18 @@ function _evalComputeAndRender(){
     const _lpResid=(la,lo)=>{ for(const pp of evalData.osmLU){ if(pp.gate==='exclude' && pp.label && pp.label.indexOf('Residential')===0){ if(la<pp.bb.minLa||la>pp.bb.maxLa||lo<pp.bb.minLo||lo>pp.bb.maxLo) continue; if(pointInGeoJSON(la,lo,pp.f)) return true; } } return false; };
     const _bLp=600/111000;
     const _lpNearBuilt=(la,lo)=>{ for(const r of evalData.resid){ if(r._fut||r._cons) continue; if(Math.abs(r.lat-la)>_bLp) continue; if(hav(la,lo,r.lat,r.lon)<600) return true; } return false; };
-    const cand=landGrid.filter(g=>(g.demF||0)>=0.8 && !_lpResid(g.la,g.lo) && !_lpNearBuilt(g.la,g.lo)).sort((a,b)=>b.score-a.score);
+    // Qualifying threshold is mode-aware: capture mode measures future demand in VISITS on the real
+    // rings (cFutTot), so it uses an absolute floor of one doctor's worth of announced demand rather
+    // than the gravity engine's unitless demF>=0.8.
+    // A land play needs announced demand that is BOTH material in absolute terms (>= 2 doctors'
+    // worth of future visits) AND growth-LED — at least a third of today's demand, so an ordinary
+    // suburban cell with a subdivision down the road does not qualify as a dirt play. An absolute
+    // floor alone was far too loose: the median DFW cell already reaches ~5 doctors of announced
+    // demand, because the metro pipeline is 578k units.
+    const _lpQual = g => evalCaptureOn
+      ? (g.cFutTot||0) >= 2*DVM_VISIT_CAPACITY && (g.cFutTot||0) >= 0.33*(g.cReach||0)
+      : (g.demF||0) >= 0.8;
+    const cand=landGrid.filter(g=>_lpQual(g) && !_lpResid(g.la,g.lo) && !_lpNearBuilt(g.la,g.lo)).sort((a,b)=>b.score-a.score);
     const sepLP=0.0175; // ~1.2mi fixed — land corridors are distinct at this grain
     for(const g of cand){ if(evalLandPlays.every(t=>Math.hypot(t.la-g.la,t.lo-g.lo)>sepLP)){ evalLandPlays.push(g); if(evalLandPlays.length===3) break; } }
     // Homes-in-reach uses the SAME geometry that fed demF — the injected footprint FRAGMENTS
@@ -9248,7 +9304,7 @@ function _evalRenderSidebar(){
         ${_leaseBlock(g)}
       </div>`;
     }
-    const metroNote=evalMetroRun?`<div style="font-size:10.5px;color:#475569;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:5px 9px;margin:6px 0 2px">${evalCaptureOn?`Drive-time capture model${g.cReach?` — reaches <b>${Math.round(g.cReach).toLocaleString()}</b> distance-weighted visits/yr, ${Math.round((g.share||0)*100)}% winnable at equilibrium = <b>${Math.round(g.winVis||0).toLocaleString()}</b> visits/yr supporting a <b>~${((g.winVis||0)/DVM_VISIT_CAPACITY).toFixed(1)}-doctor</b> practice at <b>${_fmtM(g.winRev||0)}</b> revenue${g.cACT!=null&&g.cACT<0.97?` (visit prices run ~${Math.round(g.cACT*100)}% of a high-income market)`:''}${g.cUncon>0.02?` · ${Math.round(g.cUncon*100)}% of households reached by no competitor`:''}${g.cSpend!=null&&g.cSpend<0.97?` · catchment median income $${Math.round((g.cInc||0)/1000)}k — visits ${Math.round(g.cSpend*100)}%, prices ${Math.round((g.cACT||1)*100)}% of a high-income market`:''}${g.cUrb?` · <b>${g.cUrb}</b> decay curve (${g.cUrb==='rural'?'rural households accept longer drives, so the outer bands count more':'denser markets decay faster'})`:''}`:''}.`:`~3-mile screening area${g.snapMi?` — pin placed on the nearest commercial corridor (${g.snapMi.toFixed(1)} mi off the cell center)`:''}.`} <b>Refine</b> runs the full parcel-level analysis here.</div>`:'';
+    const metroNote=evalMetroRun?`<div style="font-size:10.5px;color:#475569;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:5px 9px;margin:6px 0 2px">${evalCaptureOn?`Drive-time capture model${g.cReach?` — reaches <b>${Math.round(g.cReach).toLocaleString()}</b> distance-weighted visits/yr, ${Math.round((g.share||0)*100)}% winnable at equilibrium = <b>${Math.round(g.winVis||0).toLocaleString()}</b> visits/yr supporting a <b>~${((g.winVis||0)/DVM_VISIT_CAPACITY).toFixed(1)}-doctor</b> practice at <b>${_fmtM(g.winRev||0)}</b> revenue${g.cACT!=null&&g.cACT<0.97?` (visit prices run ~${Math.round(g.cACT*100)}% of a high-income market)`:''}${g.cUncon>0.02?` · ${Math.round(g.cUncon*100)}% of households reached by no competitor`:''}${g.cSpend!=null&&g.cSpend<0.97?` · catchment median income $${Math.round((g.cInc||0)/1000)}k — visits ${Math.round(g.cSpend*100)}%, prices ${Math.round((g.cACT||1)*100)}% of a high-income market`:''}${g.cUrb?` · <b>${g.cUrb}</b> decay curve (${g.cUrb==='rural'?'rural households accept longer drives, so the outer bands count more':'denser markets decay faster'})`:''}${g.fuTot>0?` · <b>${Math.round(g.fuTot).toLocaleString()}</b> announced homes inside the same drive rings — <i>trajectory only, not in this score</i>`:''}`:''}.`:`~3-mile screening area${g.snapMi?` — pin placed on the nearest commercial corridor (${g.snapMi.toFixed(1)} mi off the cell center)`:''}.`} <b>Refine</b> runs the full parcel-level analysis here.</div>`:'';
     return `<div class="eval-card" onclick="evalFlyTo(${i})"${g.tier!=='strong'?' style="opacity:.92"':''}>
       <div class="eval-card-head"><span class="eval-rank"${g.tier!=='strong'?' style="background:#94a3b8"':''}>${i+1}</span><span class="eval-card-title">${evalMetroRun?'Area':'Site'} ${i+1}</span>${chipT}<span class="eval-score"${g.tier!=='strong'?' style="color:#64748b"':''}>${headline}</span></div>
       <div class="eval-why">${nearStr}${roadStr?' · '+roadStr:''}</div>
@@ -9302,7 +9358,12 @@ function _evalRenderSidebar(){
   // ── Analyst memo (the judgment, written out) + ring rows for the top moves ──
   const _lpBest=evalLandPlays.length?evalLandPlays[0]:null;
   const _lpSc=_lpBest?_evalDisp(_lpBest.score):null;
-  const _lpHomes=_lpBest?(_lpBest.coms||[]).reduce((t,x)=>t+Math.round(x.rem*x.conf),0):0;
+  // In capture mode the homes figure comes from the SAME source that scored the play — NCTCOG units
+  // counted inside the real drive polygons — not the MPC gravity injection, so the number on the
+  // card and the number in the score can never disagree.
+  const _lpHomes=!_lpBest?0
+    : (evalCaptureOn && _lpBest.fuTot) ? Math.round(_lpBest.fuTot*CATCH_FUT_CONF)
+    : (_lpBest.coms||[]).reduce((t,x)=>t+Math.round(x.rem*x.conf),0);
   const _lpName=_lpBest&&_lpBest.coms&&_lpBest.coms.length?_lpBest.coms[0].n:null;
   const _futHomes=_evalFutInfo?_evalFutInfo.reduce((t,x)=>t+Math.round(x.rem*x.conf),0):0;
   // ── Acquisition read: independent competitors in range = the buy-vs-build alternative.

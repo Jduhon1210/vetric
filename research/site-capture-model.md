@@ -533,6 +533,37 @@ exurban <600, suburban <1400, urban core above — giving 24% / 31% / 33% / 13% 
 non-uniform and front-loaded where the rings actually live. This invalidates the v2 checkpoint, so
 v3 is a full recompute of all 911 clinics and 9,627 cells.
 
+#### W8 — FUTURE DEMAND ON THE SAME ENGINE (2026-07-28, user: "transition it to the new engine, remove gravity scale")
+
+Land plays qualified on a crow-flies gravity sum (`demF>=0.8`) while sites were scored on the road
+network, so a site and the land play beside it were not measured the same way. `fu[band]` now counts
+NCTCOG residential units (1,177 projects, 578,335 units) inside the SAME drive polygons, so future
+demand runs through the identical decay and share machinery. dfw-pipeline ONLY, never also
+dfw-mpc — NCTCOG already contains every MPC at phase grain and mixing them double-counts.
+
+**Sites score on TODAY's rooftops; announced units are disclosed, not scored.** This is the user's
+own framing ("future demand should be nice to have on a site, but should mainly be for land plays")
+and the conservative call: the metro pipeline is large enough that a median cell reaches ~20,000
+announced units inside 20 minutes, comparable to its ENTIRE current demand. Those homes deliver over
+years and the artifact does not carry delivery year per band, so any near-term confidence factor
+would be invented rather than derived. Land plays, whose whole thesis IS future demand, use it in
+full at a 0.5 announced-vs-built discount.
+
+**Land-play qualification is now absolute AND relative:** `>= 2 x DVM_VISIT_CAPACITY` of future
+visits AND `>= 33%` of today's demand, so a growth corridor qualifies and an ordinary suburban cell
+with a subdivision down the road does not. An absolute floor alone was far too loose — the median
+DFW cell already reaches ~5 doctors of announced demand. Measured: 15.4% of cells pass, before the
+landGrid / residential-fabric / near-built filters narrow it further.
+
+Card figures read from the same source that scored the play, so the number shown and the number
+scored cannot disagree — the failure mode that produced "~0 homes in reach" on a qualifying play.
+
+Live end-to-end after the change: revenue p50 $0.64M, p90 $1.93M, **max $5.98M**, ceiling 10.6
+doctors, urbanicity mix 24% rural / 31% exurban / 33% suburban / 13% urban.
+
+**Trade-off accepted:** a `dfw-pipeline.json` refresh now needs a derive rerun (~25 min, no OSRM).
+Cadence is 30 days.
+
 #### W7 FINAL — symmetric Huff, decay in the SHARE only (2026-07-28, user: "competitors represented by the same rings a demand site would have with the same distance decay algorithms")
 
 Two structural errors, fixed together. The model now tracks actual rosters at **0.89-1.12 across the

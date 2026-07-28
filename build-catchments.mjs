@@ -460,6 +460,23 @@ async function computeSet(list, store, label){
   })(2.22, 4.0);
   const KBUCKETS=17, KSTEP=0.5;   // effective competitor weight, 0 to 8 in 0.5 steps
 
+  // ── FUTURE DEMAND, MEASURED ON THE SAME GEOMETRY (2026-07-28, user: "transition it to the new
+  // engine, remove gravity scale") ─────────────────────────────────────────────────────────────
+  // Land plays qualified on a crow-flies gravity sum while sites were scored on the road network,
+  // so a site and the land play beside it were not comparable. Announced units are counted PER
+  // BAND here, using the identical drive polygons, so future demand runs through the same decay
+  // and share machinery as today's rooftops.
+  // dfw-pipeline ONLY, never also dfw-mpc: NCTCOG already contains every MPC at phase grain and
+  // mixing them double-counts (the same rule the catchment card follows).
+  // Trade-off: a pipeline refresh now needs a derive rerun (~25 min, no OSRM). Cadence is 30 days.
+  let PIPE=[];
+  try{
+    const pj=JSON.parse(fs.readFileSync(path.join(HERE,'dfw-pipeline.json'),'utf8'));
+    PIPE=(pj.list||[]).filter(r=>r.cl==='R' && r.u>0 && !r.stale && r.la && r.lo)
+                      .map(r=>({la:r.la, lo:r.lo, u:r.u}));
+    console.log(`  future demand: ${PIPE.length} residential projects, ${PIPE.reduce((a,r)=>a+r.u,0).toLocaleString()} units`);
+  }catch(e){ console.warn('  dfw-pipeline.json missing — future demand will be absent'); }
+
   const cells={};
   let n=0;
   for(const [k,r] of Object.entries(ck.grid)){
@@ -543,6 +560,18 @@ async function computeSet(list, store, label){
     // cd[band][n] = household-weighted share of THAT BAND's households reached by exactly n
     // competitors. Per band, because a 20-minute household faces a different competitive set than
     // a 5-minute one and must not inherit the inner ring's share.
+    // Announced units per band, on the SAME rings — the app converts to pet households and visits
+    // with its own model, exactly as it does for the ZIP mix.
+    const futB=new Array(NB).fill(0);
+    for(const pr of PIPE){
+      const dy2=(pr.la-ola)*69.0, dx2=(pr.lo-olo)*mLon;
+      if(!inStar(dy2,dx2,reaches[NB-1])) continue;
+      let fb=NB-1;
+      for(let q3=0;q3<NB-1;q3++) if(inStar(dy2,dx2,reaches[q3])){ fb=q3; break; }
+      futB[fb]+=pr.u;
+    }
+    if(futB.some(v=>v>0)) cell.fu=futB;
+
     // cd[band][i] = household-weighted share of that band's households facing an EFFECTIVE
     // competitor weight of i*0.5 (decay-weighted, not a raw count). Runtime reads bucket i as
     // K = i*0.5 and computes A*W[band] / (A*W[band] + wBar*K).
@@ -556,8 +585,10 @@ async function computeSet(list, store, label){
     cells[k]=cell;
     if(++n%400===0) process.stdout.write(`  derived ${n}…\n`);
   }
-  const doc={ v:5, built:new Date().toISOString().slice(0,10), engine:'osrm', rays:RAYS,
+  const doc={ v:6, built:new Date().toISOString().slice(0,10), engine:'osrm', rays:RAYS,
     budgets:BUDGETS, grid:GRID_MI, bbox:DFW, sampleMi:SAMPLE_MI, kStep:0.5,
+    // v6: `fu[band]` = announced residential units (NCTCOG) per band, on the same rings, so future
+    //     demand runs through the same decay/share machinery instead of a parallel gravity sum.
     // v5: competitors carry all six of their OWN rings and are decay-weighted with the same curve a
     //     site uses; cd[band][i] buckets EFFECTIVE competitor weight (i*0.5), not a raw count.
     // v4: `cd` is PER BAND (cd[band][n]); competition spans the whole catchment, not the 10-min ring.
