@@ -564,6 +564,54 @@ doctors, urbanicity mix 24% rural / 31% exurban / 33% suburban / 13% urban.
 **Trade-off accepted:** a `dfw-pipeline.json` refresh now needs a derive rerun (~25 min, no OSRM).
 Cadence is 30 days.
 
+#### W11 — MINIMUM SEPARATION WAS NEVER CHOSEN (2026-07-28/29, user: "why do we have a 24 mile separation??")
+
+The rule was `0.16 x bbox span` — a FRACTION OF THE ANALYSED AREA — written in c7f1a7c when Evaluate
+was a ZIP-level tool. At ZIP scale it yields ~0.5 mi and is correct: it stops two pins landing on the
+same block. Nobody revisited it when Evaluate Metroplex was added, so the same formula produced
+**23.7 mi** on a 2.15-degree bbox. CLAUDE.md's own note gives it away — "min-separation 0.16xspan
+(~19mi at DFW scale — VERIFIED picks 17.1mi apart min)" — the distance was observed after the fact,
+not selected.
+
+| analysis | separation the formula gives |
+|---|---|
+| drop-site 2-mi box | 0.3 mi |
+| single ZIP | 0.5 mi (correct, and retained) |
+| a county | 3.9 mi |
+| DFW metroplex | **23.7 mi** |
+
+Measured cost: **329 cells outscored the 5th pick**, and the five genuinely best cells in DFW — all
+one north-Dallas corridor at $5.1-6.1M — could never appear together. The 5th pin read $1.84M beside
+a $5.80M one with nothing on screen saying they answered different questions.
+
+It was also an ELLIPSE: `Math.hypot` on RAW DEGREES makes the zone 23.7 mi north-south but 19.9
+east-west at this latitude, since a degree of longitude here is 57.9 miles. Now measured in miles.
+
+**First replacement attempt was also wrong, and the market said so.** One 10-minute catchment
+DIAMETER gave 5.45 mi. Two checks killed it: real DFW clinics sit at nearest-neighbour p50 **0.69
+mi** / p75 1.18 / p90 2.21, so 5.45 was ~8x the median actual spacing; and it did not even achieve
+the zero overlap it claimed, because demand is credited to 20 minutes and 20-min rings 5.45 mi apart
+still share **53%** of their area — the diameter argument was measured against the wrong ring.
+
+**Shipped: derived from the app's OWN cannibalisation threshold.** The advisory already fires above
+25% trade-area overlap, so that is this codebase's existing definition of "these two compete".
+Solving the circle-intersection area for 25% of one 10-minute catchment gives **3.45 mi** (named
+`EVAL_CANNIBAL_MAX`, solved at runtime from the run's own median `a10`, so it adapts per region).
+Still more conservative than the market, but no longer hiding corridors. Small-area runs keep the
+proportional rule unchanged.
+
+Effect on the live DFW top 5, same data and model:
+
+| | 24 mi (old) | 5.45 mi | **3.45 mi (shipped)** |
+|---|---|---|---|
+| total winnable revenue | $17.14M | $25.36M | **$25.68M** |
+| weakest pick | $1.84M | $4.28M | **$4.05M** |
+
+Disclosed on the card. NOTE the consequence: all five picks are now urban north-Dallas cells. That is
+the honest answer to "where is the most winnable revenue in DFW", but it is a different question from
+"one good site per part of the metro" — if the latter is wanted it should be an explicit spread mode,
+not an accidental constant.
+
 #### W4 / W5 — BOTH TESTED AND REJECTED (2026-07-28, multi-agent research pass)
 
 Neither is a fix path any more. Do not re-litigate without the new evidence named at the end of each.
