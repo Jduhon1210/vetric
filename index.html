@@ -6203,20 +6203,37 @@ function buildOppBaseInputs(){
     const cons = consSrc[zip]!=null ? consSrc[zip] : null;
     if(inc==null && dog==null && grow==null) continue; // no data — skip
 
-    // Count clinics inside this ZIP polygon (bbox pre-filter for speed)
-    let peCount=0, indCount=0, dvm=0;   // dvm = total veterinarians serving the ZIP (real roster where scraped, else 2 = observed median)
+    // Count clinics inside this ZIP polygon (bbox pre-filter for speed).
+    // dvmNear = the same roster count over a bbox + ~3mi envelope. DISPLAY-ONLY (detail-card
+    // disclosure + CSV) — it must NEVER enter _under (below) or any weight. The in-polygon
+    // results are byte-identical to before this was added: the padded box is only a WIDER
+    // reject, the tight bbox still gates pointInGeoJSON, and the equine/specialty predicates
+    // (pure, no side effects) keep their position ahead of it. Do NOT move the padded test to
+    // sit "alongside" the in-polygon test — the tight `continue` runs first and makes it dead
+    // code (measured: it degrades to a bbox-only count that equals dvm in ~31% of ZIPs).
+    // The independents loop deliberately applies NO equine/specialty filter to dvmNear, matching
+    // the unfiltered dvm in that same loop — that symmetry is what guarantees dvmNear >= dvm in
+    // every ZIP, so the `dvmNear > dvm` disclosure can never fire backwards.
+    let peCount=0, indCount=0, dvm=0, dvmNear=0;   // dvm = total veterinarians serving the ZIP (real roster where scraped, else 2 = observed median)
+    const _padLa=3/69.0, _padLo=3/(69.0*Math.cos(bb.cLat*Math.PI/180));
     if(peLoaded && typeof PE_COORDS!=='undefined'){
       for(const coord of PE_COORDS){
         const plat=coord[0], plon=coord[1];
-        if(plat<bb.minLat||plat>bb.maxLat||plon<bb.minLon||plon>bb.maxLon) continue;
+        if(plat<bb.minLat-_padLa||plat>bb.maxLat+_padLa||plon<bb.minLon-_padLo||plon>bb.maxLon+_padLo) continue;
         if(!_vfCountEquine() && _isLargeAnimalAt(coord[4],plat,plon)) continue;   // equine/large-animal: not dog-cat competition
         if(_isSpecialtyERAt(coord[4],plat,plon)) continue;   // pure specialty/ER: not GP competition
-        if(pointInGeoJSON(plat,plon,f)){ peCount++; dvm += (_vetStaffAt(plat,plon)||{}).n || 2; }
+        const _sn=(_vetStaffAt(plat,plon)||{}).n || 2;
+        dvmNear += _sn;
+        if(plat<bb.minLat||plat>bb.maxLat||plon<bb.minLon||plon>bb.maxLon) continue;
+        if(pointInGeoJSON(plat,plon,f)){ peCount++; dvm += _sn; }
       }
     }
     for(const cl of indSrc){
+      if(cl.lat<bb.minLat-_padLa||cl.lat>bb.maxLat+_padLa||cl.lon<bb.minLon-_padLo||cl.lon>bb.maxLon+_padLo) continue;
+      const _sn=(_vetStaffAt(cl.lat,cl.lon)||{}).n || 2;
+      dvmNear += _sn;
       if(cl.lat<bb.minLat||cl.lat>bb.maxLat||cl.lon<bb.minLon||cl.lon>bb.maxLon) continue;
-      if(pointInGeoJSON(cl.lat,cl.lon,f)){ indCount++; dvm += (_vetStaffAt(cl.lat,cl.lon)||{}).n || 2; }
+      if(pointInGeoJSON(cl.lat,cl.lon,f)){ indCount++; dvm += _sn; }
     }
 
     // Commercial-fabric count (display-only): retail/commercial nodes inside the ZIP. null = data not loaded.
@@ -6247,7 +6264,7 @@ function buildOppBaseInputs(){
     // Pipeline intensity: future dog households the pipeline adds, relative to today's base
     // (capped ×4 so one mega-community can't pin the scale). Needs a demand base to be meaningful.
     const mpcPipe=(mpcRem!=null && dog!=null) ? Math.min(mpcRem*0.55/Math.max(dog,50), 4) : null;
-    rows.push({ zip, feat:f, city:(f.properties.city||f.properties.po_name||''), inc, dog, grow, cons, peCount, indCount, dvm, retailN, mpcRem, mpcNames, mpcPipe });
+    rows.push({ zip, feat:f, city:(f.properties.city||f.properties.po_name||''), inc, dog, grow, cons, peCount, indCount, dvm, dvmNear, retailN, mpcRem, mpcNames, mpcPipe });
   }
   oppBaseRows=rows;
 }
@@ -6428,8 +6445,16 @@ function renderOppDetail(r,i){
   // ── one-line verdict ──
   let verdictLine='';
   if(head!=null){
-    const perVet=u!=null?` · ${Math.round(u).toLocaleString()} dog HH per vet`:'';
-    if(head>=2) verdictLine=`<div style="margin-top:8px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:7px 10px;font-size:11px;color:#15803d;font-weight:700">Whitespace — supports ~${head} more full-time vet${head!==1?'s':''} than the ${r.dvm} here today${perVet}</div>`;
+    const perVet=u!=null?` · ${Math.round(u).toLocaleString()} dog HH per vet inside this ZIP`:'';
+    // Footprint caveat carried INTO the green endorsement. The rose branch below only covers
+    // dvm===0; measured on the 265 DFW ZIPs, 43 more sit at dvm 1-3 with dvmNear/dvm > 10
+    // (75024 West Plano: 3 inside the boundary, ~144 within ~3 mi) and would otherwise render
+    // 'Whitespace' with no visible caveat -- the patch-5 disclosure row lives inside the
+    // COLLAPSED 'Full numbers' pane. 4x(dvm+1) mirrors the +1 entrant in _oppUnder and keeps
+    // the note off genuinely isolated ZIPs (46 of 265). Display-only: it never gates a branch.
+    const nearNote=(r.dvmNear!=null&&r.dvmNear>=4*((r.dvm||0)+1))?` · but ~${r.dvmNear} DVMs sit within ~3 mi — verify with Evaluate`:'';
+    if(r.dvm===0 && r.dvmNear>0) verdictLine=`<div style="margin-top:8px;background:#fff1f2;border:1px solid #fecdd3;border-radius:8px;padding:7px 10px;font-size:11px;color:#be123c;font-weight:700">No clinic sits inside this ZIP, but ~${r.dvmNear} DVMs are within ~3 miles — the competition score reads the ZIP boundary, not the trade area. Run Evaluate before treating this as whitespace.</div>`;
+    else if(head>=2) verdictLine=`<div style="margin-top:8px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:7px 10px;font-size:11px;color:#15803d;font-weight:700">Whitespace — supports ~${head} more full-time vet${head!==1?'s':''} than the ${r.dvm} here today${perVet}${nearNote}</div>`;
     else if(head<=-2) verdictLine=`<div style="margin-top:8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:7px 10px;font-size:11px;color:#475569;font-weight:700">Service hub — its ${r.dvm} vets also draw from surrounding ZIPs${perVet}</div>`;
     else verdictLine=`<div style="margin-top:8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:7px 10px;font-size:11px;color:#64748b;font-weight:700">Balanced — supply roughly matches local demand (${r.dvm} vets for ~${sustain} supported)${perVet}</div>`;
   }
@@ -6442,6 +6467,7 @@ function renderOppDetail(r,i){
     ${(()=>{const dd=(typeof dogData!=='undefined')&&dogData[r.zip]; const aF=dd&&dd.ageF; if(aF==null||aF>=0.97) return ''; const ma=(typeof ageData!=='undefined')&&ageData[r.zip]; return line('Senior-age adjustment', '−'+Math.round((1-aF)*100)+'% pet demand', ma?('median age '+Math.round(ma)):''); })()}
     ${(()=>{const dd=(typeof dogData!=='undefined')&&dogData[r.zip]; const iF=dd&&dd.incF; if(iF==null||iF>=0.97) return ''; return line('Low-income adjustment', '−'+Math.round((1-iF)*100)+'% pet demand', 'ownership rates dip in low-income areas'); })()}
     ${line('Clinics', (r.peCount+r.indCount), `${r.peCount} PE / ${r.indCount} indep`)}
+    ${(r.dvmNear!=null&&r.dvmNear>r.dvm)?line('DVMs within ~3 mi of this ZIP', r.dvmNear, `the competition factor counts only the ${r.dvm} inside the boundary`):''}
     ${_oppFabricLine(r)}
     ${line('Income · Demand · Competition · Growth', `${r.fIncome.toFixed(0)} · ${r.fDemand.toFixed(0)} · ${r.fComp.toFixed(0)} · ${(r.fGrowth||0).toFixed(0)}`)}
     <div style="font-size:10.5px;color:#64748b;margin-top:6px;line-height:1.4">Sub-scores are ranked <b>within ${oppRegion.name}</b> and do not compare across regions.</div>
@@ -6499,6 +6525,7 @@ function exportOppCSV(){
     {label:'MPC pipeline homes',get:x=>x.r.mpcRem!=null?x.r.mpcRem:''},
     {label:'PE clinics',get:x=>x.r.peCount},
     {label:'Indep clinics',get:x=>x.r.indCount},
+    {label:'DVMs within ~3mi of ZIP',get:x=>x.r.dvmNear!=null?x.r.dvmNear:''},
     {label:'Income score',get:x=>x.r.fIncome.toFixed(0)},
     {label:'Demand score',get:x=>x.r.fDemand.toFixed(0)},
     {label:'Competition score',get:x=>x.r.fComp.toFixed(0)},
@@ -6584,7 +6611,7 @@ function renderOppList(){
       <div class="opp-score" style="background:${col}">${Math.round(r.score)}</div>
     </div>`;
   }).join('');
-  const methodNote=`<details class="vm-method-note" style="margin-top:14px"><summary>How these scores are computed</summary><div style="margin-top:6px">Four factors — income (Census ACS 2024), pet demand (<b>modeled</b> from ACS 2024 housing), low competition (pet households per PE-weighted clinic), and growth (ACS 2021→2024 population + new construction + announced master-planned buildout still to come) — each scaled 0–100 across this region's ZIPs and blended by your weights. Sub-scores are <b>region-relative percentiles</b>, not absolute. Competition is radius-based, not drive-time. A screening signal — verify before diligence.</div></details>`;
+  const methodNote=`<details class="vm-method-note" style="margin-top:14px"><summary>How these scores are computed</summary><div style="margin-top:6px">Four factors — income (Census ACS 2024), pet demand (<b>modeled</b> from ACS 2024 housing), low competition (dog households per veterinarian located inside the ZIP boundary), and growth (ACS 2021→2024 population + new construction + announced master-planned buildout still to come) — each scaled 0–100 across this region's ZIPs and blended by your weights. Sub-scores are <b>region-relative percentiles</b>, not absolute. The competition factor counts only veterinarians <b>inside the ZIP boundary</b> — across DFW that is roughly a tenth of the DVMs within about 3 miles — while the Evaluate engine measures a drive-time catchment. The two can disagree; Evaluate is the siting answer. A screening signal — verify before diligence.</div></details>`;
   wrap.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">${seg}<div style="flex:1;text-align:right;margin-right:10px;font-size:10.5px;color:#64748b;font-weight:600">Scores are relative to this region · click a ZIP to expand</div>${oppScored.length?_exportBtn('exportOppCSV()','Export'):''}</div>${rows}${methodNote}`;
   _oppKpiTop();
 }
