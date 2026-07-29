@@ -4667,8 +4667,13 @@ function renderWatchlist(){
     const cards=sites.map(s=>{
       const k=s.kpi||{};
       const kbits=[ k.pePct!=null?('PE '+k.pePct+'%'):null, k.growth!=null?('growth '+(k.growth>=0?'+':'')+(k.growth*100).toFixed(1)+'%'):null, k.satTag||null ].filter(Boolean).join(' · ');
+      // Provenance is ALWAYS shown, not only on mismatch — a record with no engine label reads as
+      // if it were on today's model, which is the false reassurance the stamp exists to remove.
+      const eng=_watchEngine(s), stale=_watchStale(s);
+      const prov=(eng?`<span style="color:#64748b"> · ${eng}</span>`:'')
+        +(stale?`<br><span style="color:#be123c;font-weight:700">Saved on an earlier model — not comparable with newer records</span>`:'');
       const sub = s.placement
-        ? `${s.verdict||''}${s.savedAt?' · saved '+s.savedAt:''}${kbits?'<br>'+kbits+(k.r?' <span style="color:#64748b">('+k.r+' mi)</span>':''):''}`
+        ? `${s.verdict||''}${s.savedAt?' · saved '+s.savedAt:''}${prov}${kbits?'<br>'+kbits+(k.r?' <span style="color:#64748b">('+k.r+' mi)</span>':''):''}`
         : `Score ${s.score}/100 · ${s.region||''}`;
       return `<div class="card" onclick="watchSiteGo('${s.id}',${s.lat},${s.lon})">
       <div style="flex-shrink:0;align-self:flex-start;margin-top:3px;width:18px;height:18px;border-radius:50%;background:${s.placement?'#d97706':'var(--navy)'};color:#fff;display:flex;align-items:center;justify-content:center;font-size:10.5px">★</div>
@@ -8935,13 +8940,24 @@ function _evalComputeAndRender(){
     //     a hypothetical 2-3 DVM entrant; (b) the 700m PE hard-cap does NOT apply — that cap
     //     encodes NEW-BUILD entry risk next to a corporate incumbent, and an existing practice
     //     0.17mi from a PE clinic (Double Oak vs Lantana) is proof of coexistence, not a 10% share.
-    const _incW = (g.forced && _evalSubject && _evalSubject.dvm) ? _staffW(_evalSubject.dvm) : 1;
-    g.share = (A_OWN*_incW)/(A_OWN*_incW + g.comp);
+    // _applyCapture sets cEq and cShare TOGETHER in both branches (clinic + entrant) and
+    // early-returns before either when there is no catchment cell — so `cEq!=null` is exactly
+    // "this cell has measured capture numbers". Do NOT split these two fields.
+    // Branching rather than computing the gravity share and overwriting it keeps a single live
+    // definition of `share` per run; the arithmetic saved is negligible (measured 0.197 ms across a
+    // 9,627-cell metro grid), so this is a legibility-and-safety change, not a perf win. Every
+    // expensive loop above (g.dem/g.comp/g.ret/nearC/nComp/nPE) is still consumed by cards,
+    // warnings and CSV and must stay.
+    const _cap = (g.cEq!=null && g.cShare!=null);
+    if(_cap) g.share = g.cShare;   // household-weighted split among clinics that can actually DRIVE there
+    else {
+      const _incW = (g.forced && _evalSubject && _evalSubject.dvm) ? _staffW(_evalSubject.dvm) : 1;
+      g.share = (A_OWN*_incW)/(A_OWN*_incW + g.comp);
+    }
     // Capture mode: the share is measured, not modelled from a distance-decayed disc — it is the
     // household-weighted average of the per-household split among the clinics that can actually
     // DRIVE to each household. The PE proximity cap still applies: it encodes new-build entry
     // risk next to a corporate incumbent, which is a siting fact the road network does not know.
-    if(g.cShare!=null) g.share=g.cShare;
     if(g.nearPE < PE_NEAR_HARD && !(g.forced && _evalSubject)) g.share = Math.min(g.share, 0.10); // unwinnable sitting on top of a PE incumbent (0.10 ≡ old 0.20 on the fair-fight scale)
     g.lowComp = g.share; // alias: the "Low competition" bar now shows absolute winnable share
     // Core is MULTIPLICATIVE captured demand — what the site actually WINS. Demand can no longer
@@ -8976,15 +8992,19 @@ function _evalComputeAndRender(){
       g.demandN = (hasResid ? (evalAreaMode ? 0.55*_roofN+0.45*g.affl : _roofN) : g.affl) * (tractsOn ? 1 : (g.ageF||1));
       const av = g.aadt>0 ? _aadtVis(g.aadt) : null;
       g.accessN = av!=null ? av : ((hasRoads||hasAADT) ? _clsVis(g.nearCls) : 0.5);
-      g.share = A_OWN/(A_OWN + g.comp);
-      if(g.cShare!=null) g.share=g.cShare;
+      // cEqFut is 0 (not null) when the cell has no `fu`, so cFutTot>0 is the real capture test.
+      // A capture cell with cFutTot===0 falls to the gravity share below; that is invisible ONLY
+      // because _lpQual requires cFutTot >= 2*DVM_VISIT_CAPACITY and drops it before ranking. If
+      // _lpQual is ever loosened, revisit this line.
+      const _capF = (g.cEqFut!=null && g.cFutTot>0);
+      g.share = _capF ? g.cShare : A_OWN/(A_OWN + g.comp);
       if(g.nearPE < PE_NEAR_HARD) g.share = Math.min(g.share, 0.10);
       const accessMult = (hasRoads||hasAADT) ? 0.65+0.40*g.accessN : 1;
       g.score = Math.max(0, Math.min(1, g.demandN * Math.pow(Math.min(g.share,0.85), GAMMA) * accessMult));
       // CAPTURE MODE: a land play is scored on FUTURE demand alone — that is what a land play IS —
       // measured on the same drive polygons as the sites beside it. Previously land plays ran on a
       // crow-flies gravity sum while sites ran on the road network, so the two were not comparable.
-      if(g.cEqFut!=null && g.cFutTot>0){
+      if(_capF){
         g.winVis = g.cEqFut*DVM_VISIT_CAPACITY;
         g.winRev = g.winVis*REV_PER_VISIT*(g.cACT||1);
         g.score  = Math.max(0, Math.min(1, (g.winRev/CATCH_REV_FULL)*accessMult));   // retail NEUTRAL
@@ -10307,7 +10327,9 @@ function _savedSitePopup(s2){
       <b style="font-size:13px;color:#0f172a">Saved placement</b>
       <span style="margin-left:auto;font-size:16px;font-weight:800;color:var(--navy)">${s2.score}</span></div>
     <div style="font-size:10.5px;color:#64748b;margin:3px 0 6px">${esc(s2.verdict||'')} · saved ${esc(s2.savedAt||'')}</div>
-    <div style="font-size:11px;color:#334155;line-height:1.6">${s2.share!=null?('Capture share '+s2.share+'% · '):''}${s2.nComp!=null?(s2.nComp+' competitor'+(s2.nComp===1?'':'s')+(s2.nPE?' ('+s2.nPE+' PE)':'')):''}</div>
+    <div style="font-size:11px;color:#334155;line-height:1.6">${s2.share!=null?('As saved: '+s2.share+'% share · '):''}${s2.nComp!=null?(s2.nComp+' competitor'+(s2.nComp===1?'':'s')+(s2.nPE?' ('+s2.nPE+' PE)':'')):''}</div>
+    ${_watchEngine(s2)?`<div style="font-size:10.5px;color:#64748b;margin-top:2px">${esc(_watchEngine(s2))}${_watchStale(s2)?' — <b style="color:#be123c">earlier model</b>':''}</div>`:''}
+    ${(s2.model&&s2.model.mode==='incumbent')?`<div style="font-size:10.5px;color:#9f1239;background:#fff1f2;border:1px solid #fecdd3;border-radius:7px;padding:4px 7px;margin-top:5px;line-height:1.45">Saved as a <b>clinic</b> evaluation. Re-running scores this spot as a <b>new entrant</b> — a different number.</div>`:''}
     ${kline?`<div style="font-size:11px;color:#334155;margin-top:2px">${esc(kline)}${k.r?` <span style="color:#64748b">· ${k.r} mi context</span>`:''}</div>`:''}
     <div style="font-size:10.5px;color:#64748b;font-family:'JetBrains Mono',monospace;margin-top:5px">${esc(s2.id)}</div>
     <div style="display:flex;gap:7px;margin-top:9px">
@@ -10334,6 +10356,30 @@ function watchSiteGo(id,lat,lon){
     if(want && !_siteWatchLayer && tries<5) _bootSavedPins(tries+1);
   }, tries===0?700:1400);
 })(0);
+// ── SAVED-RECORD PROVENANCE (2026-07-28) ─────────────────────────────────────────────────────
+// A saved placement stores score/share/verdict with no record of WHICH ENGINE produced them, and
+// `g.share` silently changes meaning between engines: gravity is a fraction of a 3-mi disc, capture
+// is a fraction of every visit inside a 20-min drive catchment. The median DFW cell reads 0.025
+// under capture where the gravity floor for a 'strong' site was 0.24 — roughly 6x in meaning, on
+// the same field, rendered identically. The Watchlist compare table would silently rank them
+// against each other.
+const EVAL_MODEL_VERSION = 3;              // 1 = pre-2026-07-15 raw · 2 = _evalDisp gravity · 3 = drive-time capture
+const EVAL_MODEL_EPOCH   = '2026-07-28';   // records saved before this predate the capture engine
+function _modelStamp(){
+  return { m:(evalCaptureOn?'capture':'gravity'),
+           mode:(_evalSubject?'incumbent':'entrant'),   // an incumbent's share is NOT an entrant's
+           v:EVAL_MODEL_VERSION };
+}
+// Two DISTINCT questions — do not collapse them.
+function _watchStale(w){                    // definitely not on today's engine
+  if(!w || w.type!=='site') return false;                  // markets use the list model, unchanged
+  if(!w.model) return (w.savedAt||'') < EVAL_MODEL_EPOCH;  // legacy: date decides, not absence
+  return w.model.v !== EVAL_MODEL_VERSION;
+}
+function _watchEngine(w){                   // always-visible provenance, mismatch or not
+  const st=w&&w.model; if(!st||st.m==='list') return '';
+  return st.m+' · '+(st.mode==='incumbent'?'incumbent':'entrant')+' share';
+}
 function saveSitePlacement(btn){
   if(!evalSiteCell || !evalSitePt) return;
   const g=evalSiteCell, id=g.la.toFixed(4)+','+g.lo.toFixed(4);
@@ -10341,6 +10387,7 @@ function saveSitePlacement(btn){
   const rec={ type:'site', placement:1, id, lat:g.la, lon:g.lo, score:_evalDisp(g.score),
     verdict:v.t, vk:v.k, share:Math.round(g.share*100), nComp:g.nComp, nPE:g.nPE,
     name:'Placement · '+id, region:evalZip||'dropped site', savedAt:new Date().toISOString().slice(0,10),
+    model:_modelStamp(),
     kpi:k?{ r:_siteCtxMi, clinics:k.n, pe:k.pe, pePct:k.pePct, growth:k.growth, sat:k.sat!=null?+k.sat.toFixed(1):null, satTag:k.satTag, dogHH:k.dogHH }:null };
   const a=getWatch(); const idx=a.findIndex(w=>w.type==='site'&&w.id===id);
   if(idx>=0) a[idx]=rec; else a.push(rec);
