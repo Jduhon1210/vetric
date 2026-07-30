@@ -9617,6 +9617,16 @@ function exportEvalCSV(){
     {label:'ZIP saturation grade',get:()=>grade}
   ], 'vetric-sites-'+(evalZip||'area')+'.csv');
 }
+// RENDERER: every vector layer here is pinned to the shared OVERLAY CANVAS, never the map's
+// default SVG pane (2026-07-30, user: "post metro eval it will freeze when trying to move around").
+// Measured on a live metro run: 4,169 heat rectangles plus ~812 competitor dots became 4,981
+// individual <path> nodes, and ONE layout/transform pass over that pane cost 39 ms — Leaflet
+// transforms it on every frame of a pan, so 60fps (16.7 ms) was unreachable and the tab locked
+// hard enough that a remote profiling call timed out after 45 s. The mousemove hit-test was
+// measured innocent at 0.48 ms/call. This is the same defect CLAUDE.md already records fixing for
+// the ZIP choropleths (1,939 paths -> 1 canvas); the eval layers never got the same treatment
+// despite carrying 2.6x the node count. The map's DEFAULT renderer must stay L.svg({padding:1}) —
+// ZIP borders and drawn areas depend on that padding — so these opt in per layer instead.
 function _evalRenderLayers(){
   // ATOMIC SWAP: base clinic pins give way to the eval competitor dots in the same frame the
   // dots are drawn — never during the loading window. (Idempotent; safe on every re-render.)
@@ -9626,18 +9636,18 @@ function _evalRenderLayers(){
     const heat=L.layerGroup();
     for(const g of evalCells)
       L.rectangle([[g.la-g.stepLa/2,g.lo-g.stepLo/2],[g.la+g.stepLa/2,g.lo+g.stepLo/2]],
-        {stroke:false,fillColor:_evalColor(_evalHeatT(g.score)),fillOpacity:0.5,interactive:false}).addTo(heat);
+        {renderer:_getOverlayCanvas(),stroke:false,fillColor:_evalColor(_evalHeatT(g.score)),fillOpacity:0.5,interactive:false}).addTo(heat);
     heat.addTo(map); if(heat.bringToBack) heat.bringToBack(); evalLayers.heat=heat;
   }
   if(evalShow.hoods && evalData.resid.length){
     const hoods=L.layerGroup();
-    for(const r of evalData.resid){ if(r._fut){ L.circleMarker([r.lat,r.lon],{radius:5,color:'#0d9488',weight:1.6,dashArray:'3,3',fillColor:'#5eead4',fillOpacity:0.5,interactive:false}).addTo(hoods); } else { L.circleMarker([r.lat,r.lon],{radius:r.place?4:2.5,color:'#15803d',weight:1,fillColor:'#22c55e',fillOpacity:0.7,interactive:false}).addTo(hoods); } }
+    for(const r of evalData.resid){ if(r._fut){ L.circleMarker([r.lat,r.lon],{renderer:_getOverlayCanvas(),radius:5,color:'#0d9488',weight:1.6,dashArray:'3,3',fillColor:'#5eead4',fillOpacity:0.5,interactive:false}).addTo(hoods); } else { L.circleMarker([r.lat,r.lon],{renderer:_getOverlayCanvas(),radius:r.place?4:2.5,color:'#15803d',weight:1,fillColor:'#22c55e',fillOpacity:0.7,interactive:false}).addTo(hoods); } }
     hoods.addTo(map); evalLayers.hoods=hoods;
   }
   if(evalShow.zoning && (evalData.zoning.length || evalData.parcels.length || evalData.osmLU.length)){
     const zl=L.layerGroup();
     const col=g=>g==='exclude'?'#dc2626':g==='allow'?'#16a34a':'#9ca3af'; // red=residential/civic, green=siteable, grey=defer
-    const add=(poly,op)=>{ try{ L.geoJSON(poly.f,{style:{stroke:false,fillColor:col(poly.gate),fillOpacity:op,interactive:false}}).addTo(zl); }catch(e){} };
+    const add=(poly,op)=>{ try{ L.geoJSON(poly.f,{renderer:_getOverlayCanvas(),style:{stroke:false,fillColor:col(poly.gate),fillOpacity:op,interactive:false}}).addTo(zl); }catch(e){} };
     for(const p of evalData.osmLU) add(p,0.12);    // OSM landuse underneath (lighter)
     for(const p of evalData.parcels) add(p,0.18);  // county parcels (mid)
     for(const z of evalData.zoning) add(z,0.22);   // authoritative city zoning on top
@@ -9645,7 +9655,7 @@ function _evalRenderLayers(){
   }
   if(evalShow.retail && evalData.retail.length){
     const ret=L.layerGroup();
-    for(const r of evalData.retail) L.circleMarker([r.lat,r.lon],{radius:r.area?3.5:2.5,color:'#1d4ed8',weight:1,fillColor:'#3b82f6',fillOpacity:0.85,interactive:false}).addTo(ret);
+    for(const r of evalData.retail) L.circleMarker([r.lat,r.lon],{renderer:_getOverlayCanvas(),radius:r.area?3.5:2.5,color:'#1d4ed8',weight:1,fillColor:'#3b82f6',fillOpacity:0.85,interactive:false}).addTo(ret);
     ret.addTo(map); evalLayers.retail=ret;
   }
   {
@@ -9657,7 +9667,7 @@ function _evalRenderLayers(){
     const _esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     for(const c of evalCompsCache){
       const rev=c.reviews||0, rad=4+Math.min(5, Math.log10(1+rev)*1.7);
-      const m=L.circleMarker([c.lat,c.lon],{radius:rad,color:'#fff',weight:1.5,fillColor:c.pe?'#dc2626':'#2563eb',fillOpacity:0.92,interactive:true});
+      const m=L.circleMarker([c.lat,c.lon],{renderer:_getOverlayCanvas(),radius:rad,color:'#fff',weight:1.5,fillColor:c.pe?'#dc2626':'#2563eb',fillOpacity:0.92,interactive:true});
       const typeLine=c.pe?(c.owner?'PE · '+_esc(c.owner):'PE / corporate'):'Independent';
       m.bindPopup(`<div style="font-size:12px;min-width:150px"><b>${_esc(c.name||'Unnamed clinic')}</b><br><span style="color:${c.pe?'#dc2626':'#2563eb'};font-weight:700">${typeLine}</span>${typeof c.rating==='number'?`<br><span style="color:#b45309;font-weight:700">★ ${c.rating}</span> · ${rev.toLocaleString()} reviews`:(rev?`<br>${rev.toLocaleString()} reviews`:'<br><span style="color:#64748b">no rating</span>')}</div>`);
       m.addTo(comp);
