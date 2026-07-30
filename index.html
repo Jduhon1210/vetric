@@ -9697,7 +9697,8 @@ function _evalHeatTip(e){
   }
   if(!best){ _evalHeatTipEl.style.display='none'; return; }
   const pt=e.containerPoint;
-  _evalHeatTipEl.textContent='Suitability '+_evalDisp(best.score)+'/100 · share '+(best.share*100).toFixed(0)+'%';
+  _evalHeatTipEl.textContent='Suitability '+_evalDisp(best.score)+'/100 · share '+
+    (((best.cShareRef!=null?best.cShareRef:best.share))*100).toFixed(0)+'%';
   _evalHeatTipEl.style.left=(pt.x+14)+'px';
   _evalHeatTipEl.style.top=(pt.y+14+ (document.querySelector('.kpibar')&&!document.body.classList.contains('vf-opp')?document.querySelector('.kpibar').offsetHeight:0))+'px';
   _evalHeatTipEl.style.display='block';
@@ -9927,8 +9928,8 @@ function _evalRenderSidebar(){
   const _ring=(scv,col,track)=>`<svg width="38" height="38" viewBox="0 0 40 40" style="flex-shrink:0"><circle cx="20" cy="20" r="16" fill="none" stroke="${track}" stroke-width="5"/><circle cx="20" cy="20" r="16" fill="none" stroke="${col}" stroke-width="5" stroke-dasharray="${(scv*1.005).toFixed(1)} 100.5" stroke-linecap="round" transform="rotate(-90 20 20)"/><text x="20" y="24" text-anchor="middle" font-size="11" font-weight="700" fill="#0f172a">${scv}</text></svg>`;
   let _memoRows='';
   if(_bestG && !_evalSubject){ const nearStr=isFinite(_bestG.nearC)?(_bestG.nearC/1609.344).toFixed(1)+' mi to nearest clinic':'no clinics nearby';
-    _memoRows+=`<div class="eval-memo-row" onclick="evalSetTab('sites');evalFlyTo(0)">${_ring(_bestSc,'#1e3a8a','#eef1f7')}<span class="t"><b>Lease · Site 1</b> — ${_bestG.tier==='strong'?'recommended':_bestG.tier==='fair'?'best available':'weak'}<br><span class="sub">demand ${Math.round(_bestG.demandN*100)} · share ${(_bestG.share*100).toFixed(0)}% · ${nearStr}</span></span></div>`; }
-  if(_lpBest && !_evalSubject){ _memoRows+=`<div class="eval-memo-row" onclick="evalSetTab('land');map.setView([${_lpBest.la},${_lpBest.lo}],13,{animate:false})">${_ring(_lpSc,'#0d9488','#ccfbf1')}<span class="t"><b>Buy dirt · Land play 1</b>${_lpName?' — '+_ceEsc(_lpName)+' corridor':''}<br><span class="sub">${_lpHomes?`~${_lpHomes.toLocaleString()} homes in reach · `:''}share today ${(_lpBest.share*100).toFixed(0)}%</span></span></div>`; }
+    _memoRows+=`<div class="eval-memo-row" onclick="evalSetTab('sites');evalFlyTo(0)">${_ring(_bestSc,'#1e3a8a','#eef1f7')}<span class="t"><b>Lease · Site 1</b> — ${_bestG.tier==='strong'?'recommended':_bestG.tier==='fair'?'best available':'weak'}<br><span class="sub">demand ${Math.round(_bestG.demandN*100)} · share ${(((_bestG.cShareRef!=null?_bestG.cShareRef:_bestG.share))*100).toFixed(0)}% · ${nearStr}</span></span></div>`; }
+  if(_lpBest && !_evalSubject){ _memoRows+=`<div class="eval-memo-row" onclick="evalSetTab('land');map.setView([${_lpBest.la},${_lpBest.lo}],13,{animate:false})">${_ring(_lpSc,'#0d9488','#ccfbf1')}<span class="t"><b>Buy dirt · Land play 1</b>${_lpName?' — '+_ceEsc(_lpName)+' corridor':''}<br><span class="sub">${_lpHomes?`~${_lpHomes.toLocaleString()} homes in reach · `:''}share today ${(((_lpBest.cShareRef!=null?_lpBest.cShareRef:_lpBest.share))*100).toFixed(0)}%</span></span></div>`; }
   if(_acqPlay&&_acqTop){ const ac=_acqTop.c;
     _memoRows+=`<div class="eval-memo-row" onclick="_evalAcqFocus(${_acqTop.ci})"><span style="flex-shrink:0;width:38px;height:38px;border-radius:50%;background:#f5f3ff;border:2.5px solid #6d28d9;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1"><span style="font-size:12px;font-weight:800;color:#5b21b6">${ac.staffN||'~2'}</span><span style="font-size:10.5px;font-weight:700;color:#8b5cf6">DVM</span></span><span class="t"><b>Acquire · ${_ceEsc(ac.name||'independent clinic')}</b><br><span class="sub">${ac.rating?'★'+ac.rating+' · ':''}${ac.reviews?ac.reviews.toLocaleString()+' reviews · ':''}independent${_acqCands.length>1?` · ${_acqCands.length-1} more target${_acqCands.length!==2?'s':''} in range`:''}</span></span></div>`; }
   const _memoCard=`<div class="eval-memo"><p>${_memoTxt}</p>${_memoRows}</div>`;
