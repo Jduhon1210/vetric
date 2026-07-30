@@ -14,6 +14,7 @@
 //   node build-catchments.mjs --clinics       # clinics only
 //   node build-catchments.mjs --grid          # candidate grid only
 //   node build-catchments.mjs --fresh         # ignore checkpoint
+//   node build-catchments.mjs --rings         # write dfw-rings.json from the checkpoint (no OSRM)
 //
 // INCREMENTAL BY DESIGN (user ask): every location's rays are checkpointed by cell key, so adding
 // clinics later only costs the new ones plus the candidates whose catchment they touch — not a
@@ -398,6 +399,40 @@ async function computeSet(list, store, label){
 }
 
 (async function main(){
+  // ── --rings: ship the isochrone OUTLINES as a separate, lazily-loaded file ─────────────────
+  // The main artifact carries derived numbers only — areas, ZIP mixes, competitor distributions —
+  // and never geometry, which is what keeps it on the produced-work side of ODbL and keeps it at
+  // 17.4 MB. But the shapes were measured during the build and sat unused in the checkpoint, so
+  // "draw the real 8/10/12/15/20/25-minute rings" costs nothing extra to answer.
+  // Stored as RADII, not coordinates: every ring is a star-ring sampled at fixed 360/RAYS-degree
+  // steps around a centre the app already has, so one distance per ray reconstructs it exactly and
+  // costs a third of the coordinate form. Scoring never reads this file.
+  if(args.rings){
+    if(!fs.existsSync(CKPT)){ console.error('no checkpoint — run the build first'); process.exit(1); }
+    const ck0=JSON.parse(fs.readFileSync(CKPT,'utf8'));
+    const radOf=(rg,la,lo)=>rg.map(p=>{
+      const dy=(p[0]-la)*69.0, dx=(p[1]-lo)*69.0*Math.cos(la*Math.PI/180);
+      return +Math.sqrt(dy*dy+dx*dx).toFixed(2);
+    });
+    const pack=src=>{ const o={};
+      for(const k in src){ const c=src[k]; if(!c||!c.r8) continue;
+        o[k]=BUDGETS.map(b=>radOf(c['r'+(b/60)], c.la, c.lo)); }
+      return o; };
+    const doc={ v:1, built:new Date().toISOString().slice(0,10), rays:RAYS,
+      budgets:BUDGETS, form:'radii-mi', note:'Star-ring radii in miles at fixed 360/rays-degree steps, ray 0 pointing due EAST and '+
+        'the angle increasing counter-clockwise, around each cell/clinic centre in dfw-catchments.json. '+
+        'Reconstruct: t = i*2*PI/rays; lat = la + r*sin(t)/69; lon = lo + r*cos(t)/(69*cos(la)). '+
+        'Verified against the source coordinates to ~3 m.',
+      credit:'Drive-time isochrones computed locally with OSRM over OpenStreetMap data (ODbL). '+
+        'Derived reachability envelopes only — no road geometry redistributed.',
+      cells:pack(ck0.grid||{}), clinics:pack(ck0.clinics||{}) };
+    const outP=path.join(HERE,'dfw-rings.json');
+    fs.writeFileSync(outP, JSON.stringify(doc));
+    console.log(`Wrote ${outP}\n  ${Object.keys(doc.cells).length} cells · ${Object.keys(doc.clinics).length} clinics · `+
+      `${RAYS} rays x ${BUDGETS.length} budgets · ${(fs.statSync(outP).size/1048576).toFixed(1)} MB`);
+    process.exit(0);
+  }
+
   // sanity: is OSRM up?
   try{
     const r=await fetch(`${OSRM}/route/v1/driving/-96.80,32.78;-96.79,32.79?overview=false`);

@@ -9846,7 +9846,7 @@ function _evalRenderSidebar(){
       </div>`:`<div style="font-size:11px;color:#64748b;padding:6px 0">Computing catchment…</div>`;
       body+=`<div id="evd-${i}" style="font-size:10.5px;margin-top:6px"></div>
       <div style="display:flex;gap:6px;margin-top:6px" onclick="event.stopPropagation()">
-        <button class="vm-export-btn" style="color:#6d28d9;background:#f3effd;border-color:#ddd0f7" onclick="evalDriveTime(${i},this)">◔ 10-min drive area</button>
+        <button class="vm-export-btn" data-mktbtn="1" style="color:var(--navy);background:#eef2fb;border-color:#c9d4e8;font-weight:600" onclick="showMarket(${i},this)">${_MKT_SHOW}</button>
         ${g.cc?`<button class="vm-export-btn" style="color:#1e3a8a;background:#eef2fb;border-color:#c9d6ef" onclick="evalPressure(${i},this)">◐ Competitive pressure</button>`:''}
       </div>
       <div id="evov-${i}"></div>`;
@@ -10029,7 +10029,7 @@ function _evalRenderSidebar(){
         ${kv(re_.econ.multAnalyst?('Indicative value @ '+re_.econ.multLo+'× analyst'):('Indicative value @ '+re_.econ.multLo+'–'+re_.econ.multHi+'×'),re_.econ.multAnalyst?_fmtM(re_.econ.valLo):(_fmtM(re_.econ.valLo)+' – '+_fmtM(re_.econ.valHi)),true)}`:''}
         <div style="display:flex;gap:7px;margin:12px 0 8px" onclick="event.stopPropagation()">
           <button class="vm-export-btn" style="flex:1;justify-content:center;background:var(--navy);border-color:var(--navy);color:#fff;font-weight:700" onclick="clinicReport()">↓ Clinic report</button>
-          <button class="vm-export-btn" style="flex:1;justify-content:center;color:var(--navy);border-color:#c9d4e8;font-weight:700" onclick="evalDriveTime(-2,this)">${cs2?(cs2.src==='drive'?'Hide 10-min drive area':'True 10-min drive area'):'Computing catchment…'}</button>
+          <button class="vm-export-btn" data-mktbtn="1" style="flex:1;justify-content:center;color:var(--navy);border-color:#c9d4e8;font-weight:700" onclick="showMarket(-2,this)">${_MKT_SHOW}</button>
         </div>
         <div id="evd--2">${cs2?_evalCatchHTML(cs2):''}</div>
         ${warns.map(w=>`<div class="cdx-vflag" style="font-weight:500">${w}</div>`).join('')}
@@ -10081,7 +10081,7 @@ function _evalRenderSidebar(){
           </div>`;})():''}
         ${(()=>{ const sid2=g.la.toFixed(4)+','+g.lo.toFixed(4), cs2=_siteCatch[sid2];
           if(_evalSubject&&!cs2) _evalAutoCatch(g);
-          return `<button class="vm-export-btn" style="width:100%;margin:0 0 8px;background:#f8f6ff;border-color:#ddd0f7;color:#6d28d9;font-weight:700" onclick="event.stopPropagation();evalDriveTime(-2,this)">${cs2?(cs2.src==='drive'?'Hide 10-min drive-time area':'Show true 10-min drive-time on map'):(_evalSubject?'Computing catchment…':'10-min catchment & future demand')}</button>
+          return `<button class="vm-export-btn" data-mktbtn="1" style="width:100%;margin:0 0 8px;background:#eef2fb;border-color:#c9d4e8;color:var(--navy);font-weight:700" onclick="event.stopPropagation();showMarket(-2,this)">${_MKT_SHOW}</button>
         ${_evalSubject?`<button class="vm-export-btn" style="width:100%;margin:0 0 8px;background:var(--navy);border-color:var(--navy);color:#fff;font-weight:700" onclick="event.stopPropagation();clinicReport()">↓ Download clinic report (PDF)</button>`:''}
         <div id="evd--2">${cs2?_evalCatchHTML(cs2):''}</div>`;})()}
         ${warns.map(w=>`<div style="font-size:10.5px;color:#9f1239;background:#fff1f2;border:1px solid #fecdd3;border-radius:8px;padding:6px 9px;margin:0 0 8px;line-height:1.5">${w}</div>`).join('')}
@@ -10403,6 +10403,131 @@ async function _evalCatchmentStats(ring, g){
 }
 function _fmtM(v){ return v>=1e6?('$'+(v/1e6).toFixed(1)+'M'):('$'+Math.round(v/1000)+'k'); }
 const _DRIVE_SHOW='◔ 10-min drive area', _DRIVE_HIDE='✕ Hide drive area';
+const _MKT_SHOW='◎ Show market', _MKT_HIDE='✕ Hide market';
+// ── MARKET RINGS — the six MEASURED drive-time isochrones ───────────────────────────────────
+// These outlines were computed by OSRM during the build and then thrown away: the main artifact
+// ships derived numbers only (areas, ZIP mixes, competitor distributions), which is what keeps it
+// on the produced-work side of ODbL and keeps it at 17.4 MB. The shapes were still sitting in the
+// build checkpoint, so drawing the real rings costs no API call and no new routing —
+// `build-catchments.mjs --rings` re-emits them as a SEPARATE file, lazily loaded the first time a
+// user opens this panel and never touched by scoring.
+// Stored as radii, not coordinates: each ring is a star-ring sampled at fixed 360/rays-degree
+// steps around a centre the app already has, so one distance per ray rebuilds it exactly at a
+// third of the size (verified against the source coordinates to ~3 m).
+let _ringData=null, _ringP=null, _mktLayer=null, _mktIdx=null;
+function _loadRings(){
+  if(_ringP) return _ringP;
+  _ringP=fetch('dfw-rings.json?v=1',{cache:'force-cache'}).then(r=>r.ok?r.json():null)
+    .then(d=>{ _ringData=d; return d; })
+    .catch(()=>{ _ringP=null; return null; });   // clear on failure so a retry can succeed
+  return _ringP;
+}
+function _ringKey(la,lo){ return Math.round(la*1000)+'_'+Math.round(lo*1000); }
+function _ringPoly(rad, la, lo){
+  const n=rad.length, cl=Math.cos(la*Math.PI/180), out=[];
+  for(let i=0;i<n;i++){ const t=i*2*Math.PI/n, r=rad[i]||0;
+    out.push([la + r*Math.sin(t)/69.0, lo + r*Math.cos(t)/(69.0*cl)]); }
+  return out;
+}
+// Per-band market detail. Read STRAIGHT off the artifact bands — the same numbers the engine
+// scores on — rather than re-sampling ZIP polygons against a drawn ring, which is how the old
+// 10-minute readout worked and why it could disagree with the site card.
+function _marketBands(g){
+  const cc=g.cc; if(!cc||!cc.b) return null;
+  const wb=(g.cWBar!=null)?g.cWBar:_catchWBar(cc);
+  const sp=(g.cSpend!=null)?g.cSpend:_catchSpendF(g.cInc), act=g.cACT||1;
+  // clinic mode: the subject is an incumbent and must come out of its own competition
+  const selfW=(g.forced && _evalSubject && _evalSubject.dvm)? _staffW(_evalSubject.dvm) : null;
+  const out=[]; let cH=0,cV=0,cW=0;
+  for(let b=0;b<CATCH_BANDS.length;b++){
+    let hh=0, vis=0;
+    for(const [z,f] of (cc.b[b]||[])){
+      const dd=(typeof dogData!=='undefined')&&dogData[z]; if(!dd) continue;
+      hh += (dd.households||0)*f;
+      vis += f*((dd.est||0)*OPP_VISITS_PER_DOGHH + (dd.catEst||0)*OPP_VISITS_PER_CATHH);
+    }
+    vis*=sp;
+    const sh=_catchShareBand(cc,b,CATCH_REF_DVM,wb,selfW);   // same reference entrant as the card
+    const win=vis*(sh||0);
+    cH+=hh; cV+=vis; cW+=win;
+    out.push({ b, t0:CATCH_BANDS[b][0], t1:CATCH_BANDS[b][1], hh, vis, share:sh, win,
+               rev:win*REV_PER_VISIT*act, cumHH:cH, cumVis:cV, cumWin:cW, cumRev:cW*REV_PER_VISIT*act,
+               area:cc['a'+CATCH_BANDS[b][1]]||0 });
+  }
+  return out;
+}
+const _MKT_FILL=['#1e3a8a','#2b4fa8','#3b62c0','#5a7fd0','#8aa5e0','#b9caf0'];
+function _hideMarket(){
+  if(_mktLayer){ try{ map.removeLayer(_mktLayer); }catch(e){} _mktLayer=null; }
+  _mktIdx=null;
+  document.querySelectorAll('[data-mktbtn]').forEach(b=>{ b.textContent=_MKT_SHOW; });
+}
+async function showMarket(i, btn){
+  const g=(i===-2)?evalSiteCell:evalTop[i]; if(!g) return;
+  if(_mktLayer && _mktIdx===i){ _hideMarket(); return; }
+  _hideMarket();
+  if(!g.cc){ vfToast('No measured drive-time catchment covers this location.'); return; }
+  const orig=btn?btn.textContent:_MKT_SHOW;
+  if(btn){ btn.disabled=true; btn.textContent='Loading rings…'; }
+  const d=await _loadRings();
+  if(btn){ btn.disabled=false; }
+  const key=_ringKey(g.cc.la,g.cc.lo);
+  const rad=d && d.cells && d.cells[key];
+  if(!rad){ if(btn) btn.textContent=orig; vfToast('Drive-time outlines unavailable for this spot.'); return; }
+  const bands=_marketBands(g);
+  _mktLayer=L.layerGroup().addTo(map);
+  // OUTERMOST FIRST so the smaller rings sit on top — hovering then always reports the tightest
+  // band containing the cursor, which is what a nested ring diagram should do.
+  for(let b=CATCH_BANDS.length-1;b>=0;b--){
+    if(!rad[b]) continue;
+    const info=bands&&bands[b];
+    const poly=L.polygon(_ringPoly(rad[b], g.cc.la, g.cc.lo), {
+      color:_MKT_FILL[b], weight:1.6, opacity:0.95,
+      fillColor:_MKT_FILL[b], fillOpacity:0.10 }).addTo(_mktLayer);
+    if(info) poly.bindTooltip(
+      `<div style="font-weight:600;margin-bottom:3px">${info.t0}\u2013${info.t1} min drive</div>`+
+      `<div style="font-size:11px;line-height:1.5">`+
+      `Households <b>${Math.round(info.hh).toLocaleString()}</b><br>`+
+      `Vet visits/yr <b>${Math.round(info.vis).toLocaleString()}</b><br>`+
+      `Capture here <b>${((info.share||0)*100).toFixed(0)}%</b><br>`+
+      `You\u2019d win <b>${Math.round(info.win).toLocaleString()}</b> visits \u00b7 <b>$${(info.rev/1e6).toFixed(2)}M</b>`+
+      `<div style="margin-top:4px;padding-top:4px;border-top:1px solid rgba(255,255,255,.25);opacity:.85">`+
+      `Cumulative to ${info.t1} min: ${Math.round(info.cumHH).toLocaleString()} HH \u00b7 `+
+      `${Math.round(info.cumWin).toLocaleString()} winnable \u00b7 $${(info.cumRev/1e6).toFixed(2)}M</div>`+
+      `</div>`, {sticky:true, direction:'top'});
+  }
+  _mktIdx=i;
+  try{ map.fitBounds(_mktLayer.getBounds? _mktLayer.getBounds() : L.latLngBounds(_ringPoly(rad[5],g.cc.la,g.cc.lo)),
+       {padding:[40,40],maxZoom:13}); }catch(e){}
+  if(btn){ btn.textContent=_MKT_HIDE; btn.setAttribute('data-mktbtn','1'); }
+  const el=document.getElementById('evd-'+i);
+  if(el && bands) el.innerHTML=_marketTableHTML(bands, g);
+}
+function _marketTableHTML(bands, g){
+  const rows=bands.map(x=>
+    `<tr><td style="padding:3px 6px 3px 0"><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${_MKT_FILL[x.b]};margin-right:5px"></span>${x.t0}\u2013${x.t1}m</td>`+
+    `<td style="text-align:right;padding:3px 6px">${Math.round(x.hh).toLocaleString()}</td>`+
+    `<td style="text-align:right;padding:3px 6px">${Math.round(x.vis).toLocaleString()}</td>`+
+    `<td style="text-align:right;padding:3px 6px;color:#24466e;font-weight:600">${((x.share||0)*100).toFixed(0)}%</td>`+
+    `<td style="text-align:right;padding:3px 0 3px 6px">${Math.round(x.win).toLocaleString()}</td></tr>`).join('');
+  const tot=bands[bands.length-1];
+  return `<div style="font-size:11.5px;margin-top:6px">`+
+    `<div style="font-weight:600;margin-bottom:4px">Market by drive-time ring</div>`+
+    `<table style="width:100%;border-collapse:collapse;font-size:11px">`+
+    `<tr style="color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.4px">`+
+    `<td>Ring</td><td style="text-align:right">Homes</td><td style="text-align:right">Visits/yr</td>`+
+    `<td style="text-align:right">Capture</td><td style="text-align:right">You win</td></tr>${rows}`+
+    `<tr style="border-top:1px solid #d7def0;font-weight:600">`+
+    `<td style="padding:4px 6px 0 0">Total \u226425m</td>`+
+    `<td style="text-align:right;padding:4px 6px 0">${Math.round(tot.cumHH).toLocaleString()}</td>`+
+    `<td style="text-align:right;padding:4px 6px 0">${Math.round(tot.cumVis).toLocaleString()}</td>`+
+    `<td style="text-align:right;padding:4px 6px 0">\u2014</td>`+
+    `<td style="text-align:right;padding:4px 0 0 6px">${Math.round(tot.cumWin).toLocaleString()}</td></tr></table>`+
+    `<div style="font-size:10px;color:var(--muted);margin-top:6px;line-height:1.45">`+
+    `Real OSRM drive-time outlines measured over the road network. Capture is the share a typical `+
+    `${CATCH_REF_DVM}-DVM clinic would win against the competitors who can actually drive to each `+
+    `household in that ring \u2014 the same reference used on the card. Hover a ring on the map for detail.</div></div>`;
+}
 function _evalDriveResetBtns(){
   document.querySelectorAll('button[onclick^="evalDriveTime"]').forEach(b=>{ b.textContent=_DRIVE_SHOW; b.disabled=false; });
   document.querySelectorAll('[id^="evd-"]').forEach(d=>{ d.innerHTML=''; });   // clear every site's drive readout too
@@ -10410,7 +10535,7 @@ function _evalDriveResetBtns(){
 // Remove the drive polygon (leaves the cached ring so re-showing the SAME site is free); resets buttons + readouts.
 function _evalHideDrive(){ if(evalDriveLayer){ map.removeLayer(evalDriveLayer); evalDriveLayer=null; } _evalDriveResetBtns(); }
 // Full reset — drop the polygon AND the cache (used on recompute / clear).
-function _evalClearDrive(){ _evalHideDrive(); _evalDriveIdx=-1; _evalDriveRing=null; _evalClearOverlap(); }
+function _evalClearDrive(){ _evalHideDrive(); _evalDriveIdx=-1; _evalDriveRing=null; _evalClearOverlap(); _hideMarket(); }
 // Shared catchment readout — used by the drive-time button AND the clinic-card auto-run.
 function _evalCatchHTML(cs){
   // Dossier language (user pick A, 2026-07-25): hairline uppercase section labels + kv rows.
