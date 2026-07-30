@@ -350,6 +350,177 @@ every visit in the catchment (~530k for a Plano cell) and reach/anchor pinned at
 - A `dfw-pipeline.json` refresh now requires a derive rerun (~25 min, no OSRM) since `fu[band]` is
   baked in.
 
+## v8 artifact — the K-clip fix + joint recalibration (2026-07-29)
+The audit's #1 CRITICAL, and the root cause of BOTH bad numbers on the site card. Fixed properly
+rather than worked around, at the user's direction.
+
+**What was wrong.** `build-catchments.mjs` bucketed effective competitor weight with
+`KBUCKETS=17, KSTEP=0.5` — a LINEAR ladder clipped at 8.0 — while true K runs to ~50 (median 17.5).
+Measured: 92.3% of all band-0 household mass sat in the clipped top bucket (100% of urban, 96.8% of
+suburban, 30.4% rural). Because the censoring rate rises with density, the clip inflated share
+3.22x urban / 2.03x suburban / 1.00x rural — that IS the urban-over-suburban bias. Across 3,087
+suburban cells recorded band-0 K ran p10 7.79 -> p90 8.00 (CV 0.040): the variable was a CONSTANT
+exactly where the buy-box lives.
+
+**The fix: a LOG ladder, same 17 buckets.** `KMID=[0,.5,1,1.5,2,3,4,5.5,7.5,10,13,17,22,29,38,50,65]`.
+Resolution where share = A/(A+wBar*K) is steep (small K), coarse where it is flat. Covering K=65
+linearly at KSTEP 0.5 would need 131 buckets and a ~6x bigger artifact; the log ladder keeps the
+file at 17.4 MB. **`kMid` SHIPS IN THE ARTIFACT** and `_catchShareBand` reads it (v7 linear
+fallback retained) so build and runtime can never drift. Verified: top-bucket mass 92.3% -> 0.00%.
+
+**Clinic-mode self-removal changed from a bucket-INDEX shift to a K SUBTRACTION.** The old
+`drop=(selfW*W[b])/step` shift is only equivalent to removing the subject's competition on a
+UNIFORM ladder; on a log ladder it would remove wildly different amounts depending on where the
+bucket sits. Now `K=max(0, kMid[i] - selfW*W[b])`.
+
+**Joint recalibration (the clip and the level are ONE calibration).** Un-clipping alone drops every
+class to 0.11-0.15x of actual rosters, because `CATCH_MAX_BAND=5` had been chosen empirically to
+OFFSET the clip. Swept `CATCH_MAX_BAND` x attraction divisor x exponent against 521 GP clinics with
+scraped rosters. **Shipped: `CATCH_ATTRACT_DIV=0.35` (was 2.5), `CATCH_MAX_BAND=5` (unchanged).**
+Result: fit.roster p25 1.449 / p50 1.082 / p75 0.835 / p90 0.632, per-class spread **8.9x -> 1.53x**
+(rural 0.246->0.723, exurban 0.481->0.957, suburban 1.116->1.103, urban 2.182->1.065).
+
+**A BETTER-FITTING CALIBRATION WAS REJECTED — do not "restore" it.** `CATCH_MAX_BAND=6` (25 min)
+with DIV 0.6 fit marginally better (p50 1.05, spread 1.40) but made **Waxahachie the
+highest-revenue cell in DFW at $9.24M / 15.7 DVM** — an exurban town modelled as one of the largest
+GP practices in Texas, purely because its 25-minute ring sweeps unopposed countryside. The roster
+gate CANNOT see this: its subjects are real clinics, and real clinics are not on the metro rim.
+**A fit statistic computed on interior points must not be allowed to choose the horizon.** At
+MAXB 5 the DFW max is $6.05M / 10.1 DVM.
+
+**`CATCH_ATTRACT_DIV` is a FITTED constant, not a measured one.** Roughly half its lift absorbs the
+documented metro-closure gap (demand supports ~1,268 DVMs against 2,530 practising, ratio 0.501 —
+now asserted as `closure.metro` in the gate). It also breaks the old property that entrant and
+competitor attraction sat on one scale (a 2.5-DVM entrant reads 2.04, not 1.0). The principled fix
+is reconciling the pet model against DVM_VISIT_CAPACITY; until then do not quote this as measured.
+
+**Effect on the recommended sites** (the contradiction the user caught — "$3.92M revenue?"):
+practice size at the picks went 0.7-1.0 DVM -> 1.4-6.0 DVM and revenue $0.44-2.11M -> $0.85-3.61M,
+against real 5-, 7- and 8-DVM practices operating within 4 mi. Model and ground truth now agree.
+
+### Gate hardening (restored + extended, 45 pass / 4 warn / 0 fail)
+- **`fit.pairing`** — the quantile-ratio statistic is PAIRING-BLIND (proven: p50 1.082 identical
+  under a seeded permutation). Neighbour-cell coherence 0.782 vs 0.101 permuted catches it.
+- **`fit.byclass`** — per-class ratio vs `FIT_CLASS_BASELINE`; FAILs a class that moves away from
+  1.0, WARNs when one moves toward it and asks for a deliberate re-record. Baseline re-recorded to
+  the v8 figures; the v7 numbers are kept in the comment as the re-clip regression signature.
+- **`fit.rank`** — Spearman per class, WARN with an explicit PROMOTION PATH: make it FAIL below
+  0.25 the day anything is presented as per-address accuracy.
+- **`share.identity`** — asserts share === cEq x 3200 / cReach (worst 1.09e-11). It is a RESIDUAL.
+- **`closure.metro`** — the 0.501x gap, so no future one-sided recalibration can pass silently.
+
+### Reported capture share is a FIXED-REFERENCE measurement (2026-07-29)
+User: *"all of these sites are showing 1-4% market capture which is so low."* He was right, and the
+number was wrong twice over. `cShare` is winnable/cReach, and substituting the solved fixed point
+shows it is the IDENTITY `cEq x DVM_VISIT_CAPACITY / cReach` (asserted by `share.identity`, worst
+1.09e-11) — so it is practice size re-expressed as a fraction, not a competitive read, and "20%
+share" is arithmetically a request for an 18-doctor practice. Its denominator is also the WHOLE
+20-minute pool, of which the inner ring is ~6.6% at the median cell.
+**`cell.cShareRef`** replaces it on every card, report and drill-down: `_catchShareBand(cc, 0,
+CATCH_REF_DVM=3, wBar)` — a typical new 3-DVM clinic, measured on the 0-8 min ring where the decay
+weight is 1.0 by construction. In CLINIC mode `cSelfW` is passed, so the helper uses the subject's
+real roster and removes it from its own competition — i.e. the incumbent's actual inner-ring share.
+DISPLAY ONLY; nothing ranks or scores on it, and `g.share` still carries the residual internally
+(the gravity path scores on it, so do not repoint that field).
+Verified metro-wide: residual p10/p50/p90 1.6/6.9/40.0% -> reference 10.8/33.1/69.1%, and unlike the
+residual it MOVES WITH COMPETITION — rural 57.6% / exurban 30.2% / suburban 15.9% / urban 8.6%,
+monotone in density and on the gravity engine's documented scale (dense suburb ~0.10, contested
+corridor ~0.15-0.20). The five recommended sites read 11-30% instead of 1.6-7.7%, ordered by how
+contested they actually are (Lewisville 11% with 5 clinics/7 DVMs in 3 mi; Wylie 30% with 1/2).
+
+### STILL TRUE AFTER THE FIX — no per-site skill
+Un-clipping fixed the LEVEL and the CLASS BIAS. It did NOT buy parcel-level discrimination.
+A subject-removed rank test was added (the old one is mechanically rigged: a bigger incumbent
+raises K at its OWN address, so modelled-entrant vs actual-roster is guaranteed to slope down);
+removing the subject moves rho -0.064 -> -0.037. Still zero. **This engine ranks MARKETS, not
+parcels** — Refine is what answers "which corner". Do not present a site card as per-address.
+
+## Buy-box screen-then-score (2026-07-29) — METRO RUNS ONLY
+User: *"PE firms and regional groups dont build rural so we really shouldnt be looking at rural
+areas unless its a land play that is being developed in an exurb like celina. I was expecting it
+to give me sites in high income suburb areas that may be underserved?"* Audit that motivated it:
+`research/algo-audit-2026-07-29.md` (four lenses, all converging).
+
+**THE OBJECTIVE WAS WRONG, and no re-weighting could fix it.** Ranking on total winnable revenue
+ranks MARKET SIZE — reach explains 81.4% of log-revenue variance — so the metro top-50 came back
+50/50 urban Dallas at mean catchment income $93k. Every one of the 3,224 high-income
+suburban/exurban cells is strictly Pareto-dominated on BOTH (reach, share), so the buy-box was
+literally unreachable by any monotone function of the two existing axes.
+
+**The missing axis: 2SFCA local underservice** (`_catchBuildAccess` / `_catchAccessAt` /
+`_catchDem10`). A naive "DVMs within 10 min" count has a UNIT BUG — a clinic whose ring covers 200
+cells gets credited in FULL against each one, while only that cell's local demand sits on the other
+side. Two-step floating catchment fixes it: divide each clinic's capacity by ALL the demand it
+serves (step 1), sum those ratios at the cell (step 2). Each clinic's own measured `a10` ring area
+gives a road-speed-adapted radius, so it stays road-derived without shipping road geometry.
+**`ov` is deliberately NOT used** — build-catchments trims it to the top 8 *for display only*, and
+it would truncate supply hardest in dense markets. Cross-check: metro-median A = **1.93** (browser
+1.969), which independently reproduces the audit's separately-measured 0.50 closure ratio. Used
+RELATIVELY (`U = AMED/A`, `unmet = dem10 x max(0, 1-A/AMED)`) so the documented metro-closure gap
+(demand supports ~1,262 DVMs against ~2,526 observed) can NEVER leak in as an absolute shortage.
+
+**Score (metro only):** `cOppRev = min(cUnmet, BUYBOX_ABSORB) x REV_PER_VISIT x cACT`, normalised by
+the SAME `CATCH_REV_FULL`, so every threshold keeps its dollar meaning (EVAL_STRONG 0.22 = $1.36M
+capturable). **The hard cap at `BUYBOX_MAX_DVM=6` is load-bearing** — it is what stops this
+collapsing back into a market-size ranking. Verified by sweep: soft/exponential saturation or any
+cap >=8 DVM drifts straight back to Garland/Rowlett at $101k. User CHOSE 6 over 3-4 and 8-10 on
+2026-07-29. Sensitivity: the income floor is nearly irrelevant (identical top 5 from $80k-$100k);
+the cap decides the answer (only 1/5 places survive either extreme).
+
+**Screen** (`_bbOK`, applied to the PICK, never to the surface — the heatmap stays whole because it
+is the evidence, same rule the weak-site tiers follow): not rural, catchment income >= 90k, unmet > 0.
+It **barely binds** — of the top 100 cells by the new objective the screen removes exactly ONE. The
+objective change did the work; the screen is a safety rail. Falls back to the unscreened order if
+fewer than TOPN survive (`evalBuyBox.on`), so a metro run can never come back empty.
+
+**SINGLE-PLACE EVALUATIONS ARE UNTOUCHED** (ZIP / dropped site / clinic): there the user already
+chose the geography, so re-ranking answers a question they did not ask. Gated on `_metroBB &&
+!g.forced`. The underservice numbers are still ATTACHED to every cell and reported on the card.
+
+**Land plays** now rank on `cLandRev` = future unmet, not `cEqFut` (which is future MARKET SIZE and
+ordered plays by pipeline size regardless of whether anyone already served it — Midlothian's 24k
+announced units ranked BELOW a Garland cell with 2k). Result: Celina, exactly the case the user
+carved out.
+
+**`_catchACTF` no longer saturates at $110k** — constant elasticity through the SAME two BLS anchors
+($25k->0.57, $110k->1.00), exponent FORCED at `ln(0.57)/ln(25/110) = 0.3794`, no new constant.
+The old linear form clamped, scoring every catchment from $110k to $183k identically (2,757 cells,
+disproportionately the buy-box's: 50% of exurban vs 6% of urban at the ceiling). $175k now prices
+1.193x. **`_catchSpendF` was deliberately NOT changed** — it feeds the equilibrium solve and
+therefore the validated roster gate; it moves only with a re-validation.
+
+### Bugs found here — do not reintroduce
+- **`_vetStaffAt` returns an OBJECT `{n,vets,...}` or null, NEVER a number.** `obj*3200` is NaN,
+  and **a single NaN score destroys `Array.sort`** (`b.score-a.score` returns NaN, the comparator
+  becomes inconsistent and the order is arbitrary). This shipped into the first metro run and
+  produced a plausible-looking, meaningless top 5 — pick #1 scored 42/weak while pick #3 scored
+  88/strong. The idiom is `(_vetStaffAt(la,lo)||{}).n || 2`. There is now a **permanent guard**
+  that zeroes and `console.warn`s non-finite scores before the sort; keep it.
+- **The offline replica did not catch it** — it used a local helper returning `.n`. Validate the
+  ENGINE (`research/eval-gate.mjs` harness), not a reimplementation.
+- **Separation is computed BEFORE the land plays** because both picks consume it. It used to be
+  derived next to the site pick, so the land block read the PREVIOUS run's `evalSepMi` — stale on
+  every run after the first, null on the first. Metro land separation now uses `evalSepMi` too
+  (a fixed ~1.2mi returned three cells of one town).
+- Bucket-index spans are computed SEPARATELY for lat and lon: a degree of longitude is ~19% shorter
+  at this latitude, and one shared span under-covered the longitude axis and dropped competitors.
+
+### Verified output (metro, 4,076 siting-gated candidates)
+Sites: Allen $128k (A 0.48, U 4.1x, unmet 19,170, $3.92M) / Little Elm $121k / Wylie $119k /
+Lewisville $103k / Rowlett $102k — all `strong`, correctly ordered, mode `good`, pool 673.
+Ground truth from RAW clinic data: Allen has 1 clinic / 2 DVMs within 3 mi, Wylie 1/2, Little Elm
+2/2, against a metro baseline of 3.7 clinics / 8.8 DVMs. Land plays: Celina (71,679 announced
+units) x2 + Justin. Gate 43 passed / 1 warned / 0 failed, unchanged from baseline.
+
+### Still open (from the audit, NOT fixed here)
+- **K=8.0 bucket clip and `CATCH_MAX_BAND` remain coupled** — un-clipping alone drops every class
+  to 0.19x. Still needs the joint re-derivation documented above.
+- **`share` is still the accounting identity** `doctors x 3200 / reach` (exact to 1e-9), so a "20%
+  share" asks for an 18-doctor practice. It is REPORTED, never ranked on, but the number on the
+  card still means less than it looks like it does. Fix is to report at a fixed reference entrant.
+- **No per-site skill**: corr(modelled, actual roster) = 0.002 per clinic vs 0.697 at market level.
+  These are five MARKETS, not five parcels — which is what Refine exists for.
+
 ## Catchment-overlap analysis (2026-07-16, user idea: overlap the site's 10-min catchment with every nearby clinic's)
 `evalOverlap(i,btn)` — button in the site card's Catchment tab. Computes the SITE's 10-min isochrone + the nearest ≤6 in-range clinics' (each clinic's ring cached PERMANENTLY in localStorage `vf_iso_<cellkey>` — clinic catchments never change; ~1 Routes call each first time, free after). Samples the site catchment on a 42×42 household-weighted grid (rooftop gravity within 1.2km, `_fut` excluded, 0.05 area floor) and reports: household-weighted per-clinic overlap %, uncontested %, and a **network-adjusted winnable share** — within each sample point the entrant splits demand `1/(1+Σ _staffW(covering clinics))`, i.e. the road network supplies the geometry and fair-fight Huff supplies the split (consistent with A_OWN=1.0). Displayed alongside the gravity share with an agree/diverge interpretation line (diverge ⇒ a road barrier the crow-flies model can't see). VALIDATION INVARIANT: with uniform circular catchments the network share converges to the gravity share (verified with stubbed isochrones — 30%=30%) — if they diverge under stubs, the split arithmetic drifted. Phase 2 (not built): `build-catchments.mjs` batch-precompute of all ~3,765 TX clinic catchments via self-hosted OSRM (free) → ship as a static file feeding the same vf_iso_ format, then use measured overlaps to calibrate `_grav` itself.
 
