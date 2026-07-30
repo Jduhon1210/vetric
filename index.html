@@ -7430,6 +7430,7 @@ let evalCaptureOn=false;  // true while the on-screen analysis ran on the drive-
 let evalLandStat=null;    // land-play funnel counts, so a zero result can be attributed
 let evalCapStat=null;     // capture coverage for this run {cov,on,pin,skipped} — drives the honesty line
 let evalSepMi=null;       // minimum separation actually applied, in MILES — disclosed on the cards
+let evalWetCells=0;       // candidates dropped for sitting in open water
 // True while the on-screen analysis IS the evaluation of a land play (user 2026-07-26: "when
 // evaluating a land play i dont want it to give me more land plays"). You already chose the
 // corridor — this pass answers "where inside it do I build?", so nested land plays are noise.
@@ -7627,7 +7628,7 @@ function _clinicReportHTML(){
   ${twoSided}
   <div class="keep">
     ${_rpL('Top competitors — ranked by contested share',_capRep
-      ?('(gravity pull within '+evalRadiusMi+' mi — this clinic holds '+(subjShare*100).toFixed(0)+'% of that disc; its measured share of the full drive-time catchment is '+(g.cShare*100).toFixed(0)+'%)')
+      ?('(gravity pull within '+evalRadiusMi+' mi — this clinic holds '+(subjShare*100).toFixed(0)+'% of that disc; across its full drive-time catchment the model puts it at '+(g.cShare*100).toFixed(0)+'% of all reachable visits, which is its practice size expressed as a fraction rather than a competitive read)')
       :('(gravity model; this clinic holds '+(subjShare*100).toFixed(0)+'%)'))}
     <div style="margin-top:6px">${comps.map(x=>`<div class="comp"><span class="who">${esc(x.c.name||'Clinic')} <i>· ${x.c.pe?('PE — '+esc(x.c.owner||'undisclosed')):'independent'}</i></span><span class="d"><span style="color:#24466e;font-weight:600">${(x.share*100).toFixed(0)}%</span>${(cs&&!_capRep)?' · ~'+Math.round(cs.visits*x.share).toLocaleString()+' visits/yr':''} · ${(x.d/1609.344).toFixed(1)} mi${x.c.staffN?' · '+x.c.staffN+' DVM':''}</span></div>`).join('')}</div>
     <div style="font-size:10px;color:#9aa2b1;margin-top:5px">Roster-weighted gravity pull over road-barrier distance, within ${evalRadiusMi} mi — a RELATIVE read on who presses hardest at this address.${_capRep?' It is not the same frame as the capture share above, which is measured on the road network over the whole drive-time catchment, so the two percentages are not comparable and no visit counts are attributed from it.':" Visits apply the share to the catchment's estimated total."}</div>
@@ -7667,7 +7668,9 @@ function siteReport(i){
   <div class="grid2">
     <div class="card">${_rpL('Site factors','(0–100, this analysis)')}
       ${_rpKV('Neighborhood demand',Math.round(g.demandN*100))}
-      ${_rpKV('Winnable capture share',(g.share*100).toFixed(0)+'%',true)}
+      ${g.cShareRef!=null
+        ? _rpKV('Capture share, 8-min ring','~'+(g.cShareRef*100).toFixed(0)+'% for a typical 3-DVM clinic',true)
+        : _rpKV('Winnable capture share',(g.share*100).toFixed(0)+'%',true)}
       ${_rpKV('Retail co-tenancy',Math.round(g.retailN*100))}
       ${_rpKV('Road visibility',Math.round(g.accessN*100))}
     </div>
@@ -7737,6 +7740,7 @@ let evalZoneCities=[];      // names of municipalities whose zoning covered this
 let evalParcelCounties=[];  // county CADs whose parcels covered the gaps
 let evalZoneStat=null;      // {excluded, cities, counties, usedOSM, on} — sidebar readout
 let evalCells=[], evalTop=[], evalCompsCache=[], evalRecalcTimer=null;
+let evalBuyBox=null;      // metro screen state: {on, pool, minInc} — null on single-place runs
 const EVAL_W={demand:0.30, comp:0.30, retail:0.22, access:0.18};
 const EVAL_TOP_N=3;
 // Absolute site-quality bar — deliberately ALIGNED with the evalSat grade cuts so the app never
@@ -7826,13 +7830,22 @@ function _catchUrbanClass(cell){
 // A poor market genuinely supports MORE doctors (more visits per dollar of income) and LESS
 // revenue. Ranking on doctors put a $59k catchment first; ranking on revenue puts a $97k one first.
 // A PE buyer underwrites revenue, so the score is revenue and the two dampers are separate.
+const CATCH_ACT_E=Math.log(0.57)/Math.log(25000/110000);   // 0.3794, forced by the two anchors
 function _catchSpendF(inc){                        // VISITS — AVMA participation gradient
   if(inc==null) return 0.87;                       // unknown income: mild haircut, never a free pass
   return Math.max(0.74, Math.min(1, 0.74+0.26*(inc-25000)/85000));
 }
 function _catchACTF(inc){                          // PRICE per visit — average client transaction
+  // CONSTANT ELASTICITY through the SAME two BLS anchors ($25k -> 0.57, $110k -> 1.00). The
+  // exponent is FORCED by those anchors — ln(0.57)/ln(25/110) = 0.3794 — so no third constant is
+  // invented. The previous linear form CLAMPED at $110k, which scored every catchment from $110k
+  // to $183k identically: 2,757 of 9,365 DFW cells, and disproportionately the high-income
+  // suburbs the buy-box targets (50% of exurban and 25% of suburban cells sat at the ceiling
+  // against 6% of urban). That clamp was the single reason the site ranking could not tell
+  // Southlake from a $110k cell. Not applied to _catchSpendF: that curve feeds the equilibrium
+  // solve and therefore the validated roster gate, so it changes only with a re-validation.
   if(inc==null) return 0.79;
-  return Math.max(0.57, Math.min(1, 0.57+0.43*(inc-25000)/85000));
+  return Math.pow(Math.max(25000,inc)/110000, CATCH_ACT_E);
 }
 // Catchment income = the decay- and household-weighted mean across the ZIPs a site actually
 // reaches, NOT the single ZIP it sits in — a corner site can serve three ZIPs of different means.
@@ -7855,7 +7868,7 @@ function _catchIncome(cell){
 let _catchData=null, _catchP=null, _catchIdx=null;
 function _loadCatchments(){
   if(_catchP) return _catchP;
-  _catchP=fetch('dfw-catchments.json?v=7',{cache:'force-cache'}).then(r=>r.ok?r.json():null).then(d=>{
+  _catchP=fetch('dfw-catchments.json?v=8',{cache:'force-cache'}).then(r=>r.ok?r.json():null).then(d=>{
     if(!d||!d.cells) return null;
     _catchData=d;
     _catchIdx=new Map();                              // 0.01 deg buckets -> cells, for nearest lookup
@@ -7972,7 +7985,19 @@ function _catchWBar(cell){
 // The entrant's size is a free variable we are solving for, not an observation, so it carries
 // neither. Same sqrt(n/2.5) shape and same centring (a 2.5-DVM practice = 1.0) as _staffW, so
 // entrant and competitors remain directly comparable.
-const _catchAttract=n=>Math.sqrt(Math.max(0.05,n)/2.5);
+// DIVISOR RE-DERIVED 2.5 -> 0.6 with the v8 un-clipped ladder (2026-07-29). These two are ONE
+// calibration and must move together: the old 2.5 was fitted against a K censored at 8.0, so
+// un-clipping alone drops every class to 0.11-0.15x of actual rosters. Swept jointly with
+// CATCH_MAX_BAND against 521 GP clinics with scraped rosters — see the table in the register.
+// HONEST LIMIT: part of what this constant now absorbs is the documented METRO-CLOSURE GAP — the
+// demand model supports ~1,262 DVMs against ~2,526 actually practising in DFW (ratio 0.50), so
+// roughly half the lift here is compensating for a demand side that is short, not for a genuine
+// statement about entrant attractiveness. It also breaks the old property that entrant and
+// competitor attraction were on one scale (a 2.5-DVM entrant now reads 2.04, not 1.0). The
+// principled fix is to reconcile the pet model against DVM_VISIT_CAPACITY; until that happens this
+// is a fitted constant, not a measured one, and it should not be quoted as the latter.
+const CATCH_ATTRACT_DIV=0.35;
+const _catchAttract=n=>Math.sqrt(Math.max(0.05,n)/CATCH_ATTRACT_DIV);
 // Per-band decayed demand. Kept as an ARRAY rather than a total because competition differs by
 // band — a 20-minute household faces a different competitive set than a 5-minute one.
 // HOW FAR DEMAND MAY BE CREDITED. Competitors are represented by their 10-MINUTE rings, so beyond
@@ -8002,12 +8027,110 @@ const _catchAttract=n=>Math.sqrt(Math.max(0.05,n)/2.5);
 // the only caller.)
 const CATCH_REACH_FULL=10*DVM_VISIT_CAPACITY;
 const CATCH_REV_FULL=10*REV_PER_DVM;
+// STAYS AT 5 (20 minutes). The joint sweep on the v8 artifact fit marginally better at 6
+// (p50 1.05 spread 1.40, vs 1.09/1.60 here) — but 25 minutes reintroduces the documented
+// sparse-edge over-credit and it is not visible in the roster gate, because roster subjects are
+// real clinics and real clinics are not on the metro rim. Measured at MAXB 6: the highest-revenue
+// cell in DFW became WAXAHACHIE at $9.24M / 15.7 DVM, an exurban town modelled as one of the
+// largest GP practices in Texas, purely because its 25-minute ring sweeps unopposed countryside.
+// A fit statistic computed on interior points cannot see an edge artefact — do not let it choose
+// the horizon. 20 min is also ~73% of a clientele by the survey distribution.
 const CATCH_MAX_BAND=5;
 // Demand is NOT decayed here. Decay lives entirely in the attraction term inside _catchShareBand,
 // which is orthodox Huff — a household makes its ~2.4 visits/dog-HH wherever it lives, and distance
 // decides WHICH clinic gets them, not whether the visits happen. Multiplying demand by W[b] as well
 // counts distance twice: measured, that double-decay drove the model to 0.27-0.31x actual rosters,
 // a 3x undershoot, uniformly across the distribution.
+// ── LOCAL UNDERSERVICE — two-step floating catchment (2SFCA) ────────────────────────────────
+// THE MISSING AXIS. The capture model answers "how big a practice does this market support",
+// which research/algo-audit-2026-07-29.md proved is MARKET SIZE: reach explains 81.4% of
+// log-revenue variance, every one of the 3,224 high-income suburban/exurban cells is strictly
+// Pareto-dominated on both (reach, share), and the metro top-50 came back 50/50 urban Dallas at
+// mean catchment income $93k. No re-weighting of the existing axes can reach the buy-box; it
+// needs a second measurement, which is this one.
+//
+// A naive "DVMs within 10 minutes" count has a UNIT BUG that makes it useless: a clinic whose
+// ring covers 200 cells gets credited in FULL against each one, while only that cell's local
+// demand sits on the other side of the comparison. 2SFCA is the standard fix — divide each
+// clinic's capacity by ALL the demand it serves (step 1), then sum those ratios at the cell
+// (step 2). Verified: the resulting metro-median A of 1.93 independently reproduces the audit's
+// separately-measured 0.50 closure ratio, which is why the measure is used RELATIVELY. The
+// absolute level carries the documented metro-closure gap (the demand model supports ~1,262 DVMs
+// against ~2,526 observed) and must never be read as an absolute shortage.
+// The reference entrant the reported capture share is measured for: a typical new GP practice.
+// Deliberately FIXED — the whole point is that the number must not move with the solved size.
+const CATCH_REF_DVM=3;
+const BUYBOX_MAX_DVM=6;                     // what a new-build GP practice can realistically absorb
+const BUYBOX_ABSORB=BUYBOX_MAX_DVM*DVM_VISIT_CAPACITY;
+// Catchment-income floor for the metro screen. Swept against the revenue-ranked pool 2026-07-30:
+//   $90k -> mean income $103k / mean revenue $3.25M (admits Red Oak $92k twice, Forney $94k)
+//   $110k -> mean income $122k / mean revenue $2.93M   <-- the knee: +$19k income for -$0.32M
+//   $120k -> mean income $127k / mean revenue $2.55M (revenue falls off fast past the knee)
+// Set at the knee because the buy-box is a HIGH-INCOME suburb thesis; the revenue cost is ~10%.
+const BUYBOX_MIN_INC=110000;
+// DEFENSIBILITY FLOOR. Metro runs rank on modelled REVENUE (user, 2026-07-30: the unmet-demand
+// ranking favoured thin markets and topped out at $0.85-3.61M). Revenue alone is market size —
+// exactly the pull back toward saturated Dallas that started all this — so the pick additionally
+// requires that a typical new clinic could actually WIN a fifth of the demand near it. Measured:
+// this is what separates Saginaw (38% capture, 1 clinic within 3 mi) from Watauga (12%, 12 clinics
+// and 36 DVMs within 3 mi) when both model to ~$3.1-3.6M. Set against the reported inner-ring
+// capture (`cShareRef`), which is a real competitive read; NEVER against `share`, which is the
+// equilibrium residual and would make this a circular restatement of practice size.
+const BUYBOX_MIN_SHARE=0.20;
+let _catchAcc=null, _catchAccE=-1, _catchAMed=1;
+// `valOf` is the app's pet model, passed in by the caller — it is function-local to
+// _evalComputeAndRender, so this helper must NOT try to close over it.
+function _catchDem10(cell, valOf){          // visits within 10 minutes = bands 0-1, spend-adjusted
+  let t=0; for(let b=0;b<2;b++) for(const [z,f] of (cell.b[b]||[])) t+=f*(valOf(z)||0);
+  return t*_catchSpendF(_catchIncome(cell));
+}
+function _catchAccessAt(la,lo){
+  if(!_catchAcc) return 0;
+  const GB=_catchAcc.GB, arr=_catchAcc.idx.get(Math.floor(la/GB)+'_'+Math.floor(lo/GB));
+  if(!arr) return 0;
+  const cosl=Math.cos(la*Math.PI/180);
+  let A=0;
+  for(const c of arr){
+    const dy=(la-c.la)*69.0, dx=(lo-c.lo)*69.0*cosl;
+    if(Math.sqrt(dy*dy+dx*dx)<=c.r10) A+=c.R;
+  }
+  return A;
+}
+function _catchBuildAccess(valOf){
+  if(_catchAcc && _catchAccE===_dogEpoch) return _catchAcc;   // epoch-guarded: dogData feeds demand
+  if(!_catchData || typeof valOf!=='function') return null;
+  const cells=Object.values(_catchData.cells);
+  const dem=new Map(); for(const c of cells) dem.set(c,_catchDem10(c,valOf));
+  // STEP 1 — each clinic's capacity per unit of the demand it actually serves. Its own measured
+  // 10-minute ring AREA gives a road-speed-adapted radius, so this stays road-derived without
+  // shipping any road geometry. `ov` is deliberately NOT used: it is trimmed to the top 8 for
+  // display only (build-catchments.mjs) and would truncate supply hardest in dense markets.
+  const CL=[];
+  for(const cl of _catchData.clinics){
+    const r10=cl.a10>0? Math.sqrt(cl.a10/Math.PI) : 0; if(!(r10>0)) continue;
+    const home=_catchNearest(cl.la,cl.lo); if(!home) continue;
+    const served=dem.get(home); if(!(served>0)) continue;
+    const _n=(_vetStaffAt(cl.la,cl.lo)||{}).n || 2;   // returns an OBJECT, not a number
+    CL.push({la:cl.la, lo:cl.lo, r10, R:(_n*DVM_VISIT_CAPACITY)/served});
+  }
+  const GB=0.15, idx=new Map();
+  for(const c of CL){
+    const kx=Math.floor(c.la/GB), ky=Math.floor(c.lo/GB);
+    const spx=Math.ceil((c.r10/69.0)/GB)+1;
+    const spy=Math.ceil((c.r10/(69.0*Math.cos(c.la*Math.PI/180)))/GB)+1;
+    for(let dx=-spx;dx<=spx;dx++) for(let dy=-spy;dy<=spy;dy++){
+      const k=(kx+dx)+'_'+(ky+dy); if(!idx.has(k)) idx.set(k,[]); idx.get(k).push(c);
+    }
+  }
+  _catchAcc={GB,idx};
+  // STEP 2 — the metro median, which is the reference the measure is expressed against.
+  const As=[]; for(const c of cells) if(dem.get(c)>0) As.push(_catchAccessAt(c.la,c.lo));
+  As.sort((a,b)=>a-b);
+  _catchAMed=As.length? (As[Math.floor(As.length/2)]||1) : 1;
+  if(!(_catchAMed>0)) _catchAMed=1;
+  _catchAccE=_dogEpoch;
+  return _catchAcc;
+}
 // Attach the capture numbers to a grid cell from its catchment cell. Shared by the candidate loop,
 // the dropped-site forced cell and clinic mode, so those three can never drift apart.
 function _applyCapture(cell, cc, valOf){
@@ -8042,6 +8165,34 @@ function _applyCapture(cell, cc, valOf){
     cell.cShare=cell.cReach>0? wv/cell.cReach : 0;
   }
   cell.cEqFut=cell.cFut? _catchEquilibrium(cc,cell.cFut,cell.cWBar) : 0;
+  // ── REPORTED CAPTURE SHARE — a fixed-reference measurement, NOT the equilibrium residual ──
+  // `cShare` (above) is winnable/cReach, and substituting the solved fixed point shows it is the
+  // IDENTITY cEq x DVM_VISIT_CAPACITY / cReach — verified to 1.09e-11 across 4,050 cells and
+  // asserted by `share.identity` in the gate. Two things follow, both bad for a number on a card:
+  //   (1) it is not a competitive measurement at all, it is practice size re-expressed as a
+  //       fraction, so "20% share" is arithmetically a request for an 18-doctor practice;
+  //   (2) its denominator is the WHOLE 20-minute pool, of which the inner ring is only ~6.6% at
+  //       the median cell — which is why every site read 1-7% and looked broken.
+  // What a reader means by "capture share" is: of the demand near this site, how much would a
+  // NORMAL new clinic win against the competition that is actually there? That is this — a fixed
+  // 3-DVM entrant, measured on the 0-8 minute ring where the decay weight is 1.0 by construction.
+  // It genuinely varies with competition (the residual cannot), it is comparable between sites,
+  // and it lands on the same scale the gravity engine always used (dense suburb ~0.10, contested
+  // corridor ~0.15-0.20). Reported only — nothing ranks or scores on it.
+  cell.cShareRef=_catchShareBand(cc,0,CATCH_REF_DVM,cell.cWBar,cell.cSelfW!=null?cell.cSelfW:null);
+  // LOCAL UNDERSERVICE (see the 2SFCA block above). Reported on every card; it only DRIVES the
+  // ranking on metro screening runs, where the question is "where in DFW should we look".
+  _catchBuildAccess(valOf);
+  cell.cA=_catchAccessAt(cc.la,cc.lo);
+  cell.cDem10=_catchDem10(cc,valOf);
+  const _uf=Math.max(0, 1-cell.cA/_catchAMed);          // 0 = served at least as well as typical DFW
+  cell.cU=cell.cA>0? Math.min(20,_catchAMed/cell.cA) : 20;   // 20 = nothing reaches here, not Infinity
+  cell.cUnmet=cell.cDem10*_uf;
+  cell.cFutUnmet=(cell.cFutTot||0)*_uf;
+  // Capped at what a new practice can actually staff: past ~6 DVMs more unmet demand does not
+  // help you, so the cap is what stops this collapsing back into a market-size ranking.
+  cell.cOppRev=Math.min(cell.cUnmet,BUYBOX_ABSORB)*REV_PER_VISIT*(cell.cACT||1);
+  cell.cLandRev=Math.min(cell.cFutUnmet,BUYBOX_ABSORB)*REV_PER_VISIT*(cell.cACT||1);
 }
 function _catchBandDemand(cell, valOf){
   const out=[];
@@ -8083,14 +8234,23 @@ function _catchShareBand(cell, b, n, wBar, selfW){
   // reading uncontested, which is what broke the 20/25-minute bands.
   // NOT double-decay: the W[b] on demand is PARTICIPATION (a distant household uses less care at
   // all), while the W[b] here is relative ATTRACTION (who wins the visits they do make).
-  const step=(_catchData&&_catchData.kStep)||0.5;
+  // BUCKET LADDER. v8 ships `kMid` — a LOG-spaced ladder reaching K=65 — because the old linear
+  // 0.5-step scale clipped at 8.0 and censored competition to a constant across 96.8% of suburban
+  // and 100% of urban households (see build-catchments.mjs). Read it from the artifact rather than
+  // hardcoding, so build and runtime can never drift; fall back to the v7 linear scale so a cached
+  // old artifact still scores correctly instead of silently mis-reading its buckets.
+  const _km=_catchData&&_catchData.kMid, step=(_catchData&&_catchData.kStep)||0.5;
+  const kOf = _km ? (i=>_km[i]||0) : (i=>i*step);
   // selfW set = the subject clinic is IN this cell's competitor distribution and must come out;
   // its attraction is its real roster rather than a solved entrant size.
   const A=(selfW!=null? selfW : _catchAttract(n))*W[b];
-  const drop=selfW!=null ? (selfW*W[b])/step : 0;     // buckets of K contributed by the subject
+  // Subtract the subject's own contribution in K UNITS. This used to shift the bucket INDEX, which
+  // is only equivalent to a K subtraction on a uniform ladder — on the log ladder it would remove
+  // wildly different amounts of competition depending on where in the ladder the bucket sits.
+  const selfK = selfW!=null ? selfW*W[b] : 0;
   let sh=0;
   for(let i=0;i<cd.length;i++){
-    const K=Math.max(0,(i-drop))*step;
+    const K=Math.max(0, kOf(i) - selfK);
     sh+=cd[i]*A/(A + wBar*K);
   }
   return Math.max(0,Math.min(1,sh));
@@ -8664,6 +8824,7 @@ async function _ensureEvalDemographics(){
   try{ await ensureDogData(); }catch(e){}                    // pet model — the capture model's demand input
   try{ await _loadCatchments(); }catch(e){}                  // drive-time catchments (metro capture model; graceful null)
   try{ await _loadOppRetail(); }catch(e){}                   // _capNearRetailM (the capture siting gate) reads _oppRetailPts; without it EVERY catchment cell passes the gate and land plays go to zero
+  try{ await _loadHexWater(); }catch(e){}                    // open-water exclusion for the candidate grid — _hexInWater is a no-op returning false until these rings load
 }
 async function _buildAreaZips(feat){
   const geo=await loadZipGeometry(); const bb=_evalBBox(feat); const out=[];
@@ -8891,6 +9052,7 @@ function _evalComputeAndRender(){
   // winnable revenue / $6.17M (median cell 0.10) while the gravity product pins at its 0.85 share
   // cap in open country — so an UNMEASURED cell could outrank every measured one. Coverage is
   // 85-100% inside the metro and 20-50% at the fringe, so a 50% floor sits in the natural gap.
+  evalWetCells=0;
   let _capCov=0; if(_capture) for(const p of _candPts) if(p[2]) _capCov++;
   const _capFrac=_candPts.length? _capCov/_candPts.length : 0;
   const _capPin = !evalSitePt || !!_catchNearest(evalSitePt.lat, evalSitePt.lon);  // the pin the user asked about must itself be measurable
@@ -8900,6 +9062,12 @@ function _evalComputeAndRender(){
     for(const [la,lo,_cc] of _candPts){
       // In a capture run an unmeasured candidate is DROPPED, not silently gravity-scored.
       if(_captureRun && !_cc){ evalCapStat.skipped++; continue; }
+      // OPEN WATER (2026-07-29, user: "why does the heatmap look like that" — the surface painted
+      // straight across Grapevine Lake). _hexInWater was only ever consulted for the dropped-pin
+      // verdict, never for the candidate grid, so 188 of 9,627 DFW cells (1.95%) sat in lakes and
+      // were scored, ranked and painted. It has its own bbox prefilter, so this is cheap. Fails
+      // OPEN — no rings loaded means no exclusion, never over-exclude land.
+      if(_hexInWater(la,lo)){ evalWetCells++; continue; }
       const _inPoly=pointInGeoJSON(la,lo,feat);
       if(!_inPoly){           // outside the polygon → keep only the buffer ring (test ALL boundary segments — they can be long & sparse, so no lat-band prefilter)
         let dmin=Infinity;
@@ -9075,9 +9243,39 @@ function _evalComputeAndRender(){
       g.winVis = g.cEq*DVM_VISIT_CAPACITY;                       // visits won at equilibrium
       g.winRev = g.winVis*REV_PER_VISIT*(g.cACT||1);             // ...priced at the local ACT
       g.score  = Math.max(0, Math.min(1, (g.winRev/CATCH_REV_FULL)*accessMult*retailBonus));
+      // Metro runs rank on this same modelled revenue; the buy-box discipline lives entirely in
+      // the SCREEN below (income floor, not-rural, real unmet demand, and a capture floor so a
+      // large contested market cannot win on size alone). Ranking on capturable-unmet revenue was
+      // tried first and rejected by the user: it favoured thin markets and capped out at
+      // $0.85-3.61M, against $3.12-3.75M for the same screened pool ranked on revenue.
+      // `cUnmet`/`cOppRev` are still computed and REPORTED on every card — they are the
+      // underservice evidence — they are just no longer the ranking key.
     }
   }
   evalCells=grid;
+  // SEPARATION is computed HERE, before the land plays, because both picks consume it. It used
+  // to be derived further down next to the site pick, so the land block read the PREVIOUS run's
+  // evalSepMi — stale on every run after the first, and null on the first.
+  const _lonMi = 69.0*Math.cos(((bb.minLa+bb.maxLa)/2)*Math.PI/180);
+  let _sepMi;
+  if(_metroBB){
+    // Derived from the app's OWN cannibalisation threshold — the advisory already fires above 25%
+    // trade-area overlap, so that is the definition of "these two picks compete" this codebase
+    // already uses. Solve the circle-intersection area for 25% of one 10-minute catchment.
+    // NOT one catchment diameter (the first attempt): that gave 5.45 mi, which is ~8x the median
+    // spacing of REAL DFW clinics (nearest-neighbour p50 0.69 mi, p75 1.18, p90 2.21) and did not
+    // even achieve zero overlap — demand is credited to 20 minutes, and 20-min rings 5.45 mi apart
+    // still share 53% of their area. Measured here: ~3.5 mi, still more conservative than the
+    // market, but no longer hiding whole corridors. Small-area runs keep the proportional rule.
+    const _a10=grid.map(g=>g.cc&&g.cc.a10).filter(a=>a>0).sort((x,y)=>x-y);
+    const _r=Math.sqrt((_a10.length? _a10[Math.floor(_a10.length/2)] : 54.5)/Math.PI);
+    const _ov=d=>{ if(d>=2*_r) return 0; if(d<=0) return 1;
+      return (2*_r*_r*Math.acos(d/(2*_r)) - (d/2)*Math.sqrt(4*_r*_r-d*d))/(Math.PI*_r*_r); };
+    _sepMi=2*_r; for(let d=0.1; d<2*_r; d+=0.01){ if(_ov(d)<=EVAL_CANNIBAL_MAX){ _sepMi=d; break; } }
+  } else {
+    _sepMi = Math.max(bb.maxLa-bb.minLa, bb.maxLo-bb.minLo)*0.16*69.0;  // unchanged at ZIP/site scale
+  }
+  evalSepMi=_sepMi;
   // ── Ranked land plays: same engine, retail term NEUTRAL (fabric assumed to arrive) ──
   evalLandPlays=[];
   if(landGrid.length && !evalNoLand){
@@ -9102,6 +9300,14 @@ function _evalComputeAndRender(){
         g.winVis = g.cEqFut*DVM_VISIT_CAPACITY;
         g.winRev = g.winVis*REV_PER_VISIT*(g.cACT||1);
         g.score  = Math.max(0, Math.min(1, (g.winRev/CATCH_REV_FULL)*accessMult));   // retail NEUTRAL
+        // Ranked on FUTURE demand that today's clinics do NOT already cover. The equilibrium on
+        // future demand alone is still a market-size read, so it ordered land plays by pipeline
+        // size regardless of whether anyone already serves it — Midlothian's 24k announced units
+        // ranked BELOW a Garland cell with 2k. Discounting by local service is what makes Celina
+        // (18k units, nothing within 10 minutes) outrank an equally-large but already-served
+        // corridor. Retail stays neutral: the fabric is assumed to arrive with the rooftops.
+        if(g.cLandRev!=null)
+          g.score = Math.max(0, Math.min(1, (g.cLandRev/CATCH_REV_FULL)*accessMult));
       }
     }
     // qualify: meaningful FUTURE demand (it's a land play, not a today-site that lacks retail),
@@ -9131,7 +9337,13 @@ function _evalComputeAndRender(){
     const _lpC=_lpB.filter(g=>!_lpNearBuilt(g.la,g.lo));
     evalLandStat={pool:landGrid.length, afterDemand:_lpA.length, afterResid:_lpB.length, afterBuilt:_lpC.length};
     const cand=_lpC.sort((a,b)=>b.score-a.score);
-    const sepLP=0.0175; // ~1.2mi fixed — land corridors are distinct at this grain
+    // ~1.2mi at ZIP/drop scale, where land corridors really are distinct at that grain. On a
+    // METRO run the same constant returned three cells of one town (all three land plays in
+    // Celina) — the same defect the 24-mile site separation had, in the other direction. Metro
+    // land plays reuse the site separation, which is derived from actual catchment overlap.
+    const sepLP=(_metroBB && typeof evalSepMi==='number' && evalSepMi>0)
+      ? evalSepMi/69.0                       // evalSepMi is in miles; this comparison is in degrees
+      : 0.0175;
     for(const g of cand){ if(evalLandPlays.every(t=>Math.hypot(t.la-g.la,t.lo-g.lo)>sepLP)){ evalLandPlays.push(g); if(evalLandPlays.length===3) break; } }
     // Homes-in-reach uses the SAME geometry that fed demF — the injected footprint FRAGMENTS
     // within DEM_R — not the MPC center point (2026-07-25, user screenshot: a play qualified on
@@ -9156,6 +9368,10 @@ function _evalComputeAndRender(){
               : {l:'F',t:'Saturated — PE-ringed, avoid',c:'#dc2626'};
   evalSat={capCeil,medShare,peInRange,indInRange,pctInCatch,grade};
   // relative colour scale so the heatmap has clear contrast within this ZIP
+  let _nanScores=0;
+  for(const g of grid) if(!Number.isFinite(g.score)){ g.score=0; _nanScores++; }
+  for(const g of landGrid) if(!Number.isFinite(g.score)){ g.score=0; _nanScores++; }
+  if(_nanScores) console.warn('[eval] '+_nanScores+' cells had a non-finite score and were zeroed — a NaN would otherwise randomise Array.sort');
   const sMin=Math.min(...grid.map(g=>g.score)), sMax=Math.max(...grid.map(g=>g.score)), sRange=Math.max(1e-6,sMax-sMin);
   for(const g of grid) g.scoreRel=(g.score-sMin)/sRange;
   const sorted=[...grid].sort((a,b)=>b.score-a.score);
@@ -9177,29 +9393,26 @@ function _evalComputeAndRender(){
   // run's own cells rather than assumed: at that distance the trade areas just touch. Measured on
   // DFW that is ~8.3 mi, against a largest-ring radius of 11.0 mi and a 0.61-mi candidate grid.
   // Small-area runs KEEP the proportional rule, where it has always been correct.
-  const _lonMi = 69.0*Math.cos(((bb.minLa+bb.maxLa)/2)*Math.PI/180);
-  let _sepMi;
-  if(_metroRun){
-    // Derived from the app's OWN cannibalisation threshold — the advisory already fires above 25%
-    // trade-area overlap, so that is the definition of "these two picks compete" this codebase
-    // already uses. Solve the circle-intersection area for 25% of one 10-minute catchment.
-    // NOT one catchment diameter (the first attempt): that gave 5.45 mi, which is ~8x the median
-    // spacing of REAL DFW clinics (nearest-neighbour p50 0.69 mi, p75 1.18, p90 2.21) and did not
-    // even achieve zero overlap — demand is credited to 20 minutes, and 20-min rings 5.45 mi apart
-    // still share 53% of their area. Measured here: ~3.5 mi, still more conservative than the
-    // market, but no longer hiding whole corridors. Small-area runs keep the proportional rule.
-    const _a10=grid.map(g=>g.cc&&g.cc.a10).filter(a=>a>0).sort((x,y)=>x-y);
-    const _r=Math.sqrt((_a10.length? _a10[Math.floor(_a10.length/2)] : 54.5)/Math.PI);
-    const _ov=d=>{ if(d>=2*_r) return 0; if(d<=0) return 1;
-      return (2*_r*_r*Math.acos(d/(2*_r)) - (d/2)*Math.sqrt(4*_r*_r-d*d))/(Math.PI*_r*_r); };
-    _sepMi=2*_r; for(let d=0.1; d<2*_r; d+=0.01){ if(_ov(d)<=EVAL_CANNIBAL_MAX){ _sepMi=d; break; } }
-  } else {
-    _sepMi = Math.max(bb.maxLa-bb.minLa, bb.maxLo-bb.minLo)*0.16*69.0;  // unchanged at ZIP/site scale
-  }
-  evalSepMi=_sepMi;
   const _farEnough=(t,g)=>Math.hypot((t.la-g.la)*69.0, (t.lo-g.lo)*_lonMi) > _sepMi;
+  // ── THE SCREEN (metro screening runs only) ────────────────────────────────────────────────
+  // Screen-then-score is what every documented site-selection playbook does
+  // (research/vet-site-selection-report.md: the Esri/Buxton funnel) and what this app's own
+  // Opportunity List already does with `_util`. The buy-box, in the user's words: PE firms and
+  // regional groups do not build rural, so a site should be a high-income suburb that is
+  // genuinely underserved — rural development is the LAND-PLAY lane, not the site lane.
+  // Applied to the PICK, never to the surface: the heatmap stays whole because it is the
+  // evidence, and only the endorsement is withheld (the same rule the weak-site tiers follow).
+  const _buybox=_metroRun && evalCaptureOn;
+  const _bbOK=g=>g.cUrb!=='rural' && (g.cInc||0)>=BUYBOX_MIN_INC && (g.cUnmet||0)>0
+                 && (g.cShareRef||0)>=BUYBOX_MIN_SHARE;
+  const _bbPool=_buybox? sorted.filter(_bbOK) : sorted;
+  // Never return nothing because the screen was strict — fall back to the unscreened order and
+  // say so, rather than showing an empty metroplex.
+  const _bbUsed=(_buybox && _bbPool.length>=TOPN);
+  evalBuyBox=_buybox? {on:_bbUsed, pool:_bbPool.length, minInc:BUYBOX_MIN_INC, minShare:BUYBOX_MIN_SHARE} : null;
+  const _pickFrom=_bbUsed? _bbPool : sorted;
   const top=[];
-  for(const g of sorted){ if(g.forced) continue; if(top.every(t=>_farEnough(t,g))){ top.push(g); if(top.length===TOPN) break; } }
+  for(const g of _pickFrom){ if(g.forced) continue; if(top.every(t=>_farEnough(t,g))){ top.push(g); if(top.length===TOPN) break; } }
   evalTop=top;
   for(const g of evalTop) g.tier = _evalStrongOK(g)?'strong' : g.score>=EVAL_FLOOR?'fair' : 'weak';
   const _bestG2=evalTop.length?evalTop[0]:null;
@@ -9311,6 +9524,15 @@ function evalSpeciesIgnore(){ evalSpeciesIgnored=true; _speciesModalClose(); _ev
 function _evalGotoComp(i){ const c=evalCompsCache[i]; if(!c) return; _speciesModalClose(); _gotoClinic(c.lat, c.lon, c.name||''); vfToast('Open the pin\'s ⚙ to set its practice type — the analysis updates on save.'); }
 document.addEventListener('keydown', e=>{ if(e.key==='Escape') _speciesModalClose(); });
 function _evalClearLayers(){ for(const k in evalLayers){ if(evalLayers[k]){ map.removeLayer(evalLayers[k]); evalLayers[k]=null; } } }
+// HEAT RAMP ENDPOINTS — the fill and the legend MUST read from these same two constants, or the
+// surface lies about itself. It did (user, 2026-07-29: "why does the heatmap look like that"):
+// the legend labelled its gradient at raw 0.30 -> 0.05, while the fill used pow(score,0.7), a
+// transform calibrated when gravity scores ran toward 1.0. On the capture scale (DFW-wide p50
+// 0.053, p90 0.20) that put essentially EVERY cell in the red-orange half of a ramp whose own
+// legend said they were mid-to-green — and reaching green required raw 0.73, i.e. $4.48M of
+// winnable revenue, against the 0.30 ($1.85M) the legend advertised as the winnable end.
+const EVAL_HEAT_LO=0.05, EVAL_HEAT_HI=0.30;
+const _evalHeatT=sc=>(sc-EVAL_HEAT_LO)/(EVAL_HEAT_HI-EVAL_HEAT_LO);
 function _evalColor(t){
   t=t<0?0:t>1?1:t;
   // smooth red -> orange -> amber -> light-green -> green ramp (refined gradient,
@@ -9378,7 +9600,7 @@ function _evalRenderLayers(){
     const heat=L.layerGroup();
     for(const g of evalCells)
       L.rectangle([[g.la-g.stepLa/2,g.lo-g.stepLo/2],[g.la+g.stepLa/2,g.lo+g.stepLo/2]],
-        {stroke:false,fillColor:_evalColor(Math.pow(g.score,0.7)),fillOpacity:0.5,interactive:false}).addTo(heat);
+        {stroke:false,fillColor:_evalColor(_evalHeatT(g.score)),fillOpacity:0.5,interactive:false}).addTo(heat);
     heat.addTo(map); if(heat.bringToBack) heat.bringToBack(); evalLayers.heat=heat;
   }
   if(evalShow.hoods && evalData.resid.length){
@@ -9502,7 +9724,7 @@ function _evalRenderLegend(){
   }
   el.innerHTML=`
     <div class="legend-title">Placement suitability</div>
-    ${(evalShow.heat&&!_evalSubject)?`<div class="legend-grad"></div><div class="legend-grad-lbl"><span>${_evalDisp(0.30)}</span><span>${_evalDisp(0.20)}</span><span>${_evalDisp(0.12)}</span><span>${_evalDisp(0.05)}</span></div><div style="font-size:10.5px;color:var(--muted);margin:-6px 0 8px;display:flex;justify-content:space-between"><span>Winnable</span><span>Saturated</span></div>`:''}
+    ${(evalShow.heat&&!_evalSubject)?`<div class="legend-grad"></div><div class="legend-grad-lbl"><span>${_evalDisp(EVAL_HEAT_HI)}</span><span>${_evalDisp(EVAL_HEAT_LO+(EVAL_HEAT_HI-EVAL_HEAT_LO)*0.6)}</span><span>${_evalDisp(EVAL_HEAT_LO+(EVAL_HEAT_HI-EVAL_HEAT_LO)*0.28)}</span><span>${_evalDisp(EVAL_HEAT_LO)}</span></div><div style="font-size:10.5px;color:var(--muted);margin:-6px 0 8px;display:flex;justify-content:space-between"><span>Winnable</span><span>Saturated</span></div>`:''}
     ${rows.join('')}`;
   el.classList.add('show');
 }
@@ -9620,7 +9842,7 @@ function _evalRenderSidebar(){
         ${_leaseBlock(g)}
       </div>`;
     }
-    const metroNote=evalMetroRun?`<div style="font-size:10.5px;color:#475569;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:5px 9px;margin:6px 0 2px">${evalCaptureOn?`Drive-time capture model${g.cReach?` — <b>${Math.round(g.cReach).toLocaleString()}</b> visits/yr inside the catchment, ${Math.round((g.share||0)*100)}% winnable = <b>${Math.round(g.winVis||0).toLocaleString()}</b> visits/yr supporting a <b>~${((g.winVis||0)/DVM_VISIT_CAPACITY).toFixed(1)}-doctor</b> practice at <b>${_fmtM(g.winRev||0)}</b> revenue${g.cACT!=null&&g.cACT<0.97?` (visit prices run ~${Math.round(g.cACT*100)}% of a high-income market)`:''}${g.cUncon>0.02?` · ${Math.round(g.cUncon*100)}% of households reached by no competitor`:''}${g.cSpend!=null&&g.cSpend<0.97?` · catchment median income $${Math.round((g.cInc||0)/1000)}k — visits ${Math.round(g.cSpend*100)}%, prices ${Math.round((g.cACT||1)*100)}% of a high-income market`:''}${g.cUrb?` · <b>${g.cUrb}</b> decay curve (${g.cUrb==='rural'?'rural households accept longer drives, so the outer bands count more':'denser markets decay faster'})`:''}${g.fuTot>0?` · <b>${Math.round(g.fuTot).toLocaleString()}</b> announced homes inside the same drive rings — <i>trajectory only, not in this score</i>`:''}`:''}.`:`~3-mile screening area${g.snapMi?` — pin placed on the nearest commercial corridor (${g.snapMi.toFixed(1)} mi off the cell center)`:''}.`} <b>Refine</b> runs the full parcel-level analysis here.</div>`:'';
+    const metroNote=evalMetroRun?`<div style="font-size:10.5px;color:#475569;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:5px 9px;margin:6px 0 2px">${evalCaptureOn?`Drive-time capture model${g.cReach?` — <b>${Math.round(g.cReach).toLocaleString()}</b> visits/yr inside the catchment, ${Math.round((g.share||0)*100)}% winnable = <b>${Math.round(g.winVis||0).toLocaleString()}</b> visits/yr supporting a <b>~${((g.winVis||0)/DVM_VISIT_CAPACITY).toFixed(1)}-doctor</b> practice at <b>${_fmtM(g.winRev||0)}</b> revenue${g.cACT!=null&&g.cACT<0.97?` (visit prices run ~${Math.round(g.cACT*100)}% of a high-income market)`:''}${g.cUncon>0.02?` · ${Math.round(g.cUncon*100)}% of households reached by no competitor`:''}${g.cSpend!=null&&g.cSpend<0.97?` · catchment median income $${Math.round((g.cInc||0)/1000)}k — visits ${Math.round(g.cSpend*100)}%, prices ${Math.round((g.cACT||1)*100)}% of a high-income market`:''}${g.cUrb?` · <b>${g.cUrb}</b> decay curve (${g.cUrb==='rural'?'rural households accept longer drives, so the outer bands count more':'denser markets decay faster'})`:''}${g.fuTot>0?` · <b>${Math.round(g.fuTot).toLocaleString()}</b> announced homes inside the same drive rings — <i>trajectory only, not in this score</i>`:''}`:''}.`:`~3-mile screening area${g.snapMi?` — pin placed on the nearest commercial corridor (${g.snapMi.toFixed(1)} mi off the cell center)`:''}.`}${(evalCaptureOn&&g.cUnmet!=null&&evalBuyBox&&evalBuyBox.on)?` <b>Ranked on unmet local demand, not market size:</b> <b>${Math.round(g.cDem10||0).toLocaleString()}</b> visits/yr sit within a 10-minute drive, and the clinics that can serve them cover about <b>${Math.round(100/Math.max(1,g.cU||1))}%</b> of what a typical DFW location gets — leaving <b>${Math.round(g.cUnmet||0).toLocaleString()}</b> visits/yr uncovered${(g.cUnmet||0)>BUYBOX_ABSORB?`, more than a ${BUYBOX_MAX_DVM}-doctor practice could absorb`:''}. A biggest-market ranking returns downtown Dallas instead; this one asks what a new practice could actually take. Underservice is measured against the metro median, never as an absolute shortage.`:''} <b>Refine</b> runs the full parcel-level analysis here.</div>`:'';
     return `<div class="eval-card" onclick="evalFlyTo(${i})"${g.tier!=='strong'?' style="opacity:.92"':''}>
       <div class="eval-card-head"><span class="eval-rank"${g.tier!=='strong'?' style="background:#94a3b8"':''}>${i+1}</span><span class="eval-card-title">${evalMetroRun?'Area':'Site'} ${i+1}</span>${chipT}<span class="eval-score"${g.tier!=='strong'?' style="color:#64748b"':''}>${headline}</span></div>
       <div class="eval-why">${nearStr}${roadStr?' · '+roadStr:''}</div>
@@ -9825,7 +10047,7 @@ function _evalRenderSidebar(){
           <div style="width:1px;background:#eef2f7;margin:7px 0"></div>
           ${_sstat(String(g.nComp)+(g.nPE?' · '+g.nPE+' PE':''),'competitors · '+evalRadiusMi+' mi')}
           <div style="width:1px;background:#eef2f7;margin:7px 0"></div>
-          ${_sstat((g.share*100).toFixed(0)+'%','capture share')}
+          ${_sstat(((g.cShareRef!=null?g.cShareRef:g.share)*100).toFixed(0)+'%', g.cShareRef!=null?'capture share · 8-min ring':'capture share')}
         </div>
         ${_evalSubject?(()=>{ const sub=_evalSubject;
           const ident=[sub.pe?('<span style="color:#dc2626;font-weight:800">PE'+(sub.owner?' · '+_ceEsc(sub.owner):'')+'</span>'):'<span style="color:#2563eb;font-weight:800">Independent</span>',
@@ -9877,7 +10099,7 @@ function _evalRenderSidebar(){
       </div>`; })()}
     ${speciesPrompt}
     <div class="eval-tabs">${_evalSubject?'':_tabBtn('sites','Sites',evalTop.length)+(evalNoLand?'':_tabBtn('land','Land',evalLandPlays.length))}${_tabBtn('layers','Layers',null)}${_tabBtn('data','Data',null)}</div>
-    ${_pane('sites', `${evalNoLand?`<div style="background:#f8fafc;border:1px solid #dbe3f0;border-radius:10px;padding:9px 12px;margin:8px 0"><div style="font-size:11.5px;font-weight:800;color:#1e3a8a">Land-play evaluation · parcel grain</div><div style="font-size:11px;color:#475569;margin-top:3px;line-height:1.5">Full engine on the corridor you picked — these are the buildable sites <b>inside</b> it. Nested land plays are off; you already chose the dirt.</div></div>`:''}${(evalCapStat&&!evalCapStat.on)?`<div style="background:#fff1f2;border:1px solid #fecdd3;border-radius:10px;padding:9px 12px;margin:8px 0"><div style="font-size:11.5px;font-weight:800;color:#be123c">Crow-flies engine — drive-time coverage too thin here</div><div style="font-size:11px;color:#9f1239;margin-top:3px;line-height:1.5">Measured catchments cover only <b>${Math.round(evalCapStat.cov*100)}%</b> of this area${evalCapStat.pin?'':' and the dropped pin itself sits outside the measured grid'}, so this analysis ran on the crow-flies model. Scores are not comparable with a drive-time run.</div></div>`:''}${(evalMetroRun||evalCaptureOn)?(evalCaptureOn?`<div style="background:#f8fafc;border:1px solid #dbe3f0;border-radius:10px;padding:9px 12px;margin:8px 0"><div style="font-size:11.5px;font-weight:800;color:#1e3a8a">${evalMetroRun?'Metroplex pass · ':''}Drive-time capture model</div><div style="font-size:11px;color:#475569;margin-top:3px;line-height:1.5">Demand and competition are measured on the <b>road network</b>, not as circles: households are counted inside real 8/10/12/15-minute drive polygons and distance-weighted, and share is the per-household split among the clinics that can actually drive to them. ${evalMetroRun?'Candidates sit on a 0.61-mi commercial-fabric grid. <b>⌖ Refine this area</b> re-runs the parcel-level engine on a winner.':'Candidates keep parcel-level spacing; each reads the drive-time catchment measured at the nearest 0.61-mi grid point.'}${(evalMetroRun&&evalSepMi)?` Picks are held <b>${evalSepMi.toFixed(1)} mi</b> apart — the distance at which two 10-minute catchments share ${Math.round(EVAL_CANNIBAL_MAX*100)}% of their area, the same bar the cannibalisation advisory uses.`:''}${(evalCapStat&&evalCapStat.skipped)?` <b>${evalCapStat.skipped.toLocaleString()}</b> candidate point${evalCapStat.skipped!==1?'s':''} outside the measured catchment grid ${evalCapStat.skipped!==1?'were':'was'} not scored — mixing measured and crow-flies scores in one ranking is not meaningful.`:''}</div></div>`:`<div style="background:#f8fafc;border:1px solid #dbe3f0;border-radius:10px;padding:9px 12px;margin:8px 0"><div style="font-size:11.5px;font-weight:800;color:#1e3a8a">Metroplex screening pass · ~3-mile grain</div><div style="font-size:11px;color:#475569;margin-top:3px;line-height:1.5">Each pin marks the best <b>area</b>, placed on the nearest commercial corridor — not a specific parcel. <b>⌖ Refine this area</b> on a card re-runs the full engine there with complete zoning + parcel data for parcel-level sites.</div></div>`):''}${verdictBanner}<div class="eval-cards">${hideCards?'':cards}</div>`)}
+    ${_pane('sites', `${evalNoLand?`<div style="background:#f8fafc;border:1px solid #dbe3f0;border-radius:10px;padding:9px 12px;margin:8px 0"><div style="font-size:11.5px;font-weight:800;color:#1e3a8a">Land-play evaluation · parcel grain</div><div style="font-size:11px;color:#475569;margin-top:3px;line-height:1.5">Full engine on the corridor you picked — these are the buildable sites <b>inside</b> it. Nested land plays are off; you already chose the dirt.</div></div>`:''}${(evalCapStat&&!evalCapStat.on)?`<div style="background:#fff1f2;border:1px solid #fecdd3;border-radius:10px;padding:9px 12px;margin:8px 0"><div style="font-size:11.5px;font-weight:800;color:#be123c">Crow-flies engine — drive-time coverage too thin here</div><div style="font-size:11px;color:#9f1239;margin-top:3px;line-height:1.5">Measured catchments cover only <b>${Math.round(evalCapStat.cov*100)}%</b> of this area${evalCapStat.pin?'':' and the dropped pin itself sits outside the measured grid'}, so this analysis ran on the crow-flies model. Scores are not comparable with a drive-time run.</div></div>`:''}${(evalMetroRun||evalCaptureOn)?(evalCaptureOn?`<div style="background:#f8fafc;border:1px solid #dbe3f0;border-radius:10px;padding:9px 12px;margin:8px 0"><div style="font-size:11.5px;font-weight:800;color:#1e3a8a">${evalMetroRun?'Metroplex pass · ':''}Drive-time capture model</div><div style="font-size:11px;color:#475569;margin-top:3px;line-height:1.5">Demand and competition are measured on the <b>road network</b>, not as circles: households are counted inside real 8/10/12/15-minute drive polygons and distance-weighted, and share is the per-household split among the clinics that can actually drive to them. ${evalMetroRun?'Candidates sit on a 0.61-mi commercial-fabric grid. <b>⌖ Refine this area</b> re-runs the parcel-level engine on a winner.':'Candidates keep parcel-level spacing; each reads the drive-time catchment measured at the nearest 0.61-mi grid point.'}${(evalBuyBox&&evalBuyBox.on)?` Areas are ranked on <b>unmet local demand</b> a new practice could capture — not on the size of the market — and screened to non-rural catchments above $${Math.round(evalBuyBox.minInc/1000)}k median income with real unmet demand (<b>${evalBuyBox.pool.toLocaleString()}</b> of ${evalCells.length.toLocaleString()} qualify).`:''}${(evalMetroRun&&evalSepMi)?` Picks are held <b>${evalSepMi.toFixed(1)} mi</b> apart — the distance at which two 10-minute catchments share ${Math.round(EVAL_CANNIBAL_MAX*100)}% of their area, the same bar the cannibalisation advisory uses.`:''}${(evalCapStat&&evalCapStat.skipped)?` <b>${evalCapStat.skipped.toLocaleString()}</b> candidate point${evalCapStat.skipped!==1?'s':''} outside the measured catchment grid ${evalCapStat.skipped!==1?'were':'was'} not scored — mixing measured and crow-flies scores in one ranking is not meaningful.`:''}</div></div>`:`<div style="background:#f8fafc;border:1px solid #dbe3f0;border-radius:10px;padding:9px 12px;margin:8px 0"><div style="font-size:11.5px;font-weight:800;color:#1e3a8a">Metroplex screening pass · ~3-mile grain</div><div style="font-size:11px;color:#475569;margin-top:3px;line-height:1.5">Each pin marks the best <b>area</b>, placed on the nearest commercial corridor — not a specific parcel. <b>⌖ Refine this area</b> on a card re-runs the full engine there with complete zoning + parcel data for parcel-level sites.</div></div>`):''}${verdictBanner}<div class="eval-cards">${hideCards?'':cards}</div>`)}
     ${_pane('land', `${_evalFutInfo?`<div class="cdx-note" style="margin:8px 2px 2px;font-size:10.5px">Demand includes ~${_evalFutInfo.reduce((t,x)=>t+Math.round(x.rem*x.conf),0).toLocaleString()} confidence-discounted announced homes (${_evalFutInfo.map(x=>x.n).join(', ')}). Toggle “Announced homes” off for today-only demand.</div>`:''}
     ${evalLandPlays.length?`<div class="cdx-note" style="margin:6px 2px 2px;font-size:10.5px">Ranked with the same demand + competition + road math as the numbered sites; the retail term is held neutral — the fabric arrives with the rooftops. Not leaseable today: these are buy-dirt positions.</div>
       ${evalLandPlays.map((lp,i)=>{ const homes=(lp.coms||[]).reduce((t,x)=>t+Math.round(x.rem*x.conf),0); const fabMi=(lp.nearRetail!=null&&isFinite(lp.nearRetail))?(lp.nearRetail/1609.34).toFixed(1):null; const corridor=(lp.coms&&lp.coms.length)?(_ceEsc(lp.coms[0].n)+' corridor'):'Future-demand corridor'; const futPct=Math.round(100*(lp.demF||0)/Math.max(1e-6,(lp.dem||0)+(lp.demF||0))); return `<div class="eval-card" style="cursor:default;border:1px solid #d7def0;background:#fff;margin:8px 0;padding:13px 14px">
@@ -10320,7 +10542,8 @@ function _siteMetricHTML(k,g){
   if(k==='comp'){
     const list=[...evalCompsCache].map(c=>({...c, d:hav(g.la,g.lo,c.lat,c.lon)})).sort((x,y)=>x.d-y.d).slice(0,5);
     const rows=list.map(c=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:1.5px 0"><span style="color:#334155;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.name||'Clinic')}${c.pe?' <span style="color:#dc2626;font-weight:700">PE</span>':''}</span><span style="color:#64748b;flex-shrink:0">${mi(c.d)} mi${c.staffN?' · '+c.staffN+' DVM':''}</span></div>`).join('');
-    return row('Winnable capture share', Math.round(g.share*100)+'%')
+    return row(g.cShareRef!=null?'Capture share (3-DVM clinic, 8-min ring)':'Winnable capture share',
+               Math.round((g.cShareRef!=null?g.cShareRef:g.share)*100)+'%')
       + row('Weighted competitor pressure', g.comp.toFixed(1)+' (PE ×1.6, size-weighted, distance-decayed)')
       + (g.nearPE<700? `<div style="color:#be123c;padding:1.5px 0">PE clinic within 0.4 mi — share hard-capped at 20%.</div>`:'')
       + (list.length?`<div style="margin-top:4px;font-weight:700;color:#64748b;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em">Nearest competitors</div>${rows}`:row('Competitors in range','none'))
@@ -10635,10 +10858,10 @@ function _evalResetState(){
   try{ _lpHaloClear(); }catch(e){}
   evalActive=false; evalAreaMode=false; evalAreaZips=null; evalSat=null; evalZoneStat=null; evalZoneCities=[]; evalParcelCounties=[];
   try{ _applyPinZoomVisibility(); }catch(e){}   // evalActive just flipped — restore the zoom-toast rules
-  evalTopMode=null; evalShowWeak=false; evalMetroRun=false; evalCaptureOn=false; evalCapStat=null; evalLandStat=null; evalSepMi=null; evalNoLand=false; evalSpeciesIgnored=false; evalSpeciesPrompted=false; _speciesModalClose();
+  evalTopMode=null; evalShowWeak=false; evalMetroRun=false; evalCaptureOn=false; evalCapStat=null; evalLandStat=null; evalSepMi=null; evalWetCells=0; evalNoLand=false; evalSpeciesIgnored=false; evalSpeciesPrompted=false; _speciesModalClose();
   _evalClearLayers(); _evalHideLegend(); _evalClearDrive();
   evalData={vets:[], retail:[], resid:[], roads:[], aadt:[], zoning:[], osmLU:[], parcels:[]}; evalDataOk={retail:false,roads:false,resid:false,aadt:false,zoning:false,parcels:false};
-  evalCells=[]; evalTop=[]; evalCompsCache=[]; evalLandPlays=[]; _evalFutInfo=null; evalHiddenWeak=0; evalTab='sites'; _siteCardTabs={};
+  evalCells=[]; evalTop=[]; evalCompsCache=[]; evalLandPlays=[]; _evalFutInfo=null; evalHiddenWeak=0; evalBuyBox=null; evalTab='sites'; _siteCardTabs={};
   if(typeof _siteClear==='function') _siteClear();
 }
 // Freeze the map while an evaluation runs (user 2026-07-25: no scroll/pan until done or
