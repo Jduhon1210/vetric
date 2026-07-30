@@ -485,7 +485,26 @@ async function computeSet(list, store, label){
       return n/q; });
     return w.map(x=>x/w[0]);
   })(2.22, 4.0);
-  const KBUCKETS=17, KSTEP=0.5;   // effective competitor weight, 0 to 8 in 0.5 steps
+  // ── COMPETITOR-WEIGHT BUCKETS — LOG-SPACED (v8, 2026-07-29) ─────────────────────────────────
+  // WAS `KBUCKETS=17, KSTEP=0.5`, a LINEAR scale clipped at 8.0, and the clip was the single
+  // largest defect in the model (research/algo-audit-2026-07-29.md, three lenses):
+  //   * 92.3% of all band-0 household mass sat in the clipped top bucket — 100% of urban and
+  //     96.8% of suburban, against 30.4% rural. Measured true K runs to ~50 (median 17.5).
+  //   * Because the censoring rate rises with density, the clip inflated share 3.22x urban /
+  //     2.03x suburban / 1.05x exurban / 1.00x rural. That IS the urban-over-suburban bias.
+  //   * Across 3,087 suburban cells recorded band-0 K ran p10 7.79 -> p90 8.00, CV 0.040. The
+  //     variable was a CONSTANT exactly where the buy-box lives, so competition carried no
+  //     information there and "underserved suburb" was not representable.
+  // Log spacing rather than more linear buckets: covering K=65 at KSTEP 0.5 needs 131 buckets and
+  // would inflate the artifact ~6x for resolution nobody can use. Share = A/(A+wBar*K) is steep at
+  // small K and flat at large K, so resolution belongs at the bottom. These 17 midpoints keep the
+  // file size EXACTLY as it was while raising the ceiling 8.0 -> 65 (above the measured max).
+  // kMid SHIPS IN THE ARTIFACT so the runtime reads the same ladder it was built with and the two
+  // can never silently drift — do not hardcode this array in index.html.
+  const KMID=[0,0.5,1,1.5,2,3,4,5.5,7.5,10,13,17,22,29,38,50,65];
+  const KBUCKETS=KMID.length;
+  const KEDGE=KMID.slice(1).map((v,i)=>(v+KMID[i])/2);   // upper edge of bucket i
+  const kBucket=K=>{ let i=0; while(i<KEDGE.length && K>KEDGE[i]) i++; return i; };
 
   // ── FUTURE DEMAND, MEASURED ON THE SAME GEOMETRY (2026-07-28, user: "transition it to the new
   // engine, remove gravity scale") ─────────────────────────────────────────────────────────────
@@ -562,7 +581,7 @@ async function computeSet(list, store, label){
             // The split has to happen per household and then be aggregated, which is build-time
             // information. Shipping the distribution lets the app do the correct average while
             // still applying its own runtime roster weights.
-            covHH[band][Math.min(KBUCKETS-1, Math.round(K/KSTEP))] += w;
+            covHH[band][kBucket(K)] += w;   // log ladder — no clip below K=65
           }
         }
       }
@@ -618,8 +637,8 @@ async function computeSet(list, store, label){
     cells[k]=cell;
     if(++n%400===0) process.stdout.write(`  derived ${n}…\n`);
   }
-  const doc={ v:7, built:new Date().toISOString().slice(0,10), engine:'osrm', rays:RAYS,
-    budgets:BUDGETS, grid:GRID_MI, bbox:DFW, sampleMi:SAMPLE_MI, kStep:0.5,
+  const doc={ v:8, built:new Date().toISOString().slice(0,10), engine:'osrm', rays:RAYS,
+    budgets:BUDGETS, grid:GRID_MI, bbox:DFW, sampleMi:SAMPLE_MI, kStep:0.5, kMid:KMID,
     // v7: `wb` = competitor-strength mean over the FULL set (was a 120-capped runtime scan of `ov`,
     //     which was truncating on ~96% of cells); `ov` trimmed to the top 8 for display only.
     // v6: `fu[band]` = announced residential units (NCTCOG) per band, on the same rings, so future
