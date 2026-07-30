@@ -7060,10 +7060,16 @@ function updateClinicKpis(){
   const cEl=document.getElementById('kpi-clinics');
   if(!cEl) return;
 
-  let inView, scopeLabel, emptyMsg;
+  let inView, scopeLabel, emptyMsg, areaAgg=null;
   if(drawnArea){
-    // Draw mode: use the captured set
-    inView=clinics.filter(c=>areaClinicKeys.has(clinicKey(c)));
+    // Draw mode counts from the COMPLETE static sets via _areaClinicCount(), not from the
+    // viewport-loaded `clinics[]`. Those pins are fetched per-viewport, so at region scale only a
+    // few dozen are in memory and the captured-key filter reported 0 clinics — on the same KPI bar
+    // where Saturation was reading 2,252 DVMs from the full set (user, live metro run 2026-07-30).
+    // _areaClinicCount is memoised on the area signature and already applies every exclusion the
+    // pin path does (deleted, analyst-excluded, specialty/ER, equine, mobile, license bbox).
+    areaAgg=_areaClinicCount();
+    inView=clinics.filter(c=>areaClinicKeys.has(clinicKey(c)));   // still used by CSV/list scope
     scopeLabel='in drawn area'; emptyMsg='No clinics in area';
   } else if(selectedZips.size){
     // ZIP selection: only clinics inside the selected ZIP polygon(s) are visible
@@ -7077,17 +7083,18 @@ function updateClinicKpis(){
     scopeLabel='in view'; emptyMsg='Pan or search to load';
   }
 
-  const pe=inView.filter(c=>c.pe).length;
-  const indep=inView.length-pe;
-  cEl.textContent=inView.length.toLocaleString();
+  const total = areaAgg ? areaAgg.n : inView.length;
+  const pe    = areaAgg ? areaAgg.pe : inView.filter(c=>c.pe).length;
+  const indep = total-pe;
+  cEl.textContent=total.toLocaleString();
   const cFoot=document.getElementById('kpi-clinics-foot');
-  cFoot.innerHTML=inView.length
+  cFoot.innerHTML=total
     ? `<span class="k-split"><span class="k-dot" style="background:var(--navy)"></span>${indep} indep</span><span class="k-split"><span class="k-dot" style="background:var(--red)"></span>${pe} PE</span>`
     : emptyMsg;
 
   const pEl=document.getElementById('kpi-pe'), pFoot=document.getElementById('kpi-pe-foot');
-  if(inView.length){
-    pEl.textContent=Math.round(pe/inView.length*100)+'%';
+  if(total){
+    pEl.textContent=Math.round(pe/total*100)+'%';
     pEl.classList.remove('pending');
     pFoot.textContent=`of clinics ${scopeLabel}`;
   } else {
@@ -7320,11 +7327,11 @@ function _areaClinicCount(){
   if(!drawnArea) return {n:0,dvm:0};
   const sig=(drawnArea.type==='rect'&&drawnArea.bounds&&drawnArea.bounds.toBBoxString?drawnArea.bounds.toBBoxString():JSON.stringify(drawnArea.points||[]))+'|'+(_vfIncludeMobile()?'m1':'m0')+(_vfCountEquine()?'e1':'e0');
   if(_areaClinCache.key===sig) return _areaClinCache;
-  const deleted=getDeleted(), overrides=getOverrides(), seen=new Set(); let n=0, dvm=0;
-  const add=(la,lo,nm)=>{ const k=Math.round(la*1000)+'_'+Math.round(lo*1000); if(deleted[k]||(overrides[k]&&overrides[k].exclude)||seen.has(k))return; if(_isSpecialtyERAt(nm,la,lo))return; if(!_vfCountEquine() && _isLargeAnimalAt(nm,la,lo)) return; seen.add(k); if(isInDrawnArea(la,lo)){ n++; dvm += (_vetStaffAt(la,lo)||{}).n || 2; } };
-  if(peLoaded && typeof PE_COORDS!=='undefined') for(const c of PE_COORDS) add(c[0],c[1],c[4]);
-  for(const v of _activeVetClinics()) add(v.lat,v.lon,v.name);
-  _areaClinCache={key:sig,n,dvm}; return _areaClinCache;
+  const deleted=getDeleted(), overrides=getOverrides(), seen=new Set(); let n=0, dvm=0, pe=0;
+  const add=(la,lo,nm,isPE)=>{ const k=Math.round(la*1000)+'_'+Math.round(lo*1000); if(deleted[k]||(overrides[k]&&overrides[k].exclude)||seen.has(k))return; if(_isSpecialtyERAt(nm,la,lo))return; if(!_vfCountEquine() && _isLargeAnimalAt(nm,la,lo)) return; seen.add(k); if(isInDrawnArea(la,lo)){ n++; if(isPE) pe++; dvm += (_vetStaffAt(la,lo)||{}).n || 2; } };
+  if(peLoaded && typeof PE_COORDS!=='undefined') for(const c of PE_COORDS) add(c[0],c[1],c[4],true);
+  for(const v of _activeVetClinics()) add(v.lat,v.lon,v.name,false);
+  _areaClinCache={key:sig,n,dvm,pe}; return _areaClinCache;
 }
 let _drawDemoLoading=false;
 async function _ensureDrawDemo(){
@@ -9435,7 +9442,12 @@ function _evalComputeAndRender(){
   _evalLockMap(false);                              // results are in — hand the map back
   if(evalSitePt) _updateSiteKpis();                 // site mode: KPI bar reads the radius around the pin
   // Screen popup (once per analysis): urge classifying the unverified competitors, or ignore.
-  if(!evalSpeciesPrompted && !evalSpeciesIgnored && _speciesUnverified().length){ evalSpeciesPrompted=true; _speciesModalOpen(); }
+  // The modal is a per-clinic correction workflow, which is right at ZIP/site/clinic grain and
+  // wrong at region scale: a metro pass surfaced 146 chips over the whole screen before the user
+  // could see a single result (live run 2026-07-30). A screening pass's verdict does not hinge on
+  // any one competitor's species, so metro runs get the slim inline review link instead — the same
+  // one an "I'll review them" dismissal leaves behind. Nothing is hidden, only un-blockaded.
+  if(!evalSpeciesPrompted && !evalSpeciesIgnored && !evalMetroRun && _speciesUnverified().length){ evalSpeciesPrompted=true; _speciesModalOpen(); }
 }
 // Metro screening cells are ~3 mi wide, so the raw cell CENTER usually lands on a subdivision
 // street even when the cell won on real commercial strength — and at a metro-wide bbox the
@@ -9516,7 +9528,12 @@ function _speciesUnverified(){
 function _speciesModalOpen(){
   const un=_speciesUnverified(); if(!un.length) return;
   document.getElementById('spmod-title').textContent=un.length+' competitor'+(un.length!==1?'s':'')+' missing species data';
-  document.getElementById('spmod-chips').innerHTML=un.map(u=>`<span class="chip" onclick="_evalGotoComp(${u.i})">${_ceEsc(u.name.length>44?u.name.slice(0,43)+'…':u.name)}</span>`).join('');
+  // Cap the list even when it does open — past a couple of dozen the chips stop being a worklist
+  // and become a wall. The count in the title still reports the true total.
+  const SHOW=24, head=un.slice(0,SHOW);
+  document.getElementById('spmod-chips').innerHTML=
+    head.map(u=>`<span class="chip" onclick="_evalGotoComp(${u.i})">${_ceEsc(u.name.length>44?u.name.slice(0,43)+'…':u.name)}</span>`).join('')
+    + (un.length>SHOW?`<div style="font-size:11.5px;color:var(--muted);margin-top:8px">…and ${un.length-SHOW} more. Classifying the nearest few is usually enough — each save re-runs the analysis.</div>`:'');
   document.getElementById('species-overlay').classList.add('show');
 }
 function _speciesModalClose(){ const el=document.getElementById('species-overlay'); if(el) el.classList.remove('show'); }
