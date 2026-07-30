@@ -917,6 +917,35 @@ body.vf-evallock .leaflet-control-zoom{pointer-events:none;opacity:.45;}
 /* ── Species-unverified modal ── */
 .spov{position:fixed;inset:0;background:rgba(15,23,42,.52);backdrop-filter:blur(4px);z-index:2100;display:none;align-items:center;justify-content:center;padding:24px;}
 .spov.show{display:flex;}
+.strat-grid{display:grid;grid-template-columns:340px 1fr;gap:16px;align-items:start;}
+.strat-left{min-width:0;} .strat-right{min-width:0;display:flex;flex-direction:column;gap:11px;}
+.st-f{display:flex;flex-direction:column;gap:6px;}
+.st-lab{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:#64748b;}
+.st-sel{font:inherit;font-size:12.5px;padding:7px 9px;border:1px solid var(--border2);border-radius:9px;background:#fff;color:var(--text);}
+.st-note{font-size:11px;color:#64748b;line-height:1.5;}
+.st-chips{display:flex;gap:5px;flex-wrap:wrap;}
+.st-chip{font-size:11.5px;font-weight:600;text-transform:capitalize;padding:5px 11px;border:1px solid var(--border2);border-radius:999px;background:#fff;color:#475569;cursor:pointer;}
+.st-chip.on{background:var(--navy);border-color:var(--navy);color:#fff;}
+.st-sl label{display:flex;justify-content:space-between;font-size:11.5px;color:#475569;margin-bottom:2px;}
+.st-sl label b{color:var(--navy);font-variant-numeric:tabular-nums;}
+.st-sl input[type=range]{width:100%;accent-color:var(--navy);}
+.st-ck{display:flex;gap:7px;align-items:center;font-size:11.5px;color:#475569;cursor:pointer;}
+.st-ck input{accent-color:var(--navy);}
+.st-topn{display:flex;align-items:center;gap:6px;font-size:11.5px;color:#475569;}
+.st-seg{font-size:11.5px;font-weight:700;padding:4px 11px;border:1px solid var(--border2);border-radius:8px;background:#fff;color:#475569;cursor:pointer;}
+.st-seg.on{background:var(--navy);border-color:var(--navy);color:#fff;}
+.st-wf{border:1px solid var(--border2);border-radius:10px;padding:10px 12px;background:#f8fafc;font-size:11.5px;}
+.st-wf.warn{border-color:#fecdd3;background:#fff1f2;} .st-wf.zero{border-color:#fca5a5;background:#fef2f2;}
+.st-wf-h{font-weight:700;color:#475569;padding-bottom:6px;border-bottom:1px solid var(--border2);margin-bottom:6px;}
+.st-wf-row{display:flex;justify-content:space-between;gap:8px;padding:2px 0;color:#475569;}
+.st-wf-row i{font-style:normal;color:#94a3b8;} .st-wf-row b{color:#be123c;font-variant-numeric:tabular-nums;}
+.st-wf-row.none{color:#94a3b8;}
+.st-wf-tot{display:flex;justify-content:space-between;margin-top:6px;padding-top:6px;border-top:1px solid var(--border2);font-weight:800;color:var(--navy);}
+.st-wf-tot b{font-variant-numeric:tabular-nums;font-size:14px;}
+.st-wf-msg{margin-top:6px;color:#9f1239;font-weight:600;line-height:1.45;}
+.st-wf-empty{border:1px dashed var(--border2);border-radius:10px;padding:10px 12px;font-size:11.5px;color:#64748b;line-height:1.55;background:#f8fafc;}
+.st-limits{font-size:10.5px;color:#64748b;line-height:1.5;border-top:1px solid var(--border2);padding-top:9px;}
+@media(max-width:900px){.strat-grid{grid-template-columns:1fr;}}
 .strat-lead{font-size:12px;color:var(--muted);line-height:1.55;margin-bottom:11px;}
 .strat-list{display:flex;flex-direction:column;gap:5px;}
 .strat-row{display:flex;gap:9px;align-items:flex-start;padding:9px 11px;border:1px solid var(--border2);border-radius:10px;cursor:pointer;transition:border-color .12s,background .12s;}
@@ -930,6 +959,8 @@ body.vf-evallock .leaflet-control-zoom{pointer-events:none;opacity:.45;}
 .strat-tag.land{color:#0f766e;background:#ccfbf1;}
 .strat-note{margin-top:11px;font-size:11px;color:#475569;line-height:1.55;background:#f8fafc;border:1px solid var(--border2);border-radius:9px;padding:8px 10px;}
 .strat-ct{display:block;margin-top:5px;font-weight:700;color:var(--navy);}
+.strat-ct.dim{font-weight:500;color:#64748b;}
+.spmod-body{padding-bottom:16px;}
 .spmod-go{background:var(--navy);color:#fff;border:none;border-radius:9px;padding:8px 16px;font-size:12.5px;font-weight:700;cursor:pointer;}
 .spmod-go:hover{background:#24466e;}
 .spmod-ghost{background:#fff;color:#475569;border:1px solid var(--border2);border-radius:9px;padding:8px 14px;font-size:12.5px;font-weight:600;cursor:pointer;}
@@ -8124,12 +8155,12 @@ const BUYBOX_MIN_SHARE=0.20;
 // `share` is the equilibrium residual, identically cEq*3200/cReach, so screening on it would be
 // asking for a practice of a given size rather than for a competitive position.
 const EVAL_STRATEGIES=[
-  { id:'buybox', label:'PE buy-box', tag:'default',
+  { id:'buybox', label:'PE buy-box', tag:'default', seed:{obj:'score',  mkt:['urban','suburban','exurban'], inc:110000, cap:0.20, unmet:true},
     blurb:'High-income, non-rural, genuinely underserved and winnable. What a platform underwrites for a de novo build.',
     rank:g=>g.score,
     screen:g=>g.cUrb!=='rural' && (g.cInc||0)>=BUYBOX_MIN_INC && (g.cUnmet||0)>0 && (g.cShareRef||0)>=BUYBOX_MIN_SHARE },
 
-  { id:'defensible', label:'Defensible core',
+  { id:'defensible', label:'Defensible core', seed:{obj:'score',  mkt:['urban','suburban','exurban'], inc:100000, cap:0.30, unmet:true},
     blurb:'Markets a normal 3-doctor clinic could dominate rather than merely enter — 30%+ capture in the 8-minute ring.',
     // Income floor sits ABOVE the researched 30%-capture default: validated at $90k the picks came
     // back at $90-94k on the southern county rim, off-product for this buyer. Disclosed in the UI:
@@ -8138,7 +8169,7 @@ const EVAL_STRATEGIES=[
     rank:g=>g.score,
     screen:g=>g.cUrb!=='rural' && (g.cInc||0)>=100000 && (g.cUnmet||0)>0 && (g.cShareRef||0)>=0.30 },
 
-  { id:'lowcontest', label:'Low-contested',
+  { id:'lowcontest', label:'Low-contested', seed:{obj:'uncon',  mkt:['urban','suburban','exurban','rural'], inc:90000, cap:0.25, unmet:false, minEq:1.5},
     blurb:'Open ground — few clinics in range and a high uncontested share of the inner ring.',
     // The proposed `nPE===0` clause was ABLATED and removed: it was inert at the pick (pool
     // 189 -> 416, IDENTICAL top 5). The cEq viability floor IS load-bearing (removing it swaps
@@ -8146,14 +8177,14 @@ const EVAL_STRATEGIES=[
     rank:g=>(g.cUncon||0),
     screen:g=>(g.nComp||0)<=2 && (g.cShareRef||0)>=0.25 && (g.cInc||0)>=90000 && (g.cEq||0)>=1.5 },
 
-  { id:'headroom', label:'Local headroom',
+  { id:'headroom', label:'Local headroom', seed:{obj:'unmetR', mkt:['suburban','exurban'], inc:100000, cap:0.15, unmet:true},
     // NOT called "underserved suburbs": validated pool is 289 exurban vs 79 suburban, so the
     // suburban label would have been false.
     blurb:'Ranked on 10-minute demand that local supply does not cover, measured against the metro median.',
     rank:g=>(g.cUnmet||0),
     screen:g=>(g.cUrb==='suburban'||g.cUrb==='exurban') && (g.cInc||0)>=100000 && (g.cU||0)>=1.5 && (g.cShareRef||0)>=0.15 && (g.cUnmet||0)>0 },
 
-  { id:'volume', label:'Highest vet visits',
+  { id:'volume', label:'Highest vet visits', seed:{obj:'visits', mkt:['urban','suburban','exurban','rural'], inc:70000, cap:0.12, unmet:true},
     blurb:'The largest reachable pool of annual visits inside 10 minutes, once unwinnable markets are excluded.',
     // The 12% capture floor is load-bearing and was ablation-tested: without it this returns
     // Richardson/Plano cells at 6-7% capture. Reach alone explains 81.4% of log-revenue variance,
@@ -8161,7 +8192,7 @@ const EVAL_STRATEGIES=[
     rank:g=>(g.cDem10||0),
     screen:g=>(g.cShareRef||0)>=0.12 && (g.cUnmet||0)>0 && (g.cInc||0)>=70000 },
 
-  { id:'land', label:'Buy dirt', land:1,
+  { id:'land', label:'Buy dirt', land:1, seed:{obj:'pipe',   mkt:['urban','suburban','exurban','rural'], inc:0, cap:0, unmet:false},
     blurb:'Land plays ranked on announced buildout that today\'s clinics do not already cover.',
     rank:g=>(g.cLandRev||0),
     screen:g=>(g.cFutUnmet||0)>0 },
@@ -8176,6 +8207,50 @@ const EVAL_STRATEGIES=[
 //   acquisition-first "Independent-heavy" is unachievable: independents within 3 mi run p10/p50/p90
 //                     = 2/2/3 across the pool, and requiring >=4 returns ZERO cells metro-wide.
 let evalStrategy='buybox';
+// The panel's real surface. A preset is just a named SEED for these values — the analyst can move
+// any of them, at which point the run becomes "Custom". Screen and rank are both derived from this
+// one object, so what the panel shows and what the pick does can never disagree.
+const EVAL_OBJECTIVES=[
+  { id:'score',  label:'Modelled revenue',           note:'What a practice here would bill at equilibrium. Today’s default.', f:g=>g.score },
+  { id:'unmetR', label:'Capturable unmet revenue',   note:'Local demand no one covers, capped at what a new practice could staff.', f:g=>(g.cOppRev||0) },
+  { id:'capture',label:'Inner-ring capture share',   note:'Share a typical 3-DVM clinic wins in the 0–8 min ring. Favours open ground over big markets.', f:g=>(g.cShareRef||0) },
+  { id:'size',   label:'Supportable practice size',  note:'Modelled doctors the market sustains.', f:g=>(g.cEq||0) },
+  { id:'under',  label:'Local underservice (2SFCA)', note:'How thin local supply is versus the metro median. Relative, never absolute.', f:g=>(g.cU||0) },
+  { id:'visits', label:'Total 10-minute visits',     note:'Raw reachable market. Biggest, not best — pair it with a capture floor.', f:g=>(g.cDem10||0) },
+  { id:'uncon',  label:'Uncontested inner ring',     note:'Households in the 8-min ring essentially no clinic reaches.', f:g=>(g.cUncon||0) },
+  { id:'pipe',   label:'Announced-pipeline demand',  note:'Future buildout today’s clinics do not already cover.', f:g=>(g.cLandRev||0) },
+];
+const _EVAL_MKT_ALL=['urban','suburban','exurban','rural'];
+let evalCustom=null;              // null = use the named preset verbatim
+function _stratSeed(id){
+  const st=EVAL_STRATEGIES.find(x=>x.id===id)||EVAL_STRATEGIES[0];
+  return Object.assign({ obj:'score', mkt:['urban','suburban','exurban'], inc:0, cap:0,
+                         unmet:false, minEq:0, minVis:0, topN:5 }, st.seed||{});
+}
+// Each screen is a NAMED, individually-countable predicate. That is what makes the removal
+// waterfall possible: the panel can say WHICH screen killed the pool, not merely that it died.
+function _stratScreens(c){
+  const S=[];
+  if(c.mkt && c.mkt.length<_EVAL_MKT_ALL.length)
+    S.push({id:'mkt', label:'Market type', detail:c.mkt.join(', '), f:g=>c.mkt.indexOf(g.cUrb)>=0});
+  if(c.inc>0)    S.push({id:'inc',  label:'Catchment income', detail:'≥ $'+Math.round(c.inc/1000)+'k', f:g=>(g.cInc||0)>=c.inc});
+  if(c.cap>0)    S.push({id:'cap',  label:'Core capture',     detail:'≥ '+Math.round(c.cap*100)+'%',   f:g=>(g.cShareRef||0)>=c.cap});
+  if(c.unmet)    S.push({id:'unmet',label:'Unmet demand',     detail:'> 0',                                 f:g=>(g.cUnmet||0)>0});
+  if(c.minEq>0)  S.push({id:'eq',   label:'Practice size',    detail:'≥ '+c.minEq.toFixed(1)+' DVM',   f:g=>(g.cEq||0)>=c.minEq});
+  if(c.minVis>0) S.push({id:'vis',  label:'10-min visits',    detail:'≥ '+c.minVis.toLocaleString(),   f:g=>(g.cDem10||0)>=c.minVis});
+  return S;
+}
+function _stratWaterfall(c){
+  if(!evalCells||!evalCells.length) return null;
+  let pool=evalCells.filter(g=>!g.forced);
+  const start=pool.length, rows=[];
+  for(const sc of _stratScreens(c)){
+    const before=pool.length;
+    pool=pool.filter(g=>{ try{ return !!sc.f(g); }catch(e){ return false; } });
+    rows.push({label:sc.label, detail:sc.detail, cut:before-pool.length});
+  }
+  return {start, rows, survivors:pool.length};
+}
 const _evalStrat=()=>EVAL_STRATEGIES.find(x=>x.id===evalStrategy)||EVAL_STRATEGIES[0];
 // Live survivor count for the panel, against the REAL pool rather than a headline number.
 function _stratCount(id){
@@ -9494,7 +9569,7 @@ function _evalComputeAndRender(){
   // Region-scale runs (Evaluate Metroplex) surface 5 sites — 3 across ~7,000 sq mi leaves whole
   // corridors unexamined (user, 2026-07-25). Normal ZIP/area evaluations keep the preferred 3.
   const _metroRun=(bb.maxLa-bb.minLa)>0.9||(bb.maxLo-bb.minLo)>1.1;
-  const TOPN=_metroRun?5:EVAL_TOP_N;
+  const TOPN=_metroRun?((evalCustom&&evalCustom.topN)||5):EVAL_TOP_N;
   // ── MINIMUM SEPARATION (2026-07-28, user: "why do we have a 24 mile separation??") ────────────
   // It was never chosen. The rule was `0.16 x bbox span`, a FRACTION OF THE ANALYSED AREA, written
   // in c7f1a7c when Evaluate was a ZIP-level tool — where it yields ~0.5 mi and correctly stops two
@@ -9522,13 +9597,16 @@ function _evalComputeAndRender(){
   // The analyst's chosen strategy owns both halves of the funnel. 'buybox' reproduces the previous
   // hardcoded behaviour exactly, so an untouched panel changes nothing.
   const _st=_evalStrat();
-  const _bbOK=g=>{ try{ return !!_st.screen(g); }catch(e){ return false; } };
+  // evalCustom, when present, is the AUTHORITY — it is exactly what the panel displayed and counted.
+  const _cc=evalCustom, _scr=_cc?_stratScreens(_cc):null;
+  const _bbOK=g=>{ try{ return _scr? _scr.every(x=>x.f(g)) : !!_st.screen(g); }catch(e){ return false; } };
   const _bbPool=_buybox? sorted.filter(_bbOK) : sorted;
   // Re-sort on the strategy's own axis. Guarded: a non-finite rank must never sort above a real
   // one (a single NaN makes Array.sort's comparator inconsistent and the order arbitrary — that
   // shipped once already, see the _vetStaffAt note in CLAUDE.md).
-  if(_buybox && _st.rank!==undefined){
-    const _rk=g=>{ let v; try{ v=_st.rank(g); }catch(e){ v=0; } return Number.isFinite(v)?v:-Infinity; };
+  if(_buybox){
+    const _ob=_cc? (EVAL_OBJECTIVES.find(o=>o.id===_cc.obj)||EVAL_OBJECTIVES[0]).f : _st.rank;
+    const _rk=g=>{ let v; try{ v=_ob(g); }catch(e){ v=0; } return Number.isFinite(v)?v:-Infinity; };
     _bbPool.sort((a,b)=>_rk(b)-_rk(a));
   }
   // Never return nothing because the screen was strict — fall back to the unscreened order and
@@ -9659,24 +9737,28 @@ function _stratModalOpen(){
         <span class="strat-b">${_ceEsc(st.blurb)}</span>
       </span>
     </label>`).join('');
-  el.innerHTML=`<div class="spmod" style="width:600px">
+  el.innerHTML=`<div class="spmod" style="width:min(980px,96vw)">
     <div class="spmod-head"><span>What should this pass optimise for?</span>
       <button class="settings-close" onclick="_stratModalClose()" aria-label="Close">✕</button></div>
-    <div class="spmod-body">
-      <div class="strat-lead">Every option re-ranks the same measured drive-time candidates across the metroplex &mdash;
-        they differ in what they treat as a good market, not in how the market is measured.</div>
-      <div class="strat-list">${rows}</div>
-      <div class="strat-note" id="strat-note"></div>
+    <div class="spmod-body strat-grid">
+      <div class="strat-left">
+        <div class="strat-lead">Presets are named starting points. Move any control and the run becomes <b>Custom</b>.</div>
+        <div class="strat-list">${rows}</div>
+      </div>
+      <div class="strat-right" id="strat-right"></div>
     </div>
     <div class="spmod-foot">
       <button class="spmod-ghost" onclick="_stratModalClose()">Cancel</button>
       <button class="spmod-go" onclick="_stratRun()">Run evaluation</button>
     </div></div>`;
   el.querySelectorAll('.strat-row').forEach(r=>r.addEventListener('click',()=>{
+    const id=r.getAttribute('data-sid');
+    evalStrategy=id; evalCustom=_stratSeed(id);
     el.querySelectorAll('.strat-row').forEach(x=>x.classList.remove('on'));
-    r.classList.add('on'); _stratNote(r.getAttribute('data-sid'));
+    r.classList.add('on'); _stratPaint();
   }));
-  _stratNote(evalStrategy);
+  if(!evalCustom) evalCustom=_stratSeed(evalStrategy);
+  _stratPaint();
   el.classList.add('show');
 }
 // The honest caveat per strategy. Each of these is a MEASURED property of the preset, recorded
@@ -9692,13 +9774,71 @@ const _STRAT_NOTE={
 function _stratNote(id){
   const n=document.getElementById('strat-note'); if(!n) return;
   const c=_stratCount(id);
-  n.innerHTML=(_STRAT_NOTE[id]||'')+(c!=null?`<span class="strat-ct">${c.toLocaleString()} of ${evalCells.length.toLocaleString()} scored candidates qualify</span>`:'');
+  n.innerHTML=(_STRAT_NOTE[id]||'')+(c!=null
+    ? `<span class="strat-ct">${c.toLocaleString()} of ${evalCells.length.toLocaleString()} scored candidates qualify</span>`
+    : `<span class="strat-ct dim">Qualifying counts appear here once a pass has scored the metroplex &mdash; re-open this panel after a run to compare strategies.</span>`);
+}
+
+// Right column: the controls, and the removal waterfall that is the panel's whole point — it says
+// WHICH screen is emptying the pool, before the analyst spends ~6 minutes finding out.
+function _stratSet(k,v){
+  if(!evalCustom) evalCustom=_stratSeed(evalStrategy);
+  if(k==='mkt'){ const i=evalCustom.mkt.indexOf(v); i>=0?evalCustom.mkt.splice(i,1):evalCustom.mkt.push(v); }
+  else evalCustom[k]=v;
+  // Any hand edit detaches the run from its preset name — the label must not keep claiming a
+  // thesis the numbers no longer follow.
+  const seed=_stratSeed(evalStrategy);
+  const same=JSON.stringify({...seed,mkt:seed.mkt.slice().sort()})===JSON.stringify({...evalCustom,mkt:evalCustom.mkt.slice().sort()});
+  if(!same){ evalStrategy='custom';
+    document.querySelectorAll('#strat-overlay .strat-row').forEach(x=>x.classList.remove('on')); }
+  _stratPaint();
+}
+function _stratPaint(){
+  const box=document.getElementById('strat-right'); if(!box) return;
+  const c=evalCustom||(evalCustom=_stratSeed(evalStrategy));
+  const ob=EVAL_OBJECTIVES.find(o=>o.id===c.obj)||EVAL_OBJECTIVES[0];
+  const wf=_stratWaterfall(c);
+  const chip=(m)=>`<button class="st-chip${c.mkt.indexOf(m)>=0?' on':''}" aria-pressed="${c.mkt.indexOf(m)>=0}" onclick="_stratSet('mkt','${m}')">${m}</button>`;
+  const sl=(k,lab,min,max,step,val,fmt)=>`<div class="st-sl"><label>${lab}<b>${fmt(val)}</b></label>
+    <input type="range" min="${min}" max="${max}" step="${step}" value="${val}" oninput="_stratSet('${k}',+this.value)"></div>`;
+  let wfHTML;
+  if(!wf) wfHTML=`<div class="st-wf-empty">Qualifying counts appear once a pass has scored the metroplex. Re-open this panel after a run to compare strategies against real counts.</div>`;
+  else {
+    const rows=wf.rows.map(r=>`<div class="st-wf-row"><span>${r.label} <i>${r.detail}</i></span><b>&minus;${r.cut.toLocaleString()}</b></div>`).join('')
+      ||`<div class="st-wf-row none">No screens active &mdash; every scored candidate qualifies.</div>`;
+    const st=wf.survivors===0?'zero':(wf.survivors<c.topN?'warn':'');
+    wfHTML=`<div class="st-wf ${st}">
+      <div class="st-wf-h">${wf.start.toLocaleString()} scored candidates</div>${rows}
+      <div class="st-wf-tot"><span>Qualify</span><b>${wf.survivors.toLocaleString()}</b></div>
+      ${st==='zero'?'<div class="st-wf-msg">Nothing survives this screen &mdash; loosen a control before running.</div>'
+       :st==='warn'?`<div class="st-wf-msg">Fewer survivors than the ${c.topN} picks requested &mdash; results will be thin.</div>`:''}
+    </div>`;
+  }
+  box.innerHTML=`
+    <div class="st-f"><label class="st-lab">Rank candidates on</label>
+      <select class="st-sel" onchange="_stratSet('obj',this.value)">
+        ${EVAL_OBJECTIVES.map(o=>`<option value="${o.id}"${o.id===c.obj?' selected':''}>${o.label}</option>`).join('')}
+      </select>
+      <div class="st-note">${ob.note}</div></div>
+    <div class="st-f"><label class="st-lab">Market type</label>
+      <div class="st-chips">${_EVAL_MKT_ALL.map(chip).join('')}</div></div>
+    <div class="st-f">
+      ${sl('inc','Catchment income floor',0,180000,5000,c.inc,v=>v?'$'+Math.round(v/1000)+'k':'any')}
+      ${sl('cap','Core capture floor',0,0.5,0.01,c.cap,v=>v?Math.round(v*100)+'%':'any')}
+      ${sl('minEq','Min practice size',0,8,0.5,c.minEq,v=>v?v.toFixed(1)+' DVM':'any')}
+      ${sl('minVis','Min 10-min visits',0,60000,2500,c.minVis,v=>v?v.toLocaleString():'any')}
+      <label class="st-ck"><input type="checkbox"${c.unmet?' checked':''} onchange="_stratSet('unmet',this.checked)"> Require unmet local demand</label>
+      <div class="st-topn"><span>Sites returned</span>${[3,5,8].map(n=>`<button class="st-seg${c.topN===n?' on':''}" onclick="_stratSet('topN',${n})">${n}</button>`).join('')}</div>
+    </div>
+    ${wfHTML}
+    <div class="st-limits">Ranks <b>markets, not parcels</b> &mdash; use &#9678; Refine for parcel grain. Dollar figures carry a documented ~2&times; metro-closure gap and are comparable between cells rather than forecasts.</div>`;
 }
 function _stratModalClose(){ const el=document.getElementById('strat-overlay'); if(el) el.classList.remove('show'); }
 function _stratRun(){
-  const p=document.querySelector('#strat-overlay input[name=stratpick]:checked')
-        ||document.querySelector('#strat-overlay .strat-row.on input');
-  if(p) evalStrategy=p.value;
+  // evalCustom is already the authority — do NOT re-read the radio here. A hand edit sets
+  // evalStrategy to 'custom' and deselects every preset row, and re-reading a stale checked radio
+  // would silently restore a preset the analyst had moved away from.
+  if(!evalCustom) evalCustom=_stratSeed(evalStrategy);
   _stratModalClose();
   evaluateMetroplex(true);
 }
