@@ -27,6 +27,23 @@
 // §3 is static because the two TDZ bugs live in code paths (build scripts, an
 // early-return branch) that no single run is guaranteed to reach.
 //
+// HARDENED 2026-07-29 after research/algo-audit-2026-07-29.md, which established that
+// everything above could stay green while the model was wrong in ways nobody could see:
+//   * §9's quantile-ratio statistic is PAIRING-BLIND. Randomly permuting the modelled
+//     values across clinics leaves it bit-identical, so it certifies a model with zero
+//     per-site skill.                                              -> fit.pairing (b)
+//   * That pooled statistic is also a MIXTURE that cancels: it reads 1.09 while the
+//     four urbanicity classes span 8.9x (rural 0.25x, urban 2.18x). The class
+//     stratification IS the urban-over-suburban bias.              -> fit.byclass (a)
+//   * Ordering was reported but never tracked per class.           -> fit.rank    (c)
+//   * Demand and capacity are calibrated independently and never reconciled: the
+//     metro's modelled visits support half the doctors that physically exist.
+//                                                                  -> closure.metro (d)
+//   * "Capture share" is an accounting residual (n x CAP / reach), not a competitive
+//     measurement, and nothing stopped it being read as one.       -> share.identity (e)
+// (a) (c) (d) carry RECORDED KNOWN-BAD BASELINES rather than asserted targets: today's
+// tree passes, and the fixes now in flight show up as movement instead of as silence.
+//
 // HOW
 // index.html is a single file whose whole app is inline <script> blocks. They are
 // evaluated VERBATIM in a node `vm` context against a stub DOM/Leaflet; the app's own
@@ -58,7 +75,17 @@
 //     a name is declared more than once in a scope (shadowing is ambiguous to a
 //     regex walker). Measured on this repo: 0 false positives, both real bugs caught.
 //   * Per-site accuracy. §9 checks the roster DISTRIBUTION; the model has no validated
-//     firm-level signal (rho ~0 per clinic) and this gate cannot manufacture one.
+//     firm-level signal (rho ~0 per clinic) and this gate cannot manufacture one. What it
+//     CAN now do is refuse to pretend otherwise: fit.rank tracks the ordering per class
+//     with an explicit promotion path, and fit.pairing proves the fit statistic responds
+//     to the assignment at all. Note the consequence — because the per-clinic signal is
+//     already ~0, a scrambled assignment is invisible to any model-vs-roster statistic;
+//     fit.pairing therefore tests SPATIAL COHERENCE, which is the one axis that still
+//     carries signal today. If a future model earns real per-site skill, add the
+//     model-vs-roster permutation z-score there too.
+//   * Whether the recorded baselines are RIGHT. fit.byclass, fit.rank and closure.metro
+//     record measured defects so they can be tracked. A green run on them means "no
+//     movement", not "correct".
 //   * ONE MEASURED BLIND SPOT: deleting the candidate-loop guard
 //       if(_captureRun && !_cc){ evalCapStat.skipped++; continue; }
 //     changes nothing here. _catchNearest's tolerance is 0.8 mi and catchment cells sit on
@@ -101,7 +128,7 @@ fs.mkdirSync(CACHE, { recursive: true });
 // gate exists to catch. Practise what check 3 preaches.
 const RESULTS = [];
 let FAILED = 0, WARNED = 0;
-let DATA = null, GATES = null, DIST = null, FIT = null;
+let DATA = null, GATES = null, DIST = null, FIT = null, IDENT = null, CLOSE = null;
 const SC = {};
 const C = { g:'\x1b[32m', r:'\x1b[31m', y:'\x1b[33m', d:'\x1b[2m', n:'\x1b[0m' };
 function record(status, id, msg, detail){
@@ -117,6 +144,47 @@ const pass=(id,m,d)=>record('PASS',id,m,d);
 const warn=(id,m,d)=>record('WARN',id,m,d);
 const fail=(id,m,d)=>record('FAIL',id,m,d);
 function section(t){ if(!JSON_OUT) console.log(`\n${C.d}── ${t} ${'─'.repeat(Math.max(0,60-t.length))}${C.n}`); }
+
+// ── statistics shared by §7b / §9 / §10 ──────────────────────────────────────
+// Deliberately in NODE, not in the vm: §9's permutation test has to be able to reshuffle the
+// model's outputs without re-running the model, and a statistic that lives next to the thing
+// it measures is a statistic nobody can permute.
+const quant=(a,p)=>{ if(!a.length) return null; const s=a.slice().sort((x,y)=>x-y);
+  return s[Math.min(s.length-1,Math.floor(p*(s.length-1)))]; };
+const mean =(a)=> a.length? a.reduce((x,y)=>x+y,0)/a.length : null;
+const sd   =(a)=>{ if(a.length<2) return 0; const m=mean(a);
+  return Math.sqrt(a.reduce((s,v)=>s+(v-m)*(v-m),0)/(a.length-1)); };
+function ranks(v){
+  const ix=v.map((x,i)=>[x,i]).sort((a,b)=>a[0]-b[0]); const r=new Array(v.length);
+  let i=0; while(i<ix.length){ let j=i; while(j+1<ix.length && ix[j+1][0]===ix[i][0]) j++;
+    const av=(i+j)/2+1; for(let k=i;k<=j;k++) r[ix[k][1]]=av; i=j+1; }
+  return r;
+}
+function pearson(x,y){
+  const n=x.length; if(n<3||y.length!==n) return null;
+  const mx=mean(x), my=mean(y);
+  let num=0,dx=0,dy=0;
+  for(let i=0;i<n;i++){ const a=x[i]-mx, b=y[i]-my; num+=a*b; dx+=a*a; dy+=b*b; }
+  return (dx>0&&dy>0)? num/Math.sqrt(dx*dy) : null;
+}
+const spearman=(x,y)=> (x.length<3)? null : pearson(ranks(x), ranks(y));
+// Deterministic PRNG. A permutation test whose answer moves between runs is not a gate.
+function mulberry32(a){ return function(){ a|=0; a=(a+0x6D2B79F5)|0;
+  let t=Math.imul(a^(a>>>15), 1|a); t=(t+Math.imul(t^(t>>>7), 61|t))^t;
+  return ((t^(t>>>14))>>>0)/4294967296; }; }
+function permute(arr, seed){ const a=arr.slice(), rnd=mulberry32(seed);
+  for(let i=a.length-1;i>0;i--){ const j=Math.floor(rnd()*(i+1)); const t=a[i]; a[i]=a[j]; a[j]=t; }
+  return a; }
+// THE statistic §9 has always used: quantile of one population over quantile of the other. It
+// constrains the MARGINAL distribution and nothing else — see fit.pairing.
+function qratio(model, roster){
+  const o={};
+  for(const p of [0.25,0.5,0.75,0.9]){
+    const mq=quant(model,p), rq=quant(roster,p);
+    o['p'+Math.round(p*100)] = (rq>0)? +(mq/rq).toFixed(3) : null;
+  }
+  return o;
+}
 
 // ── source extraction ────────────────────────────────────────────────────────
 const HTML = fs.readFileSync(path.join(APP,'index.html'),'utf8');
@@ -659,6 +727,23 @@ function collectMetro(){
     return JSON.stringify({score:stat('score'),share:stat('share'),cEq:stat('cEq'),winRev:stat('winRev'),
                            demandN:stat('demandN'),cReach:stat('cReach'),cFutTot:stat('cFutTot')});
   })()`));
+  // The reported capture share is the equilibrium RESIDUAL, not a competitive measurement:
+  // _catchEquilibrium solves reach*share(n) = n*CAP and the caller then reports win/reach, so
+  // share == n*CAP/reach identically. Pinned here so the day somebody changes one half without
+  // the other, the gate says which number stopped meaning what it says on the card.
+  IDENT=JSON.parse(run(`(function(){
+    let n=0, clamped=0, worst=0, sum=0; const errs=[];
+    for(const g of evalCells){
+      if(g.cEq==null || g.cShare==null || !(g.cReach>0)) continue;
+      if(g.cEq<=0.0501 || g.cEq>=39.99){ clamped++; continue; }   // bisection bracket bounds
+      const pred=g.cEq*DVM_VISIT_CAPACITY/g.cReach;
+      const e=Math.abs(g.cShare-pred)/Math.max(g.cShare,1e-12);
+      errs.push(e); if(e>worst) worst=e; sum+=e; n++;
+    }
+    errs.sort((a,b)=>a-b);
+    return JSON.stringify({ n, clamped, cap:DVM_VISIT_CAPACITY,
+      worst, mean:n?sum/n:null, p99:n? errs[Math.min(n-1,Math.floor(0.99*(n-1)))] : null });
+  })()`));
   GATES=JSON.parse(run(`(function(){
     const n=evalCells.length, pool=(evalLandStat&&evalLandStat.pool)||0;
     return JSON.stringify({ candidates:n+pool, siteable:n, landPool:pool,
@@ -833,6 +918,33 @@ else{
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
+// 7b. IDENTITY — the number the cards call "capture share" is an ACCOUNTING
+//     RESIDUAL. _catchEquilibrium solves reach*share(n) = n*DVM_VISIT_CAPACITY by
+//     bisection; the caller then reports win/reach. Substituting the solved
+//     condition gives share == n*CAP/reach, exactly. So "share 20%" is not a
+//     competitive finding — it is a request for a 0.20*reach/3200-doctor practice,
+//     which in a median suburban catchment is ~18 doctors. Asserted here, at 1e-6,
+//     so nobody can quietly reinterpret it: if this check ever fails, either the
+//     solve or the reported share moved and the card copy is now wrong.
+//     (Incumbent/clinic mode does NOT satisfy this — cEq is the real roster there,
+//     not a solve — which is why the sample is the entrant-mode metro run only.)
+// ═════════════════════════════════════════════════════════════════════════════
+section('7b. identity — reported capture share is the equilibrium residual');
+{
+  const ID_TOL=1e-6;
+  if(!IDENT) fail('share.identity','no metro identity sample was collected');
+  else if(!IDENT.n) fail('share.identity','no cell carried an interior equilibrium solution',
+    `${IDENT.clamped} cells clamped at the bisection bounds — the solver is not converging anywhere`);
+  else if(!(IDENT.worst<=ID_TOL)) fail('share.identity',
+    `share !== cEq x ${IDENT.cap} / cReach — worst relative error ${IDENT.worst.toExponential(2)} over ${IDENT.n} interior cells`,
+    'Either _catchEquilibrium or the reported share changed and the two no longer describe the same\n'+
+    'quantity. If that is deliberate this check must be updated together with every card, popup and\n'+
+    'report that prints the number as "capture share" — it would now be a different claim.');
+  else pass('share.identity',
+    `share === cEq x ${IDENT.cap} / cReach on ${IDENT.n} interior cells (worst ${IDENT.worst.toExponential(2)}, ${IDENT.clamped} clamped) — it is a residual, not a measurement`);
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
 // 8. GATES — a tier gate that passes <1% or >90% of candidates is not a gate, it
 //    is a constant. Both directions have shipped.
 // ═════════════════════════════════════════════════════════════════════════════
@@ -867,6 +979,39 @@ section('9. fit — modelled practice size vs scraped rosters');
 const FIT_BASELINE={ p25:1.25, p50:1.09, p75:0.95, p90:0.76 };
 const FIT_TOL=0.20;
 const RHO_FLOOR=0.10;
+// ── KNOWN-BAD BASELINES (measured 2026-07-29 on this tree by this harness) ───────────────────
+// research/algo-audit-2026-07-29.md established that the pooled quantile ratio above is a
+// MIXTURE that cancels: it reads ~1.0 while the per-class fit spans 9x. These baselines record
+// the defect rather than assert a number nobody has earned, so today's tree passes and the
+// fixes now in flight (un-clipping K, re-deriving CATCH_MAX_BAND, the _catchAttract exponent)
+// are visible as movement instead of as silence. RE-RECORD DELIBERATELY when they land.
+// MEASURED 2026-07-29, n=569 (rural 44 / exurban 128 / suburban 210 / urban 187). Same statistic
+// as FIT_BASELINE, run inside each bucket: rural 0.25x and urban 2.18x, spread 8.87x, while the
+// pooled mixture sits on 1.09. Independently reproduced by the audit at mean-ratio grain
+// (0.19 / 0.31 / 0.91 / 1.76, spread 9.1x) from a separate replica.
+// RE-RECORDED 2026-07-29 after the v8 un-clip + joint recalibration, exactly as the WARN this
+// check emits asks for. The v7 figures it replaces — rural 0.246 / exurban 0.481 / suburban 1.116
+// / urban 2.182, an 8.9x spread — WERE the class stratification the audit identified: the K=8.0
+// bucket ceiling censored competition in proportion to density, so the model over-predicted urban
+// by 2.2x while under-predicting rural by 4x. Un-clipping to a log ladder (ceiling 65) collapsed
+// the spread to 1.53x. Keep the OLD numbers in this comment: they are the regression signature to
+// recognise if anyone ever re-clips the buckets.
+const FIT_CLASS_BASELINE={ rural:0.723, exurban:0.957, suburban:1.103, urban:1.065 };  // p50 ratios, v8
+const FIT_CLASS_TOL=0.20;      // further from 1.0 than baseline by this much = regression = FAIL
+const FIT_CLASS_MIN_N=25;      // below this a class ratio is noise; reported, not gated
+// fit.pairing thresholds. COH = spatial coherence of modelled size between a clinic's cell and a
+// cell ~0.7 mi away; GAP = how far that sits above the same statistic on a seeded permutation.
+// Measured on this tree: coherence 0.887, permuted max 0.050 over 25 seeds, gap 0.837.
+const PAIR_SEED=20260729, PAIR_PERMS=25;
+const PAIR_COH_MIN=0.75;       // 0.14 below measured — a real collapse, not run-to-run wobble
+const PAIR_GAP_MIN=0.35;
+// fit.rank: Spearman(modelled, roster). Measured pooled -0.026 (rural -0.008 / exurban 0.014 /
+// suburban -0.059 / urban -0.045) — the model has NO validated per-site signal, which is the
+// documented state, not a regression. FAIL only on a drop BELOW the recorded baseline; PROMOTE to
+// a hard floor the day a per-site claim is made (research/site-capture-model.md).
+const RANK_BASELINE=-0.03;
+const RANK_TOL=0.15;
+const RANK_PROMOTE=0.25;
 if(QUICK) warn('fit.skipped','--quick: roster-fit check skipped');
 else{
   const t0=Date.now();
@@ -874,7 +1019,7 @@ else{
   FIT=JSON.parse(run(`(function(){
     _evalSubject=null;                                   // entrant mode
     const visits=z=>{ const dd=dogData[z]; return dd? ((dd.est||0)*OPP_VISITS_PER_DOGHH+(dd.catEst||0)*OPP_VISITS_PER_CATHH) : 0; };
-    const model=[], roster=[]; let skipSpec=0, skipNoRoster=0, skipNoCell=0;
+    const model=[], roster=[], cls=[], nb=[]; let skipSpec=0, skipNoRoster=0, skipNoCell=0;
     for(const cl of ((_catchData&&_catchData.clinics)||[])){
       const nm=cl.name||'';
       if(_isSpecialtyER(nm)){ skipSpec++; continue; }     // ER/specialty draw regionally
@@ -883,9 +1028,22 @@ else{
       const cc=_catchNearest(cl.la,cl.lo); if(!cc){ skipNoCell++; continue; }
       const cell={}; _applyCapture(cell,cc,visits);
       if(!(cell.cEq>0)) continue;
-      model.push(cell.cEq); roster.push(st.n);
+      model.push(cell.cEq); roster.push(st.n); cls.push(cell.cUrb||'?');
+      // NEIGHBOUR CELL, ~0.7 mi off (the artifact grid is 0.61 mi). Modelled capture is a
+      // function of geography, so it has to be spatially COHERENT — a household 0.7 mi away
+      // is reached by nearly the same catchment. fit.pairing turns that into the one
+      // assignment test available here: a scrambled site->value mapping destroys it while
+      // leaving every marginal distribution, and therefore fit.roster, untouched.
+      let nbv=null;
+      for(const d of [[0.010,0],[-0.010,0],[0,0.012],[0,-0.012]]){
+        const c2=_catchNearest(cl.la+d[0], cl.lo+d[1]);
+        if(!c2 || c2===cc) continue;
+        const cell2={}; _applyCapture(cell2,c2,visits);
+        if(cell2.cEq>0){ nbv=cell2.cEq; break; }
+      }
+      nb.push(nbv);
     }
-    if(!model.length) return JSON.stringify({n:0,rho:null,skipped:{specialty:skipSpec,noRoster:skipNoRoster,noCell:skipNoCell},ratio:{},model:{},roster:{}});
+    if(!model.length) return JSON.stringify({n:0,rho:null,skipped:{specialty:skipSpec,noRoster:skipNoRoster,noCell:skipNoCell},ratio:{},model:{},roster:{},_raw:{m:[],r:[],c:[],nb:[]}});
     const q=(a,p)=>{ const s=a.slice().sort((x,y)=>x-y); return s[Math.min(s.length-1,Math.floor(p*(s.length-1)))]; };
     const rank=v=>{ const ix=v.map((x,i)=>[x,i]).sort((a,b)=>a[0]-b[0]); const r=new Array(v.length);
       let i=0; while(i<ix.length){ let j=i; while(j+1<ix.length&&ix[j+1][0]===ix[i][0]) j++;
@@ -897,7 +1055,8 @@ else{
       rho = (dx>0&&dy>0)? num/Math.sqrt(dx*dy) : null; }
     const out={ n:model.length, rho: rho==null?null:+rho.toFixed(3),
                 skipped:{specialty:skipSpec,noRoster:skipNoRoster,noCell:skipNoCell},
-                ratio:{}, model:{}, roster:{} };
+                ratio:{}, model:{}, roster:{},
+                _raw:{ m:model, r:roster, c:cls, nb } };
     for(const p of [0.25,0.5,0.75,0.9]){
       const mq=q(model,p), rq=q(roster,p), k='p'+Math.round(p*100);
       out.model[k]=+mq.toFixed(2); out.roster[k]=+rq.toFixed(2);
@@ -925,9 +1084,193 @@ else{
     else if(FIT.rho<RHO_FLOOR) warn('fit.rho', `Spearman rho ${FIT.rho} vs rosters — the model matches the roster DISTRIBUTION but barely orders individual clinics`,
       'not a regression signal on its own; watch it move, and do not quote the fit as per-clinic accuracy');
     else pass('fit.rho', `Spearman rho ${FIT.rho} vs rosters`);
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // (a) fit.byclass — the SAME quantile statistic, run inside each urbanicity
+    //     bucket. The pooled form is a mixture and it cancels: measured, the
+    //     mixture reads ~1.0 while the classes span 9x. A gate that cannot see
+    //     that is a gate that certifies the urban-over-suburban bias.
+    // ─────────────────────────────────────────────────────────────────────────
+    const RAW=FIT._raw||{m:[],r:[],c:[],nb:[]};
+    delete FIT._raw;                       // keep it out of the --json summary
+    {
+      const KS=['rural','exurban','suburban','urban'];
+      const by={};
+      for(const k of KS){
+        const m=[], r=[];
+        for(let i=0;i<RAW.m.length;i++) if(RAW.c[i]===k){ m.push(RAW.m[i]); r.push(RAW.r[i]); }
+        by[k]= m.length? { n:m.length, ratio:qratio(m,r),
+                           meanRatio:+(mean(m)/mean(r)).toFixed(3),
+                           rho: m.length>2? (spearman(m,r)==null?null:+spearman(m,r).toFixed(3)) : null }
+                       : { n:0, ratio:{}, meanRatio:null, rho:null };
+      }
+      FIT.byclass=by;
+      const line=KS.map(k=>`${k} ${by[k].n?by[k].ratio.p50:'-'}${by[k].n?'':''} (n=${by[k].n})`).join(' · ');
+      const regress=[], improved=[], thin=[];
+      for(const k of KS){
+        const b=FIT_CLASS_BASELINE[k], v=by[k].n? by[k].ratio.p50 : null;
+        if(by[k].n<FIT_CLASS_MIN_N){ thin.push(`${k} n=${by[k].n}`); continue; }
+        if(b==null){ improved.push(`${k} ${v} (NO BASELINE RECORDED)`); continue; }
+        const dNow=Math.abs(v-1), dBase=Math.abs(b-1);
+        if(dNow-dBase >  FIT_CLASS_TOL) regress.push(`${k} ${v} vs baseline ${b} — ${(dNow-dBase).toFixed(2)} further from 1.0`);
+        else if(dBase-dNow > FIT_CLASS_TOL) improved.push(`${k} ${v} vs baseline ${b} — ${(dBase-dNow).toFixed(2)} closer to 1.0`);
+      }
+      const spread=(()=>{ const v=KS.filter(k=>by[k].n>=FIT_CLASS_MIN_N).map(k=>by[k].ratio.p50).filter(x=>x>0);
+        return v.length>1? +(Math.max(...v)/Math.min(...v)).toFixed(2) : null; })();
+      const head=`per-class p50 ratio — ${line}${spread?` · spread ${spread}x`:''}`;
+      if(regress.length) fail('fit.byclass', `a class moved AWAY from 1.0 — ${head}`,
+        regress.join('; ')+'\nThe pooled fit.roster ratio is a mixture and cancels this; that is why this check exists.');
+      else if(improved.length) warn('fit.byclass', `${head} — a class moved materially TOWARD 1.0`,
+        improved.join('; ')+'\nIf this is the intended fix, re-record FIT_CLASS_BASELINE in eval-gate.mjs deliberately.');
+      else pass('fit.byclass', head+' (tracking the recorded known-bad baseline)');
+      if(thin.length) warn('fit.byclass.thin', 'a class is too thin to gate on', thin.join('; '));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // (b) fit.pairing — is the fit statistic even CAPABLE of seeing a wrong
+    //     assignment? The audit's finding: randomly permuting the modelled
+    //     values across clinics leaves the quantile ratios BIT-IDENTICAL, so
+    //     fit.roster certifies a model with zero per-site skill. A quantile
+    //     ratio constrains a marginal and nothing else.
+    //     A per-pair statistic against rosters cannot rescue that here — the
+    //     model's Spearman vs rosters is already ~0, so a permutation is
+    //     genuinely invisible on that axis. What IS pairing-sensitive today is
+    //     spatial coherence: modelled capture must be a smooth function of
+    //     location (a cell 0.7 mi away sees nearly the same catchment). That is
+    //     high on the shipped assignment and collapses under permutation, so it
+    //     is both alive and discriminating — which is exactly what this check
+    //     has to demonstrate before any other fit number can be believed.
+    // ─────────────────────────────────────────────────────────────────────────
+    {
+      const qqReal=qratio(RAW.m, RAW.r), qqPerm=qratio(permute(RAW.m,PAIR_SEED), RAW.r);
+      const qqInvariant=JSON.stringify(qqReal)===JSON.stringify(qqPerm);
+      const mm=[], nn=[];
+      for(let i=0;i<RAW.m.length;i++) if(RAW.nb[i]!=null){ mm.push(RAW.m[i]); nn.push(RAW.nb[i]); }
+      const cohReal = mm.length>2? spearman(mm,nn) : null;
+      const nulls=[];
+      for(let s=0;s<PAIR_PERMS;s++){ const v=spearman(permute(mm,PAIR_SEED+s), nn); if(v!=null) nulls.push(v); }
+      const nullMax = nulls.length? Math.max(...nulls.map(Math.abs)) : null;
+      const gap = (cohReal!=null && nullMax!=null)? cohReal-nullMax : null;
+      FIT.pairing={ n:mm.length, qqInvariant, qqReal, qqPerm,
+                    coherence: cohReal==null?null:+cohReal.toFixed(3),
+                    nullMean: nulls.length? +mean(nulls).toFixed(3):null,
+                    nullSd:   nulls.length? +sd(nulls).toFixed(4):null,
+                    nullMax:  nullMax==null?null:+nullMax.toFixed(3),
+                    gap:      gap==null?null:+gap.toFixed(3), perms:nulls.length, seed:PAIR_SEED };
+      const qqNote = qqInvariant
+        ? `the quantile-ratio statistic is UNCHANGED by the same permutation (p50 ${qqReal.p50} both ways) — it cannot see an assignment at all`
+        : `NOTE: the quantile-ratio statistic moved under permutation (${qqReal.p50} -> ${qqPerm.p50}), which it should not — investigate before trusting fit.roster`;
+      if(mm.length<50) warn('fit.pairing', `only ${mm.length} clinics had a neighbouring catchment cell — too thin to test the assignment`, qqNote);
+      else if(cohReal==null || nulls.length<PAIR_PERMS) fail('fit.pairing','the coherence statistic could not be computed', qqNote);
+      else if(!(FIT.pairing.nullSd>0)) fail('fit.pairing',
+        'the pairing statistic is PERMUTATION-INVARIANT — this check is worthless as written',
+        `${nulls.length} seeded permutations all returned ${FIT.pairing.nullMean}. A statistic that cannot\n`+
+        `move when the assignment is scrambled certifies nothing. Fix the statistic, not the model.\n`+qqNote);
+      else if(!(gap>=PAIR_GAP_MIN)) fail('fit.pairing',
+        `modelled size is no more spatially coherent than a random assignment — rho ${FIT.pairing.coherence} vs permuted ${FIT.pairing.nullMax}, gap ${FIT.pairing.gap} (need ${PAIR_GAP_MIN})`,
+        'Either the site->value mapping is scrambled (a cell is being scored from the wrong catchment)\n'+
+        'or capture output has stopped depending on location. '+qqNote);
+      else if(PAIR_COH_MIN!=null && cohReal<PAIR_COH_MIN) fail('fit.pairing',
+        `spatial coherence ${FIT.pairing.coherence} fell below the recorded baseline floor ${PAIR_COH_MIN}`,
+        'modelled capture no longer varies smoothly with location — the assignment has partly come apart. '+qqNote);
+      else pass('fit.pairing',
+        `assignment is coherent — neighbour-cell rho ${FIT.pairing.coherence} vs ${FIT.pairing.nullMax} for ${nulls.length} seeded permutations (gap ${FIT.pairing.gap}); ${qqNote}`);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // (c) fit.rank — Spearman(modelled, actual) pooled and per class. The gate
+    //     has never had a per-site accuracy target and must not pretend to: the
+    //     documented state is corr 0.002 per clinic vs 0.697 at market level.
+    //     WARN today, with the promotion path stated in the message so it is a
+    //     decision somebody makes rather than a line nobody reads.
+    // ─────────────────────────────────────────────────────────────────────────
+    {
+      const KS=['rural','exurban','suburban','urban'];
+      const pooled=FIT.rho;
+      const per=KS.map(k=>`${k} ${FIT.byclass[k].rho==null?'-':FIT.byclass[k].rho}`).join(' · ');
+      FIT.rank={ pooled, byclass:Object.fromEntries(KS.map(k=>[k,FIT.byclass[k].rho])) };
+      const head=`Spearman vs rosters — pooled ${pooled} · ${per}`;
+      if(pooled==null) warn('fit.rank','Spearman could not be computed');
+      else if(RANK_BASELINE!=null && pooled < RANK_BASELINE-RANK_TOL) fail('fit.rank',
+        `${head} — pooled dropped ${(RANK_BASELINE-pooled).toFixed(3)} below the recorded baseline ${RANK_BASELINE}`,
+        'the model orders clinics WORSE than it did; that is a regression even while the absolute level is ~0');
+      else if(pooled < RANK_PROMOTE) warn('fit.rank', `${head} — no per-site ordering signal (baseline ${RANK_BASELINE})`,
+        `PROMOTION PATH: this is a WARN only because the model makes no per-site claim. The day a site\n`+
+        `card, report or ranking is presented as per-address accuracy, change this to FAIL below ${RANK_PROMOTE}.\n`+
+        `Until then the honest statement is market-level, not firm-level (see research/site-capture-model.md).`);
+      else pass('fit.rank', head);
+    }
   }
   }catch(e){ fail('fit.error','the roster-fit probe threw', e.constructor.name+': '+e.message); }
   if(!JSON_OUT) console.log(`        ${C.d}n=${FIT?FIT.n:0} · skipped ${FIT?JSON.stringify(FIT.skipped):'-'} · ${((Date.now()-t0)/1000).toFixed(1)}s${C.n}`);
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 10. CLOSURE — the demand half and the supply half must describe ONE metro.
+//     They are calibrated independently and never reconciled: demand is
+//     households x dog rate x visits (the app's pet model), capacity is
+//     DVM_VISIT_CAPACITY per doctor (AVMA throughput). Divide total modelled
+//     visits inside the artifact bbox by the doctors that physically exist
+//     there and the answer must land near DVM_VISIT_CAPACITY. It does not —
+//     measured 1,598 vs 3,200 — which means one half is wrong by ~2x and no
+//     other check in this file can see it. Recorded and tracked, not asserted.
+// ═════════════════════════════════════════════════════════════════════════════
+section('10. closure — modelled metro demand vs the doctors actually there');
+{
+  const CLOSE_BASELINE = 0.50;      // realised visits/DVM as a fraction of DVM_VISIT_CAPACITY
+  const CLOSE_TOL      = 0.08;      // movement beyond this is a real recalibration, not noise
+  const CLOSE_BAND     = [0.85,1.18];   // "closed" — the two halves agree
+  try{
+    CLOSE=JSON.parse(run(`(function(){
+      const B=(_catchData&&_catchData.bbox)||null;
+      if(!B) return JSON.stringify({err:'no artifact bbox'});
+      // Bbox centre of each ZIP polygon; rawBBox is function-scoped in the app so it is redone here.
+      const cen=(f)=>{ const g=f.geometry; if(!g) return null;
+        const rings=g.type==='Polygon'? g.coordinates : g.type==='MultiPolygon'? g.coordinates.flat() : [];
+        let a=90,b=-90,c=180,d=-180;
+        for(const r of rings) for(const p of r){ if(p[1]<a)a=p[1]; if(p[1]>b)b=p[1]; if(p[0]<c)c=p[0]; if(p[0]>d)d=p[0]; }
+        return a>b? null : [(a+b)/2,(c+d)/2]; };
+      let zips=0, hh=0, visits=0;
+      for(const f of ((_zipGeoCache&&_zipGeoCache.features)||[])){
+        const z=f.properties&&f.properties.zip, dd=z? dogData[z] : null; if(!dd) continue;
+        const p=cen(f); if(!p) continue;
+        if(p[0]<B.s||p[0]>B.n||p[1]<B.w||p[1]>B.e) continue;
+        zips++; hh+=dd.households||0;
+        visits += (dd.est||0)*OPP_VISITS_PER_DOGHH + (dd.catEst||0)*OPP_VISITS_PER_CATHH;
+      }
+      // Supply: every clinic the artifact carries, at its scraped roster. Unknown rosters default
+      // to 2 (the app's own assumption) which UNDERSTATES the true count, so the gap is a floor.
+      let dvm=0, known=0, unk=0;
+      for(const cl of ((_catchData&&_catchData.clinics)||[])){
+        const st=_vetStaffAt(cl.la,cl.lo);
+        if(st&&st.n>0){ dvm+=st.n; known++; } else { dvm+=2; unk++; }
+      }
+      return JSON.stringify({ zips, hh:Math.round(hh), visits:Math.round(visits),
+        clinics:((_catchData&&_catchData.clinics)||[]).length, dvm:+dvm.toFixed(1), known, unk,
+        perDVM: dvm? +(visits/dvm).toFixed(1) : null, cap:DVM_VISIT_CAPACITY });
+    })()`));
+  }catch(e){ CLOSE={ err:e.constructor.name+': '+e.message }; }
+
+  if(!CLOSE || CLOSE.err || CLOSE.perDVM==null) fail('closure.metro','could not measure metro closure', CLOSE?CLOSE.err:'no result');
+  else{
+    const ratio=+(CLOSE.perDVM/CLOSE.cap).toFixed(3);
+    CLOSE.ratio=ratio;
+    const head=`${CLOSE.zips} ZIPs · ${CLOSE.hh.toLocaleString()} HH -> ${CLOSE.visits.toLocaleString()} modelled visits/yr `
+             + `vs ${CLOSE.dvm} DVMs at ${CLOSE.clinics} clinics (${CLOSE.known} scraped / ${CLOSE.unk} assumed 2) `
+             + `= ${CLOSE.perDVM.toLocaleString()} visits/DVM, ${ratio}x DVM_VISIT_CAPACITY ${CLOSE.cap}`;
+    const dNow=Math.abs(ratio-1), dBase=Math.abs(CLOSE_BASELINE-1);
+    if(ratio>=CLOSE_BAND[0] && ratio<=CLOSE_BAND[1]) pass('closure.metro', 'the metro CLOSES — '+head);
+    else if(dNow-dBase > CLOSE_TOL) fail('closure.metro', `closure gap WIDENED — ${head}`,
+      `baseline ${CLOSE_BASELINE}x; now ${ratio}x. One half of the model was recalibrated without the other.\n`+
+      `Either demand (pet rate x visits/HH) or capacity (DVM_VISIT_CAPACITY) moved and they no longer\n`+
+      `describe the same metro. This is the check that exists because that has already happened once.`);
+    else if(dBase-dNow > CLOSE_TOL) warn('closure.metro', `closure gap NARROWED — ${head}`,
+      `baseline ${CLOSE_BASELINE}x; now ${ratio}x. If that is the intended fix, re-record CLOSE_BASELINE.`);
+    else warn('closure.metro', `KNOWN OPEN (baseline ${CLOSE_BASELINE}x) — ${head}`,
+      `The demand model supports ~${Math.round(CLOSE.visits/CLOSE.cap).toLocaleString()} full-time DVMs; ${CLOSE.dvm} exist.\n`+
+      `Both halves cannot be right. Tracked as a WARN because closing it is a recalibration, not a bug fix —\n`+
+      `it moves every practice-size, revenue and saturation number in the app at once.`);
+  }
 }
 
 finish();
@@ -937,7 +1280,8 @@ function finish(){
     passed:RESULTS.filter(r=>r.status==='PASS').length,
     node:process.version, generated:new Date().toISOString(),
     net:{local:NET.local,cache:NET.cache,live:NET.live,blocked:NET.blocked},
-    data:DATA, scenarios:SC, gates:GATES, dist:DIST, fit:FIT, results:RESULTS };
+    data:DATA, scenarios:SC, gates:GATES, dist:DIST, fit:FIT,
+    identity:IDENT, closure:CLOSE, results:RESULTS };
   // fs.writeSync, not console.log: process.exit() does not flush an async piped stdout,
   // which silently truncates the --json blob when the gate is driven by another script.
   if(JSON_OUT) fs.writeSync(1, JSON.stringify(summary,null,2)+'\n');

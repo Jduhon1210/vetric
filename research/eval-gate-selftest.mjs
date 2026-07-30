@@ -102,6 +102,42 @@ const MUTATIONS = [
     from:'function _catchShareBand(',
     to:  'function _catchShareBand(cell,b,aOwn,wBar){ return 1; }\nfunction _catchShareBand_dead(',
     expect:'dist.share' },
+
+  // ── the 2026-07-29 hardening (research/algo-audit-2026-07-29.md) ───────────────────────────
+  // These two are the reason §7b and fit.pairing exist. BOTH were invisible to every check that
+  // shipped before them: the pre-hardening gate returns 0 failures on each.
+  { id:'M8', file:'index.html',
+    what:'the site->catchment assignment is PERMUTED — right values, wrong sites',
+    // _catchNearest still returns a REAL cell from the same population (the cells clinics sit on),
+    // so every marginal distribution — and therefore fit.roster, dist.*, gate.* — is preserved.
+    // Only the pairing between a location and its catchment is destroyed. This is the mutation the
+    // audit ran by hand to prove the quantile-ratio statistic is pairing-blind; the metro run does
+    // not use _catchNearest at all, so §5-§8 are untouched by construction.
+    from:'  return (best && Math.sqrt(bd)<0.012) ? best : null;   // ~0.8 mi',
+    to:  '  if(!(best && Math.sqrt(bd)<0.012)) return null;\n'+
+         '  const _P=_catchIdx._p||(_catchIdx._p=(function(){ const o=[];\n'+
+         '    for(const cl of _catchData.clinics){ const kx=Math.round(cl.la*100), ky=Math.round(cl.lo*100);\n'+
+         '      let b2=null, d0=Infinity;\n'+
+         '      for(let dx=-1;dx<=1;dx++) for(let dy=-1;dy<=1;dy++){\n'+
+         '        const arr=_catchIdx.get((kx+dx)+"_"+(ky+dy)); if(!arr) continue;\n'+
+         '        for(const c of arr){ const d=(c.la-cl.la)**2+(c.lo-cl.lo)**2; if(d<d0){ d0=d; b2=c; } } }\n'+
+         '      if(b2 && Math.sqrt(d0)<0.012) o.push(b2); }\n'+
+         '    return o; })());\n'+
+         '  return _P.length? _P[Math.abs(Math.imul(Math.round(la*1e5),2654435761)^Math.round(lo*1e5))%_P.length] : best;',
+    expect:'fit.pairing' },
+
+  { id:'M9', file:'index.html',
+    what:'the reported capture share is floored for presentation — it is no longer the model\'s number',
+    // cEq is untouched, so fit.roster, dist.cEq, the score and every tier gate are byte-identical;
+    // dist.share still passes its degeneracy bounds (p10 0.009 -> 0.05 is neither zero nor >0.85).
+    // The only thing that changed is that the number on the card stopped being share = n*CAP/reach.
+    from:'    cell.cEq=_catchEquilibrium(cc,bd,cell.cWBar);\n'+
+         '    const wv=_catchWinnable(cc,bd,cell.cEq,cell.cWBar);\n'+
+         '    cell.cShare=cell.cReach>0? wv/cell.cReach : 0;',
+    to:  '    cell.cEq=_catchEquilibrium(cc,bd,cell.cWBar);\n'+
+         '    const wv=_catchWinnable(cc,bd,cell.cEq,cell.cWBar);\n'+
+         '    cell.cShare=cell.cReach>0? Math.max(0.05, wv/cell.cReach) : 0;',
+    expect:'share.identity' },
 ];
 
 // ── scratch tree ─────────────────────────────────────────────────────────────
