@@ -7668,7 +7668,7 @@ function siteReport(i){
   </div>
   <div class="chips">
     <span class="chip acc">${tierL}</span>
-    <span class="chip">${(g.share*100).toFixed(0)}% winnable share</span>
+    <span class="chip">${((g.cShareRef!=null?g.cShareRef:g.share)*100).toFixed(1)}% capture, 8-min ring</span>
     <span class="chip">${g.nComp} competitor${g.nComp!==1?'s':''} · ${evalRadiusMi} mi</span>
     ${isFinite(g.nearC)?`<span class="chip">${(g.nearC/1609.344).toFixed(1)} mi to nearest clinic</span>`:''}
   </div>
@@ -9824,7 +9824,7 @@ function _evalRenderSidebar(){
     const stat=(v,l,c)=>`<div style="flex:1;text-align:center;padding:7px 3px;min-width:0"><div style="font-size:12.5px;font-weight:800;color:${c||'#0f172a'};letter-spacing:-.01em;white-space:nowrap">${v}</div><div style="font-size:10.5px;font-weight:700;color:#64748b;letter-spacing:.04em">${l}</div></div>`;
     const sep='<div style="width:1px;background:#eef2f7;margin:7px 0"></div>';
     const strip=`<div id="evst-${i}" style="display:flex;background:#f8fafc;border:1px solid #eef2f7;border-radius:9px;margin:8px 0">${
-      cs?stat(cs.hhIn.toLocaleString(),'HOUSEHOLDS')+sep+stat('~'+kfmt(cs.visits),'VISITS/YR')+sep+stat(String(cs.pe+cs.ind),'COMPETING',(cs.pe+cs.ind)>8?'#be123c':undefined)+sep+stat(_fmtM(cs.rev),'EST. REV','#5b21b6')
+      cs?stat(cs.hhIn.toLocaleString(),'HOUSEHOLDS')+sep+stat('~'+kfmt(cs.visits),'VISITS/YR')+sep+stat(String(cs.pe+cs.ind),'COMPETING',(cs.pe+cs.ind)>8?'#be123c':undefined)+sep+stat(_fmtM(cs.rev),'EST. REV','#24466e')
         :stat('…','HOUSEHOLDS')+sep+stat('…','VISITS/YR')+sep+stat('…','COMPETING')+sep+stat('…','EST. REV')
     }</div>`;
     let body='';
@@ -9839,9 +9839,9 @@ function _evalRenderSidebar(){
       body=cs?`<div style="font-size:11px;line-height:1.9;color:#334155">
         <div style="display:flex;justify-content:space-between"><span style="color:#64748b">Pet households</span><b>${cs.dogIn.toLocaleString()} dog · ${cs.catIn.toLocaleString()} cat</b></div>
         <div style="display:flex;justify-content:space-between"><span style="color:#64748b">Est. vet visits</span><b>~${cs.visits.toLocaleString()}/yr</b></div>
-        <div style="display:flex;justify-content:space-between"><span style="color:#64748b">Winnable at ${(cs.share*100).toFixed(0)}% share</span><b>~${cs.captured.toLocaleString()}/yr</b></div>
+        <div style="display:flex;justify-content:space-between"><span style="color:#64748b">Winnable visits</span><b>~${cs.captured.toLocaleString()}/yr</b></div>
         <div style="display:flex;justify-content:space-between"><span style="color:#64748b">Competing inside</span><b>${cs.pe+cs.ind} (${cs.pe} PE · ${cs.ind} indep)</b></div>
-        <div style="margin-top:3px;font-size:11px;font-weight:700;color:#5b21b6">Supports a ${cs.size} practice · est. revenue ${_fmtM(cs.rev)} <span style="font-weight:500;color:#64748b">(modeled)</span></div>
+        <div style="margin-top:3px;font-size:11px;font-weight:700;color:#24466e">Supports a ${cs.size} practice · est. revenue ${_fmtM(cs.rev)} <span style="font-weight:500;color:#64748b">(modeled)</span></div>
         <div style="font-size:10.5px;color:#64748b;margin-top:2px">${cs.basis==='capture'?'Measured drive-time catchment · credited to 20 min · road-network share':(cs.src==='drive'?'True 10-min drive-time catchment · gravity share':'~3.5 mi radius estimate — refine with the drive area · gravity share')}</div>
       </div>`:`<div style="font-size:11px;color:#64748b;padding:6px 0">Computing catchment…</div>`;
       body+=`<div id="evd-${i}" style="font-size:10.5px;margin-top:6px"></div>
@@ -9860,7 +9860,8 @@ function _evalRenderSidebar(){
         ${_leaseBlock(g)}
       </div>`;
     }
-    const metroNote=evalMetroRun?`<div style="font-size:10.5px;color:#475569;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:5px 9px;margin:6px 0 2px">${evalCaptureOn?`Drive-time capture model${g.cReach?` — <b>${Math.round(g.cReach).toLocaleString()}</b> visits/yr inside the catchment, ${Math.round((g.share||0)*100)}% winnable = <b>${Math.round(g.winVis||0).toLocaleString()}</b> visits/yr supporting a <b>~${((g.winVis||0)/DVM_VISIT_CAPACITY).toFixed(1)}-doctor</b> practice at <b>${_fmtM(g.winRev||0)}</b> revenue${g.cACT!=null&&g.cACT<0.97?` (visit prices run ~${Math.round(g.cACT*100)}% of a high-income market)`:''}${g.cUncon>0.02?` · ${Math.round(g.cUncon*100)}% of households reached by no competitor`:''}${g.cSpend!=null&&g.cSpend<0.97?` · catchment median income $${Math.round((g.cInc||0)/1000)}k — visits ${Math.round(g.cSpend*100)}%, prices ${Math.round((g.cACT||1)*100)}% of a high-income market`:''}${g.cUrb?` · <b>${g.cUrb}</b> decay curve (${g.cUrb==='rural'?'rural households accept longer drives, so the outer bands count more':'denser markets decay faster'})`:''}${g.fuTot>0?` · <b>${Math.round(g.fuTot).toLocaleString()}</b> announced homes inside the same drive rings — <i>trajectory only, not in this score</i>`:''}`:''}.`:`~3-mile screening area${g.snapMi?` — pin placed on the nearest commercial corridor (${g.snapMi.toFixed(1)} mi off the cell center)`:''}.`}${(evalCaptureOn&&g.cUnmet!=null&&evalBuyBox&&evalBuyBox.on)?` <b>Ranked on unmet local demand, not market size:</b> <b>${Math.round(g.cDem10||0).toLocaleString()}</b> visits/yr sit within a 10-minute drive, and the clinics that can serve them cover about <b>${Math.round(100/Math.max(1,g.cU||1))}%</b> of what a typical DFW location gets — leaving <b>${Math.round(g.cUnmet||0).toLocaleString()}</b> visits/yr uncovered${(g.cUnmet||0)>BUYBOX_ABSORB?`, more than a ${BUYBOX_MAX_DVM}-doctor practice could absorb`:''}. A biggest-market ranking returns downtown Dallas instead; this one asks what a new practice could actually take. Underservice is measured against the metro median, never as an absolute shortage.`:''} <b>Refine</b> runs the full parcel-level analysis here.</div>`:'';
+    // The per-card methodology paragraph was removed 2026-07-30 (user: "that long description in the beginning on how it was calculated is not necessary"). The model is already explained once at the top of the Sites pane, and the numbers it narrated are all present as their own labelled rows below. Refine has its own button.
+    const metroNote='';
     return `<div class="eval-card" onclick="evalFlyTo(${i})"${g.tier!=='strong'?' style="opacity:.92"':''}>
       <div class="eval-card-head"><span class="eval-rank"${g.tier!=='strong'?' style="background:#94a3b8"':''}>${i+1}</span><span class="eval-card-title">${evalMetroRun?'Area':'Site'} ${i+1}</span>${chipT}<span class="eval-score"${g.tier!=='strong'?' style="color:#64748b"':''}>${headline}</span></div>
       <div class="eval-why">${nearStr}${roadStr?' · '+roadStr:''}</div>
@@ -10065,7 +10066,7 @@ function _evalRenderSidebar(){
           <div style="width:1px;background:#eef2f7;margin:7px 0"></div>
           ${_sstat(String(g.nComp)+(g.nPE?' · '+g.nPE+' PE':''),'competitors · '+evalRadiusMi+' mi')}
           <div style="width:1px;background:#eef2f7;margin:7px 0"></div>
-          ${_sstat(((g.cShareRef!=null?g.cShareRef:g.share)*100).toFixed(0)+'%', g.cShareRef!=null?'capture share · 8-min ring':'capture share')}
+          ${_sstat(((g.cShareRef!=null?g.cShareRef:g.share)*100).toFixed(1)+'%', g.cShareRef!=null?'capture · 8-min ring':'capture share')}
         </div>
         ${_evalSubject?(()=>{ const sub=_evalSubject;
           const ident=[sub.pe?('<span style="color:#dc2626;font-weight:800">PE'+(sub.owner?' · '+_ceEsc(sub.owner):'')+'</span>'):'<span style="color:#2563eb;font-weight:800">Independent</span>',
@@ -10397,7 +10398,13 @@ async function _evalCatchmentStats(ring, g){
   // $617k/DVM anchor. One constant, so the two can never disagree.
   const econ=_practiceEcon({winnableVisits:captured});
   const dvmFit=econ.dvmEq;
-  const size=dvmFit<1.4?'solo-doctor':dvmFit<2.5?'~2-doctor':dvmFit<3.5?'~3-doctor':'4+ doctor';
+  // Report the modelled figure rather than a bucket (user, 2026-07-30: "I don't like how it says
+  // 4+ doctor, I want it to say the number like 5-6"). A range rather than one rounded integer
+  // because the solve is continuous and a single number would imply precision the model does not
+  // have — 5.78 reads "5-6", which is what it actually supports.
+  const _dLo=Math.floor(dvmFit), _dHi=Math.ceil(dvmFit);
+  const size = dvmFit<1.4 ? 'solo-doctor'
+             : (_dLo===_dHi ? _dLo+'-doctor' : _dLo+'\u2013'+_dHi+'-doctor');
   const rev=econ.rev;
   return {hhIn:Math.round(hhIn), dogIn:Math.round(dogIn), catIn:Math.round(catIn), visits, pe, ind, share, basis:_cc?'capture':'gravity', spendF:_cc?(g.cSpend!=null?g.cSpend:1):null, captured, dvmFit, size, rev, econ, fut, areaMi:_cc?Math.round(_cc.a20||_polyAreaMi(ring)):Math.round(_polyAreaMi(ring))};
 }
@@ -10449,8 +10456,12 @@ function _marketBands(g){
     vis*=sp;
     const sh=_catchShareBand(cc,b,CATCH_REF_DVM,wb,selfW);   // same reference entrant as the card
     const win=vis*(sh||0);
-    cH+=hh; cV+=vis; cW+=win;
-    out.push({ b, t0:CATCH_BANDS[b][0], t1:CATCH_BANDS[b][1], hh, vis, share:sh, win,
+    // Cumulative totals track ONLY the bands the engine credits, so this table can never total to
+    // more than the site card claims. Band 5 (20-25 min) is measured and drawn, but CATCH_MAX_BAND
+    // stops demand there, so folding it into the total would overstate the winnable figure against
+    // every other number in the app.
+    cH+=hh; cV+=vis; if(b<CATCH_MAX_BAND) cW+=win;
+    out.push({ b, scored:b<CATCH_MAX_BAND, t0:CATCH_BANDS[b][0], t1:CATCH_BANDS[b][1], hh, vis, share:sh, win,
                rev:win*REV_PER_VISIT*act, cumHH:cH, cumVis:cV, cumWin:cW, cumRev:cW*REV_PER_VISIT*act,
                area:cc['a'+CATCH_BANDS[b][1]]||0 });
   }
@@ -10489,7 +10500,7 @@ async function showMarket(i, btn){
       `<div style="font-size:11px;line-height:1.5">`+
       `Households <b>${Math.round(info.hh).toLocaleString()}</b><br>`+
       `Vet visits/yr <b>${Math.round(info.vis).toLocaleString()}</b><br>`+
-      `Capture here <b>${((info.share||0)*100).toFixed(0)}%</b><br>`+
+      `Capture here <b>${((info.share||0)*100).toFixed(1)}%</b><br>`+
       `You\u2019d win <b>${Math.round(info.win).toLocaleString()}</b> visits \u00b7 <b>$${(info.rev/1e6).toFixed(2)}M</b>`+
       `<div style="margin-top:4px;padding-top:4px;border-top:1px solid rgba(255,255,255,.25);opacity:.85">`+
       `Cumulative to ${info.t1} min: ${Math.round(info.cumHH).toLocaleString()} HH \u00b7 `+
@@ -10508,8 +10519,8 @@ function _marketTableHTML(bands, g){
     `<tr><td style="padding:3px 6px 3px 0"><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${_MKT_FILL[x.b]};margin-right:5px"></span>${x.t0}\u2013${x.t1}m</td>`+
     `<td style="text-align:right;padding:3px 6px">${Math.round(x.hh).toLocaleString()}</td>`+
     `<td style="text-align:right;padding:3px 6px">${Math.round(x.vis).toLocaleString()}</td>`+
-    `<td style="text-align:right;padding:3px 6px;color:#24466e;font-weight:600">${((x.share||0)*100).toFixed(0)}%</td>`+
-    `<td style="text-align:right;padding:3px 0 3px 6px">${Math.round(x.win).toLocaleString()}</td></tr>`).join('');
+    `<td style="text-align:right;padding:3px 6px;color:#24466e;font-weight:600">${((x.share||0)*100).toFixed(1)}%</td>`+
+    `<td style="text-align:right;padding:3px 0 3px 6px${x.scored?'':';color:var(--muted)'}">${Math.round(x.win).toLocaleString()}${x.scored?'':'*'}</td></tr>`).join('');
   const tot=bands[bands.length-1];
   return `<div style="font-size:11.5px;margin-top:6px">`+
     `<div style="font-weight:600;margin-bottom:4px">Market by drive-time ring</div>`+
@@ -10518,12 +10529,14 @@ function _marketTableHTML(bands, g){
     `<td>Ring</td><td style="text-align:right">Homes</td><td style="text-align:right">Visits/yr</td>`+
     `<td style="text-align:right">Capture</td><td style="text-align:right">You win</td></tr>${rows}`+
     `<tr style="border-top:1px solid #d7def0;font-weight:600">`+
-    `<td style="padding:4px 6px 0 0">Total \u226425m</td>`+
+    `<td style="padding:4px 6px 0 0">Total \u226420m</td>`+
     `<td style="text-align:right;padding:4px 6px 0">${Math.round(tot.cumHH).toLocaleString()}</td>`+
     `<td style="text-align:right;padding:4px 6px 0">${Math.round(tot.cumVis).toLocaleString()}</td>`+
     `<td style="text-align:right;padding:4px 6px 0">\u2014</td>`+
     `<td style="text-align:right;padding:4px 0 0 6px">${Math.round(tot.cumWin).toLocaleString()}</td></tr></table>`+
     `<div style="font-size:10px;color:var(--muted);margin-top:6px;line-height:1.45">`+
+    `<span style="opacity:.8">* the 20\u201325 min ring is measured and drawn, but demand is only `+
+    `credited to 20 minutes (CATCH_MAX_BAND), so it is excluded from the total and from the score.</span><br>`+
     `Real OSRM drive-time outlines measured over the road network. Capture is the share a typical `+
     `${CATCH_REF_DVM}-DVM clinic would win against the competitors who can actually drive to each `+
     `household in that ring \u2014 the same reference used on the card. Hover a ring on the map for detail.</div></div>`;
