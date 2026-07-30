@@ -8885,7 +8885,10 @@ function _evalStageCreep(sb){
     if(!evalActive || !sb.isConnected || !sb.querySelector('.eval-load-bar>i')){ _evalStageStop(); return; }
     const room=_evalStageCeil-_evalStagePct;
     if(room<=0.4) return;             // parked just shy of the next milestone — never claim it early
-    _evalStagePct+=room*0.045;        // ~4.5% of the remaining gap per tick: visible, then slowing
+    // Proportional, with an absolute floor. The proportional term decelerates into each milestone;
+    // the floor keeps the fill visibly moving when it is close to the ceiling, and lets it catch up
+    // from 0 quickly enough that a cached opening still reads as a climb rather than a jump.
+    _evalStagePct+=Math.min(room, Math.max(0.35, room*0.06));
     _evalStagePaint(sb);
   }, 260);
 }
@@ -8899,7 +8902,13 @@ function _evalStage(sb, title, msg){
   // Ceiling = the NEXT milestone's floor, so the creep below can approach but never pass it. An
   // unrecognised stage message keeps whatever ceiling is in force rather than inventing one.
   if(_i>=0) _evalStageCeil = _i+1<_EVAL_STAGE_PCT.length ? _EVAL_STAGE_PCT[_i+1][1] : 96;
-  _evalStagePct=Math.min(96, Math.max(_evalStagePct, hit?hit[1]:_evalStagePct));   // monotonic
+  // Milestones set the CEILING, never the value. Snapping the fill up to each floor is what made
+  // the bar appear to begin at 38% (user, 2026-07-30: "it still starts at 36% then slowly moves
+  // upward, I want it to start at 0"): the opening demographic + clinic loads are force-cached, so
+  // they complete in a few hundred ms and the bar jumped 0 -> 38 before anyone saw it move. Now
+  // every stage only raises the target and the creep below animates into it, so the fill always
+  // travels the whole distance on screen. Still monotonic — the ceiling never decreases.
+  _evalStagePct=Math.min(_evalStagePct, 96);
   const sub = sb.querySelector('.eval-load-sub');
   if(sub){
     sub.textContent=cap;
@@ -8907,7 +8916,7 @@ function _evalStage(sb, title, msg){
     _evalStageCreep(sb);        // restart the creep against the new ceiling
     return;
   }
-  _evalStagePct=hit?hit[1]:5;   // fresh loader = fresh run — reset the bar
+  _evalStagePct=0;              // fresh loader = fresh run — ALWAYS start the bar at zero
   if(_i<0) _evalStageCeil=12;   // unknown opening stage: creep toward the first real milestone
   sb.innerHTML=`<div class="eval-loading"><div class="eval-load-spin"></div>`
     +`<div class="eval-load-title">${title}</div><div class="eval-load-sub">${cap}</div>`
