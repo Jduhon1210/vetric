@@ -917,6 +917,22 @@ body.vf-evallock .leaflet-control-zoom{pointer-events:none;opacity:.45;}
 /* ── Species-unverified modal ── */
 .spov{position:fixed;inset:0;background:rgba(15,23,42,.52);backdrop-filter:blur(4px);z-index:2100;display:none;align-items:center;justify-content:center;padding:24px;}
 .spov.show{display:flex;}
+.strat-lead{font-size:12px;color:var(--muted);line-height:1.55;margin-bottom:11px;}
+.strat-list{display:flex;flex-direction:column;gap:5px;}
+.strat-row{display:flex;gap:9px;align-items:flex-start;padding:9px 11px;border:1px solid var(--border2);border-radius:10px;cursor:pointer;transition:border-color .12s,background .12s;}
+.strat-row:hover{border-color:#c9d4e8;background:#f8fafc;}
+.strat-row.on{border-color:var(--navy);background:#eef2fb;}
+.strat-row input{margin-top:2px;accent-color:var(--navy);flex-shrink:0;}
+.strat-t{display:flex;flex-direction:column;gap:2px;min-width:0;}
+.strat-h{font-size:12.5px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:6px;}
+.strat-b{font-size:11px;color:var(--muted);line-height:1.5;}
+.strat-tag{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--navy);background:#dbe3f5;border-radius:5px;padding:1px 5px;}
+.strat-tag.land{color:#0f766e;background:#ccfbf1;}
+.strat-note{margin-top:11px;font-size:11px;color:#475569;line-height:1.55;background:#f8fafc;border:1px solid var(--border2);border-radius:9px;padding:8px 10px;}
+.strat-ct{display:block;margin-top:5px;font-weight:700;color:var(--navy);}
+.spmod-go{background:var(--navy);color:#fff;border:none;border-radius:9px;padding:8px 16px;font-size:12.5px;font-weight:700;cursor:pointer;}
+.spmod-go:hover{background:#24466e;}
+.spmod-ghost{background:#fff;color:#475569;border:1px solid var(--border2);border-radius:9px;padding:8px 14px;font-size:12.5px;font-weight:600;cursor:pointer;}
 .spmod{background:#fff;border-radius:18px;box-shadow:0 24px 80px rgba(15,23,42,.38),0 2px 8px rgba(15,23,42,.12);width:520px;max-width:100%;max-height:80vh;display:flex;flex-direction:column;overflow:hidden;animation:vfPop .28s cubic-bezier(.2,.85,.3,1.15);}
 .spmod-head{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;font-size:14.5px;font-weight:800;color:var(--navy);border-bottom:1px solid var(--border);}
 .spmod-body{padding:14px 18px;overflow-y:auto;}
@@ -5304,7 +5320,11 @@ let oppView='list';              // 'list' | 'mpc' (Communities ranking)
    site engine (zoning gates, retail corridors, capture model, land plays) across the whole
    region as one drawn-area evaluation. The engine's fixed 36×36 grid self-adapts: over ~105mi
    that's ~3-mile cells — a regional screen, the same run the user validated manually. */
-function evaluateMetroplex(){
+function evaluateMetroplex(force){
+  // The analyst picks the objective BEFORE a ~6-minute run rather than discovering afterwards that
+  // it optimised for something they did not want. Skipping the panel keeps today's behaviour
+  // exactly — `buybox` is the default strategy and reproduces the previous hardcoded pair.
+  if(!force){ _stratModalOpen(); return; }
   const r=oppRegion;
   try{ _loadOppRetail(); _loadLand(); _loadCatchments(); }catch(e){}   // warm snap anchors + drive-time catchments before the compute
   const panel=document.getElementById('opp-panel'); if(panel) panel.classList.remove('show');
@@ -8084,6 +8104,86 @@ const BUYBOX_MIN_INC=110000;
 // capture (`cShareRef`), which is a real competitive read; NEVER against `share`, which is the
 // equilibrium residual and would make this a circular restatement of practice size.
 const BUYBOX_MIN_SHARE=0.20;
+
+// ── ANALYST STRATEGIES (2026-07-30) ─────────────────────────────────────────────────────────
+// What the metro pass OPTIMISES FOR is now the analyst's choice. Every strategy is a pure
+// (rank, screen) pair over cells the engine has ALREADY scored, so switching one re-sorts ~4,000
+// objects in a few ms — it never re-runs the ~6-minute scoring pass.
+//
+// PROVENANCE: presets are grounded in research/vet-site-selection-report.md (the Esri/Buxton
+// screen-then-score funnel and its inverted-competition rule) and research/vet-practice-economics.md
+// (size-graduated margin and multiple). Each was then run offline against all 9,627 artifact cells
+// before shipping; three proposed presets were KILLED by that validation and are recorded at the
+// bottom of this block so they are not re-proposed.
+//
+// LANE NOTE: a metro capture run scores ~4,084 SITEABLE cells for sites and ~5,355 for land plays,
+// not 9,627 — the rest are water, non-siteable fabric or outside the gate. Survivor counts shown in
+// the panel are against the live pool, never against 9,627.
+//
+// EVERY capture screen reads cShareRef (a fixed 3-DVM entrant on the 0-8 min ring), NEVER `share`:
+// `share` is the equilibrium residual, identically cEq*3200/cReach, so screening on it would be
+// asking for a practice of a given size rather than for a competitive position.
+const EVAL_STRATEGIES=[
+  { id:'buybox', label:'PE buy-box', tag:'default',
+    blurb:'High-income, non-rural, genuinely underserved and winnable. What a platform underwrites for a de novo build.',
+    rank:g=>g.score,
+    screen:g=>g.cUrb!=='rural' && (g.cInc||0)>=BUYBOX_MIN_INC && (g.cUnmet||0)>0 && (g.cShareRef||0)>=BUYBOX_MIN_SHARE },
+
+  { id:'defensible', label:'Defensible core',
+    blurb:'Markets a normal 3-doctor clinic could dominate rather than merely enter — 30%+ capture in the 8-minute ring.',
+    // Income floor sits ABOVE the researched 30%-capture default: validated at $90k the picks came
+    // back at $90-94k on the southern county rim, off-product for this buyer. Disclosed in the UI:
+    // at a 30% bar the surviving pool is overwhelmingly exurban, because capture and reach are
+    // strongly inversely related (Spearman -0.885) — this is close to an urbanicity filter.
+    rank:g=>g.score,
+    screen:g=>g.cUrb!=='rural' && (g.cInc||0)>=100000 && (g.cUnmet||0)>0 && (g.cShareRef||0)>=0.30 },
+
+  { id:'lowcontest', label:'Low-contested',
+    blurb:'Open ground — few clinics in range and a high uncontested share of the inner ring.',
+    // The proposed `nPE===0` clause was ABLATED and removed: it was inert at the pick (pool
+    // 189 -> 416, IDENTICAL top 5). The cEq viability floor IS load-bearing (removing it swaps
+    // picks 2-3), so it stays — without it this returns open country that supports no practice.
+    rank:g=>(g.cUncon||0),
+    screen:g=>(g.nComp||0)<=2 && (g.cShareRef||0)>=0.25 && (g.cInc||0)>=90000 && (g.cEq||0)>=1.5 },
+
+  { id:'headroom', label:'Local headroom',
+    // NOT called "underserved suburbs": validated pool is 289 exurban vs 79 suburban, so the
+    // suburban label would have been false.
+    blurb:'Ranked on 10-minute demand that local supply does not cover, measured against the metro median.',
+    rank:g=>(g.cUnmet||0),
+    screen:g=>(g.cUrb==='suburban'||g.cUrb==='exurban') && (g.cInc||0)>=100000 && (g.cU||0)>=1.5 && (g.cShareRef||0)>=0.15 && (g.cUnmet||0)>0 },
+
+  { id:'volume', label:'Highest vet visits',
+    blurb:'The largest reachable pool of annual visits inside 10 minutes, once unwinnable markets are excluded.',
+    // The 12% capture floor is load-bearing and was ablation-tested: without it this returns
+    // Richardson/Plano cells at 6-7% capture. Reach alone explains 81.4% of log-revenue variance,
+    // so an unscreened volume ranking returns downtown Dallas every time.
+    rank:g=>(g.cDem10||0),
+    screen:g=>(g.cShareRef||0)>=0.12 && (g.cUnmet||0)>0 && (g.cInc||0)>=70000 },
+
+  { id:'land', label:'Buy dirt', land:1,
+    blurb:'Land plays ranked on announced buildout that today\'s clinics do not already cover.',
+    rank:g=>(g.cLandRev||0),
+    screen:g=>(g.cFutUnmet||0)>0 },
+];
+// KILLED BY VALIDATION — do not re-propose without new evidence:
+//   urban-infill      DEGENERATE. Only 16 of the 343 urban SITEABLE cells survived; it could not
+//                     fill 5 picks at the shipped separation, and it failed SILENTLY because
+//                     _bbUsed only abandons a screen when the pool is smaller than TOPN.
+//   growth-path       Its rank axis (winRev + cLandRev) correlates 0.877 with cLandRev yet returned
+//                     the SAME top 5 as ranking on winRev alone — the blurb promised an axis the
+//                     maths did not deliver. "Buy dirt" already covers the future-demand question.
+//   acquisition-first "Independent-heavy" is unachievable: independents within 3 mi run p10/p50/p90
+//                     = 2/2/3 across the pool, and requiring >=4 returns ZERO cells metro-wide.
+let evalStrategy='buybox';
+const _evalStrat=()=>EVAL_STRATEGIES.find(x=>x.id===evalStrategy)||EVAL_STRATEGIES[0];
+// Live survivor count for the panel, against the REAL pool rather than a headline number.
+function _stratCount(id){
+  const st=EVAL_STRATEGIES.find(x=>x.id===id); if(!st||!evalCells||!evalCells.length) return null;
+  let n=0; for(const g of evalCells){ if(g.forced) continue; try{ if(st.screen(g)) n++; }catch(e){} }
+  return n;
+}
+
 let _catchAcc=null, _catchAccE=-1, _catchAMed=1;
 // `valOf` is the app's pet model, passed in by the caller — it is function-local to
 // _evalComputeAndRender, so this helper must NOT try to close over it.
@@ -9419,13 +9519,23 @@ function _evalComputeAndRender(){
   // Applied to the PICK, never to the surface: the heatmap stays whole because it is the
   // evidence, and only the endorsement is withheld (the same rule the weak-site tiers follow).
   const _buybox=_metroRun && evalCaptureOn;
-  const _bbOK=g=>g.cUrb!=='rural' && (g.cInc||0)>=BUYBOX_MIN_INC && (g.cUnmet||0)>0
-                 && (g.cShareRef||0)>=BUYBOX_MIN_SHARE;
+  // The analyst's chosen strategy owns both halves of the funnel. 'buybox' reproduces the previous
+  // hardcoded behaviour exactly, so an untouched panel changes nothing.
+  const _st=_evalStrat();
+  const _bbOK=g=>{ try{ return !!_st.screen(g); }catch(e){ return false; } };
   const _bbPool=_buybox? sorted.filter(_bbOK) : sorted;
+  // Re-sort on the strategy's own axis. Guarded: a non-finite rank must never sort above a real
+  // one (a single NaN makes Array.sort's comparator inconsistent and the order arbitrary — that
+  // shipped once already, see the _vetStaffAt note in CLAUDE.md).
+  if(_buybox && _st.rank!==undefined){
+    const _rk=g=>{ let v; try{ v=_st.rank(g); }catch(e){ v=0; } return Number.isFinite(v)?v:-Infinity; };
+    _bbPool.sort((a,b)=>_rk(b)-_rk(a));
+  }
   // Never return nothing because the screen was strict — fall back to the unscreened order and
   // say so, rather than showing an empty metroplex.
   const _bbUsed=(_buybox && _bbPool.length>=TOPN);
-  evalBuyBox=_buybox? {on:_bbUsed, pool:_bbPool.length, minInc:BUYBOX_MIN_INC, minShare:BUYBOX_MIN_SHARE} : null;
+  evalBuyBox=_buybox? {on:_bbUsed, pool:_bbPool.length, minInc:BUYBOX_MIN_INC, minShare:BUYBOX_MIN_SHARE,
+                       strategy:_st.id, strategyLabel:_st.label, fellBack:(_buybox&&!_bbUsed)} : null;
   const _pickFrom=_bbUsed? _bbPool : sorted;
   const top=[];
   for(const g of _pickFrom){ if(g.forced) continue; if(top.every(t=>_farEnough(t,g))){ top.push(g); if(top.length===TOPN) break; } }
@@ -9533,6 +9643,64 @@ function _speciesUnverified(){
     if(_ovKindAt(Math.round(c.lat*1000)+'_'+Math.round(c.lon*1000))) return;
     un.push({i, name:c.name}); });
   return un;
+}
+function _stratModalOpen(){
+  let el=document.getElementById('strat-overlay');
+  if(!el){
+    el=document.createElement('div'); el.id='strat-overlay'; el.className='spov';
+    el.addEventListener('click',ev=>{ if(ev.target===el) _stratModalClose(); });
+    document.body.appendChild(el);
+  }
+  const rows=EVAL_STRATEGIES.map(st=>`
+    <label class="strat-row${st.id===evalStrategy?' on':''}" data-sid="${st.id}">
+      <input type="radio" name="stratpick" value="${st.id}"${st.id===evalStrategy?' checked':''}>
+      <span class="strat-t">
+        <span class="strat-h">${_ceEsc(st.label)}${st.tag?'<span class="strat-tag">'+st.tag+'</span>':''}${st.land?'<span class="strat-tag land">land</span>':''}</span>
+        <span class="strat-b">${_ceEsc(st.blurb)}</span>
+      </span>
+    </label>`).join('');
+  el.innerHTML=`<div class="spmod" style="width:600px">
+    <div class="spmod-head"><span>What should this pass optimise for?</span>
+      <button class="settings-close" onclick="_stratModalClose()" aria-label="Close">✕</button></div>
+    <div class="spmod-body">
+      <div class="strat-lead">Every option re-ranks the same measured drive-time candidates across the metroplex &mdash;
+        they differ in what they treat as a good market, not in how the market is measured.</div>
+      <div class="strat-list">${rows}</div>
+      <div class="strat-note" id="strat-note"></div>
+    </div>
+    <div class="spmod-foot">
+      <button class="spmod-ghost" onclick="_stratModalClose()">Cancel</button>
+      <button class="spmod-go" onclick="_stratRun()">Run evaluation</button>
+    </div></div>`;
+  el.querySelectorAll('.strat-row').forEach(r=>r.addEventListener('click',()=>{
+    el.querySelectorAll('.strat-row').forEach(x=>x.classList.remove('on'));
+    r.classList.add('on'); _stratNote(r.getAttribute('data-sid'));
+  }));
+  _stratNote(evalStrategy);
+  el.classList.add('show');
+}
+// The honest caveat per strategy. Each of these is a MEASURED property of the preset, recorded
+// when it was validated offline against the artifact — not a generic disclaimer.
+const _STRAT_NOTE={
+  buybox:'Today&rsquo;s default. Non-rural, catchment income $110k+, real unmet demand, 20%+ core capture.',
+  defensible:'A 30% core-capture bar is close to an urbanicity filter &mdash; capture and reach are strongly inversely related, so the surviving pool skews heavily exurban.',
+  lowcontest:'Ranks on the uncontested share of the inner ring. The practice-size floor is deliberate: without it this returns open country that supports no clinic.',
+  headroom:'Deliberately not labelled &ldquo;suburbs&rdquo; &mdash; the qualifying pool runs about 4:1 exurban to suburban. Underservice is relative to the metro median, never an absolute shortage.',
+  volume:'Biggest reachable market, not the best one. The capture floor is what stops this returning downtown Dallas, where reach is highest and winnable share is not.',
+  land:'Runs on the land-play candidates rather than the siteable-site grid, and scores announced buildout that today&rsquo;s clinics do not already cover.',
+};
+function _stratNote(id){
+  const n=document.getElementById('strat-note'); if(!n) return;
+  const c=_stratCount(id);
+  n.innerHTML=(_STRAT_NOTE[id]||'')+(c!=null?`<span class="strat-ct">${c.toLocaleString()} of ${evalCells.length.toLocaleString()} scored candidates qualify</span>`:'');
+}
+function _stratModalClose(){ const el=document.getElementById('strat-overlay'); if(el) el.classList.remove('show'); }
+function _stratRun(){
+  const p=document.querySelector('#strat-overlay input[name=stratpick]:checked')
+        ||document.querySelector('#strat-overlay .strat-row.on input');
+  if(p) evalStrategy=p.value;
+  _stratModalClose();
+  evaluateMetroplex(true);
 }
 function _speciesModalOpen(){
   const un=_speciesUnverified(); if(!un.length) return;
@@ -9865,7 +10033,7 @@ function _evalRenderSidebar(){
       </div>`:`<div style="font-size:11px;color:#64748b;padding:6px 0">Computing catchment…</div>`;
       body+=`<div id="evd-${i}" style="font-size:10.5px;margin-top:6px"></div>
       <div style="display:flex;gap:6px;margin-top:6px" onclick="event.stopPropagation()">
-        <button class="vm-export-btn" data-mktbtn="1" style="color:var(--navy);background:#eef2fb;border-color:#c9d4e8;font-weight:600" onclick="showMarket(${i},this)">${_MKT_SHOW}</button>
+        <button class="vm-export-btn" data-mktbtn="1" style="color:var(--navy);background:#eef2fb;border-color:#c9d4e8;font-weight:600" onclick="showMarket(${i},this)">${(_mktLayer&&_mktIdx===i)?_MKT_HIDE:_MKT_SHOW}</button>
         ${g.cc?`<button class="vm-export-btn" style="color:#1e3a8a;background:#eef2fb;border-color:#c9d6ef" onclick="evalPressure(${i},this)">◐ Competitive pressure</button>`:''}
       </div>
       <div id="evov-${i}"></div>`;
@@ -10049,7 +10217,7 @@ function _evalRenderSidebar(){
         ${kv(re_.econ.multAnalyst?('Indicative value @ '+re_.econ.multLo+'× analyst'):('Indicative value @ '+re_.econ.multLo+'–'+re_.econ.multHi+'×'),re_.econ.multAnalyst?_fmtM(re_.econ.valLo):(_fmtM(re_.econ.valLo)+' – '+_fmtM(re_.econ.valHi)),true)}`:''}
         <div style="display:flex;gap:7px;margin:12px 0 8px" onclick="event.stopPropagation()">
           <button class="vm-export-btn" style="flex:1;justify-content:center;background:var(--navy);border-color:var(--navy);color:#fff;font-weight:700" onclick="clinicReport()">↓ Clinic report</button>
-          <button class="vm-export-btn" data-mktbtn="1" style="flex:1;justify-content:center;color:var(--navy);border-color:#c9d4e8;font-weight:700" onclick="showMarket(-2,this)">${_MKT_SHOW}</button>
+          <button class="vm-export-btn" data-mktbtn="1" style="flex:1;justify-content:center;color:var(--navy);border-color:#c9d4e8;font-weight:700" onclick="showMarket(-2,this)">${(_mktLayer&&_mktIdx===-2)?_MKT_HIDE:_MKT_SHOW}</button>
         </div>
         <div id="evd--2">${cs2?_evalCatchHTML(cs2):''}</div>
         ${warns.map(w=>`<div class="cdx-vflag" style="font-weight:500">${w}</div>`).join('')}
@@ -10101,7 +10269,7 @@ function _evalRenderSidebar(){
           </div>`;})():''}
         ${(()=>{ const sid2=g.la.toFixed(4)+','+g.lo.toFixed(4), cs2=_siteCatch[sid2];
           if(_evalSubject&&!cs2) _evalAutoCatch(g);
-          return `<button class="vm-export-btn" data-mktbtn="1" style="width:100%;margin:0 0 8px;background:#eef2fb;border-color:#c9d4e8;color:var(--navy);font-weight:700" onclick="event.stopPropagation();showMarket(-2,this)">${_MKT_SHOW}</button>
+          return `<button class="vm-export-btn" data-mktbtn="1" style="width:100%;margin:0 0 8px;background:#eef2fb;border-color:#c9d4e8;color:var(--navy);font-weight:700" onclick="event.stopPropagation();showMarket(-2,this)">${(_mktLayer&&_mktIdx===-2)?_MKT_HIDE:_MKT_SHOW}</button>
         ${_evalSubject?`<button class="vm-export-btn" style="width:100%;margin:0 0 8px;background:var(--navy);border-color:var(--navy);color:#fff;font-weight:700" onclick="event.stopPropagation();clinicReport()">↓ Download clinic report (PDF)</button>`:''}
         <div id="evd--2">${cs2?_evalCatchHTML(cs2):''}</div>`;})()}
         ${warns.map(w=>`<div style="font-size:10.5px;color:#9f1239;background:#fff1f2;border:1px solid #fecdd3;border-radius:8px;padding:6px 9px;margin:0 0 8px;line-height:1.5">${w}</div>`).join('')}
@@ -10479,7 +10647,10 @@ function _marketBands(g){
     // more than the site card claims. Band 5 (20-25 min) is measured and drawn, but CATCH_MAX_BAND
     // stops demand there, so folding it into the total would overstate the winnable figure against
     // every other number in the app.
-    cH+=hh; cV+=vis; if(b<CATCH_MAX_BAND) cW+=win;
+    // ALL THREE gated identically. Gating only the winnable accumulator made the row labelled
+    // "Total <=20m" report homes and visits through 25 minutes against winnable through 20 — the
+    // exact mixed-horizon error the label was added to prevent.
+    if(b<CATCH_MAX_BAND){ cH+=hh; cV+=vis; cW+=win; }
     out.push({ b, scored:b<CATCH_MAX_BAND, t0:CATCH_BANDS[b][0], t1:CATCH_BANDS[b][1], hh, vis, share:sh, win,
                rev:win*REV_PER_VISIT*act, cumHH:cH, cumVis:cV, cumWin:cW, cumRev:cW*REV_PER_VISIT*act,
                area:cc['a'+CATCH_BANDS[b][1]]||0 });
@@ -10505,15 +10676,23 @@ async function showMarket(i, btn){
   const rad=d && d.cells && d.cells[key];
   if(!rad){ if(btn) btn.textContent=orig; vfToast('Drive-time outlines unavailable for this spot.'); return; }
   const bands=_marketBands(g);
-  _mktLayer=L.layerGroup().addTo(map);
+  if(!map.getPane('mktPane')){ map.createPane('mktPane'); map.getPane('mktPane').style.zIndex=395; }
+  _mktLayer=L.featureGroup().addTo(map);   // featureGroup, so getBounds() genuinely resolves
   // OUTERMOST FIRST so the smaller rings sit on top — hovering then always reports the tightest
   // band containing the cursor, which is what a nested ring diagram should do.
   for(let b=CATCH_BANDS.length-1;b>=0;b--){
     if(!rad[b]) continue;
     const info=bands&&bands[b];
+    // STROKE-ONLY except the outermost. Fill opacity COMPOUNDS across nested polygons — six bands
+    // at 0.10 leave the inner ring under six coats, so the ramp the code declares is not the ramp
+    // drawn, and the ordering inverts in dark mode. One flat wash marks the catchment; rank is
+    // carried by stroke weight and colour together (never colour alone), which also stops the rings
+    // washing out the suitability heatmap they sit on.
+    const outer=(b===CATCH_BANDS.length-1);
     const poly=L.polygon(_ringPoly(rad[b], g.cc.la, g.cc.lo), {
-      color:_MKT_FILL[b], weight:1.6, opacity:0.95,
-      fillColor:_MKT_FILL[b], fillOpacity:0.10 }).addTo(_mktLayer);
+      pane:'mktPane', renderer:_getOverlayCanvas(),
+      color:_MKT_FILL[b], weight:outer?1.4:2.2-b*0.12, opacity:0.95, dashArray:outer?'4,4':null,
+      fill:outer, fillColor:'#1e3a8a', fillOpacity:outer?0.05:0 }).addTo(_mktLayer);
     if(info) poly.bindTooltip(
       `<div style="font-weight:600;margin-bottom:3px">${info.t0}\u2013${info.t1} min drive</div>`+
       `<div style="font-size:11px;line-height:1.5">`+
