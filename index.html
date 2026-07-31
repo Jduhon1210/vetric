@@ -948,6 +948,11 @@ body.vf-evallock .leaflet-control-zoom{pointer-events:none;opacity:.45;}
 @media(max-width:900px){.strat-grid{grid-template-columns:1fr;}}
 .site-ren{background:none;border:none;padding:0 0 0 5px;font-size:11px;color:#94a3b8;cursor:pointer;line-height:1;}
 .site-ren:hover{color:var(--navy);}
+.metro-setup{padding:4px 0 0;}
+.metro-cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;align-items:start;}
+.metro-foot{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:16px;padding-top:12px;border-top:1px solid var(--border2);}
+.metro-cost{font-size:11px;color:var(--muted);}
+@media(max-width:1080px){.metro-cols{grid-template-columns:1fr;}}
 .strat-lead{font-size:12px;color:var(--muted);line-height:1.55;margin-bottom:11px;}
 .strat-list{display:flex;flex-direction:column;gap:5px;}
 .strat-row{display:flex;gap:9px;align-items:flex-start;padding:9px 11px;border:1px solid var(--border2);border-radius:10px;cursor:pointer;transition:border-color .12s,background .12s;}
@@ -6638,8 +6643,9 @@ function renderOppList(){
   const wrap=document.getElementById('opp-list-wrap');
   const tEl=document.getElementById('opp-title'); if(tEl) tEl.textContent='Opportunity Scores · '+oppRegion.name;
   // Two funnel stages, captioned the way PE runs them: market screen → site scoring
-  const seg=`<div><div class="opp-view-seg"><button class="${oppView==='list'?'on':''}" onclick="setOppView('list')">List</button><button class="${oppView==='mpc'?'on':''}" onclick="setOppView('mpc')">Communities</button><button class="metro" onclick="evaluateMetroplex()" title="Run the full site engine — zoning, retail corridors, capture model — across all of ${_ceEsc(oppRegion.name)} at ~3-mile screening grain. Takes a few minutes; returns the top 5 buildable sites.">Evaluate metroplex</button></div>`+
-    `<div style="font-size:10.5px;color:#64748b;font-weight:600;margin-top:3px;letter-spacing:.02em">${oppView==='mpc'?'Master-planned communities · ranked':'ZIP ranking · four weighted factors'}</div></div>`;
+  const seg=`<div><div class="opp-view-seg"><button class="${oppView==='list'?'on':''}" onclick="setOppView('list')">List</button><button class="${oppView==='mpc'?'on':''}" onclick="setOppView('mpc')">Communities</button><button class="metro ${oppView==='metro'?'on':''}" onclick="setOppView('metro')" title="Choose what the pass optimises for, then run the full site engine — zoning, retail corridors, capture model — across all of ${_ceEsc(oppRegion.name)}. Takes a few minutes; returns the top buildable sites.">Evaluate metroplex</button></div>`+
+    `<div style="font-size:10.5px;color:#64748b;font-weight:600;margin-top:3px;letter-spacing:.02em">${oppView==='mpc'?'Master-planned communities · ranked':oppView==='metro'?'Site engine · choose an objective, then run':'ZIP ranking · four weighted factors'}</div></div>`;
+  if(oppView==='metro'){ _renderMetroSetup(wrap, seg); return; }
   if(oppView==='mpc'){ _renderMpcList(wrap, seg); return; }
   document.getElementById('opp-sub').textContent=
     `${oppScored.length} ZIPs scored across ${oppRegion.name} · ranked best to worst`;
@@ -9841,6 +9847,41 @@ function _speciesUnverified(){
     un.push({i, name:c.name}); });
   return un;
 }
+
+// ── Evaluate-metroplex setup, rendered INTO the opportunity pane ─────────────────────────────
+// A modal was wrong here (user, 2026-07-30): it stacked over the ZIP ranking it is meant to
+// replace, and hid the weighting rail the analyst is already reasoning with. As a third view
+// beside List | Communities it sits exactly where the ranking was, the left rail stays visible,
+// and there is no dialog to dismiss.
+function _renderMetroSetup(wrap, seg){
+  if(!evalCustom) evalCustom=_stratSeed(evalStrategy);
+  const rows=EVAL_STRATEGIES.map(st=>`
+    <label class="strat-row${st.id===evalStrategy?' on':''}" data-sid="${st.id}">
+      <input type="radio" name="stratpick" value="${st.id}"${st.id===evalStrategy?' checked':''}>
+      <span class="strat-t"><span class="strat-h">${_ceEsc(st.label)}${st.tag?'<span class="strat-tag">'+st.tag+'</span>':''}${st.land?'<span class="strat-tag land">land</span>':''}</span>
+      <span class="strat-b">${_ceEsc(st.blurb)}</span></span></label>`).join('');
+  document.getElementById('opp-sub').textContent =
+    'Choose what the site engine optimises for across '+oppRegion.name+' · the ZIP ranking is unchanged behind this';
+  wrap.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">${seg}</div>
+    <div class="metro-setup">
+      <div class="metro-cols">
+        <div><div class="strat-lead">Presets are named starting points. Move any control and the run becomes <b>Custom</b>.</div>
+          <div class="strat-list">${rows}</div></div>
+        <div class="strat-right" id="strat-right"></div>
+      </div>
+      <div class="metro-foot">
+        <div class="metro-cost">Scores every candidate across ${_ceEsc(oppRegion.name)} · takes a few minutes</div>
+        <button class="spmod-go" onclick="_stratRun()">◎ Run evaluation</button>
+      </div>
+    </div>`;
+  wrap.querySelectorAll('.strat-row').forEach(r=>r.addEventListener('click',()=>{
+    const id=r.getAttribute('data-sid');
+    evalStrategy=id; evalCustom=_stratSeed(id);
+    wrap.querySelectorAll('.strat-row').forEach(x=>x.classList.remove('on'));
+    r.classList.add('on'); _stratPaint();
+  }));
+  _stratPaint();
+}
 function _stratModalOpen(){
   let el=document.getElementById('strat-overlay');
   if(!el){
@@ -9958,7 +9999,7 @@ function _stratRun(){
   // evalStrategy to 'custom' and deselects every preset row, and re-reading a stale checked radio
   // would silently restore a preset the analyst had moved away from.
   if(!evalCustom) evalCustom=_stratSeed(evalStrategy);
-  _stratModalClose();
+  _stratModalClose();          // no-op unless the legacy modal is somehow open
   evaluateMetroplex(true);
 }
 function _speciesModalOpen(){
