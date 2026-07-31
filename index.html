@@ -7747,8 +7747,14 @@ const _siteNameKey=g=>g? g.la.toFixed(4)+','+g.lo.toFixed(4) : '';
 function _siteNames(){ try{ return JSON.parse(localStorage.getItem('vf_sitenames')||'{}'); }catch(e){ return {}; } }
 function _siteName(g,i){
   const ov=_siteNames()[_siteNameKey(g)];
-  if(ov) return ov;
-  return _siteAutoName(g) || ((evalMetroRun?'Area ':'Site ')+(i+1));
+  if(ov) return ov;                              // an override owns the WHOLE string, noun included
+  const place=_siteAutoName(g);
+  // The noun carries the GRAIN, which is a real distinction and not decoration. A metro pass pins
+  // an AREA on a ~0.61-mi screening grid and the engine has no per-parcel skill, so "Candidate" is
+  // the honest word; a ZIP or dropped-pin run is parcel-grain, where "Site" is earned. Refine
+  // promotes a candidate into sites, and the label should change when it does.
+  const noun=evalMetroRun?'Candidate':'Site';
+  return place ? (place+' '+noun) : (noun+' '+(i+1));
 }
 function siteRename(i,ev){
   if(ev) ev.stopPropagation();
