@@ -86,7 +86,8 @@ body.vf-dark .popup-sv-wrap,body.vf-dark .clear-area-btn,body.vf-dark .region-bt
 body.vf-dark .set-tab,body.vf-dark .pp-actions button{background:var(--bg2)!important;color:var(--text2)!important;border-color:var(--border)!important;}
 body.vf-dark .vm-export-btn:hover,body.vf-dark .settings-btn:hover,body.vf-dark .eval-chip:hover{background:var(--border)!important;}
 /* Keep the emphasis states loud: navy primaries and "on" chips stay filled. */
-body.vf-dark .settings-btn.save,body.vf-dark .eval-chip.on,body.vf-dark .opp-view-seg button.on{background:var(--navy)!important;color:#fff!important;border-color:var(--navy)!important;}
+body.vf-dark .settings-btn.save,body.vf-dark .eval-chip.on,body.vf-dark .opp-view-seg button.on:not(.metro){background:var(--navy)!important;color:#fff!important;border-color:var(--navy)!important;}
+body.vf-dark .opp-view-seg button.metro.on{background:var(--surface)!important;color:#93c5fd!important;box-shadow:inset 0 -2px 0 #93c5fd;}
 body.vf-dark [style*="border:1px solid #eef2f7"],body.vf-dark [style*="border:1px solid #e2e8f0"],
 body.vf-dark [style*="border:1px solid #dfe3e9"],body.vf-dark [style*="border:1px solid #d7def0"],
 body.vf-dark [style*="border:1px solid #dbe3f0"],body.vf-dark [style*="border:1px solid #e5e8ee"]{border-color:var(--border)!important;}
@@ -322,6 +323,13 @@ input[type=search]::-webkit-search-cancel-button,input[type=search]::-webkit-sea
 .opp-view-seg button.metro{color:#1e3a8a;border-left:1px solid var(--border);display:inline-flex;align-items:center;gap:6px;white-space:nowrap;}
 .opp-view-seg button.metro::before{content:'◎';font-size:13px;line-height:1;opacity:.75;}
 .opp-view-seg button.metro:hover{background:#eef3fb;}
+/* The metro segment keeps its WHITE ground when active (user, 2026-07-30: "I don't like the green
+   ... I liked it white"). The shared .on rule paints segments green, which is right for List and
+   Communities — they swap one ranking for another — but wrong here: this segment is the site
+   engine, it already reads as distinct via the navy text and crosshair, and a green fill made it
+   shout. Active state is a navy underline plus a solid crosshair instead. */
+.opp-view-seg button.metro.on{background:#fff;color:#1e3a8a;box-shadow:inset 0 -2px 0 #1e3a8a;}
+.opp-view-seg button.metro.on::before{opacity:1;}
 .opp-list-head{display:grid;grid-template-columns:30px 1fr 64px;gap:12px;padding:0 14px 10px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);position:sticky;top:0;background:var(--bg);}
 .opp-caret{display:inline-block;font-size:11px;color:#64748b;font-weight:700;transition:transform .15s;}
 .opp-caret.open{transform:rotate(180deg);}
@@ -920,53 +928,53 @@ body.vf-evallock .leaflet-control-zoom{pointer-events:none;opacity:.45;}
 .strat-grid{display:grid;grid-template-columns:340px 1fr;gap:16px;align-items:start;}
 .strat-left{min-width:0;} .strat-right{min-width:0;display:flex;flex-direction:column;gap:11px;}
 .st-f{display:flex;flex-direction:column;gap:6px;}
-.st-lab{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:#64748b;}
+.st-lab{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:#475569;}
 .st-sel{font:inherit;font-size:12.5px;padding:7px 9px;border:1px solid var(--border2);border-radius:9px;background:#fff;color:var(--text);}
-.st-note{font-size:11px;color:#64748b;line-height:1.5;}
+.st-note{font-size:11px;color:#475569;line-height:1.5;}
 .st-chips{display:flex;gap:5px;flex-wrap:wrap;}
 .st-chip{font-size:11.5px;font-weight:600;text-transform:capitalize;padding:5px 11px;border:1px solid var(--border2);border-radius:999px;background:#fff;color:#475569;cursor:pointer;}
 .st-chip.on{background:var(--navy);border-color:var(--navy);color:#fff;}
-.st-sl label{display:flex;justify-content:space-between;font-size:11.5px;color:#475569;margin-bottom:2px;}
+.st-sl label{display:flex;justify-content:space-between;font-size:11.5px;color:#334155;font-weight:600;margin-bottom:2px;}
 .st-sl label b{color:var(--navy);font-variant-numeric:tabular-nums;}
 .st-sl input[type=range]{width:100%;accent-color:var(--navy);}
-.st-ck{display:flex;gap:7px;align-items:center;font-size:11.5px;color:#475569;cursor:pointer;}
+.st-ck{display:flex;gap:7px;align-items:center;font-size:12px;color:#334155;font-weight:600;cursor:pointer;}
 .st-ck input{accent-color:var(--navy);}
-.st-topn{display:flex;align-items:center;gap:6px;font-size:11.5px;color:#475569;}
+.st-topn{display:flex;align-items:center;gap:6px;font-size:11.5px;color:#334155;font-weight:600;}
 .st-seg{font-size:11.5px;font-weight:700;padding:4px 11px;border:1px solid var(--border2);border-radius:8px;background:#fff;color:#475569;cursor:pointer;}
 .st-seg.on{background:var(--navy);border-color:var(--navy);color:#fff;}
-.st-wf{border:1px solid var(--border2);border-radius:10px;padding:10px 12px;background:#f8fafc;font-size:11.5px;}
+.st-wf{border:1px solid var(--border2);border-radius:10px;padding:10px 12px;background:#fff;font-size:11.5px;}
 .st-wf.warn{border-color:#fecdd3;background:#fff1f2;} .st-wf.zero{border-color:#fca5a5;background:#fef2f2;}
-.st-wf-h{font-weight:700;color:#475569;padding-bottom:6px;border-bottom:1px solid var(--border2);margin-bottom:6px;}
-.st-wf-row{display:flex;justify-content:space-between;gap:8px;padding:2px 0;color:#475569;}
-.st-wf-row i{font-style:normal;color:#94a3b8;} .st-wf-row b{color:#be123c;font-variant-numeric:tabular-nums;}
-.st-wf-row.none{color:#94a3b8;}
+.st-wf-h{font-weight:700;color:#0f172a;padding-bottom:6px;border-bottom:1px solid var(--border2);margin-bottom:6px;}
+.st-wf-row{display:flex;justify-content:space-between;gap:8px;padding:3px 0;color:#334155;}
+.st-wf-row i{font-style:normal;color:#64748b;} .st-wf-row b{color:#be123c;font-variant-numeric:tabular-nums;}
+.st-wf-row.none{color:#64748b;}
 .st-wf-tot{display:flex;justify-content:space-between;margin-top:6px;padding-top:6px;border-top:1px solid var(--border2);font-weight:800;color:var(--navy);}
 .st-wf-tot b{font-variant-numeric:tabular-nums;font-size:14px;}
 .st-wf-msg{margin-top:6px;color:#9f1239;font-weight:600;line-height:1.45;}
-.st-wf-empty{border:1px dashed var(--border2);border-radius:10px;padding:10px 12px;font-size:11.5px;color:#64748b;line-height:1.55;background:#f8fafc;}
-.st-limits{font-size:10.5px;color:#64748b;line-height:1.5;border-top:1px solid var(--border2);padding-top:9px;}
+.st-wf-empty{border:1px dashed var(--border2);border-radius:10px;padding:10px 12px;font-size:11.5px;color:#475569;line-height:1.55;background:#fff;}
+.st-limits{font-size:10.5px;color:#475569;line-height:1.5;border-top:1px solid var(--border2);padding-top:9px;}
 @media(max-width:900px){.strat-grid{grid-template-columns:1fr;}}
 .site-ren{background:none;border:none;padding:0 0 0 5px;font-size:11px;color:#94a3b8;cursor:pointer;line-height:1;}
 .site-ren:hover{color:var(--navy);}
 .metro-setup{padding:4px 0 0;}
 .metro-cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;align-items:start;}
 .metro-foot{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:16px;padding-top:12px;border-top:1px solid var(--border2);}
-.metro-cost{font-size:11px;color:var(--muted);}
+.metro-cost{font-size:11px;color:#475569;}
 @media(max-width:1080px){.metro-cols{grid-template-columns:1fr;}}
-.strat-lead{font-size:12px;color:var(--muted);line-height:1.55;margin-bottom:11px;}
+.strat-lead{font-size:12px;color:#475569;line-height:1.55;margin-bottom:11px;}
 .strat-list{display:flex;flex-direction:column;gap:5px;}
 .strat-row{display:flex;gap:9px;align-items:flex-start;padding:9px 11px;border:1px solid var(--border2);border-radius:10px;cursor:pointer;transition:border-color .12s,background .12s;}
-.strat-row:hover{border-color:#c9d4e8;background:#f8fafc;}
+.strat-row:hover{border-color:#c9d4e8;background:#fbfcfe;}
 .strat-row.on{border-color:var(--navy);background:#eef2fb;}
 .strat-row input{margin-top:2px;accent-color:var(--navy);flex-shrink:0;}
 .strat-t{display:flex;flex-direction:column;gap:2px;min-width:0;}
-.strat-h{font-size:12.5px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:6px;}
-.strat-b{font-size:11px;color:var(--muted);line-height:1.5;}
+.strat-h{font-size:13px;font-weight:800;color:#0f172a;letter-spacing:-.01em;display:flex;align-items:center;gap:6px;}
+.strat-b{font-size:11px;color:#475569;line-height:1.5;}
 .strat-tag{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--navy);background:#dbe3f5;border-radius:5px;padding:1px 5px;}
 .strat-tag.land{color:#0f766e;background:#ccfbf1;}
 .strat-note{margin-top:11px;font-size:11px;color:#475569;line-height:1.55;background:#f8fafc;border:1px solid var(--border2);border-radius:9px;padding:8px 10px;}
 .strat-ct{display:block;margin-top:5px;font-weight:700;color:var(--navy);}
-.strat-ct.dim{font-weight:500;color:#64748b;}
+.strat-ct.dim{font-weight:500;color:#475569;}
 .spmod-body{padding-bottom:16px;}
 .spmod-go{background:var(--navy);color:#fff;border:none;border-radius:9px;padding:8px 16px;font-size:12.5px;font-weight:700;cursor:pointer;}
 .spmod-go:hover{background:#24466e;}
