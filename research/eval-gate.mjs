@@ -1217,7 +1217,15 @@ else{
 // ═════════════════════════════════════════════════════════════════════════════
 section('10. closure — modelled metro demand vs the doctors actually there');
 {
-  const CLOSE_BASELINE = 0.50;      // realised visits/DVM as a fraction of DVM_VISIT_CAPACITY
+  // RE-RECORDED 2026-07-30 with the corrected denominator (GP-only, rosters de-duplicated).
+  // The 0.50 it replaces was never a property of the model — roughly two thirds of that gap was
+  // this check counting ER/specialty and large-animal doctors, and counting shared rosters more
+  // than once. What remains is a real question about DVM_VISIT_CAPACITY=3200, which is a capacity
+  // CEILING being used in an equilibrium condition as if it were a realised mean: the national
+  // identity (175.5M companion visits / 68,400 companion-animal vets) puts realised throughput at
+  // ~2,566/yr, i.e. 0.80x the constant. Closing that is a recalibration of every practice-size and
+  // revenue number in the app, so it stays a WARN and its own decision.
+  const CLOSE_BASELINE = 0.637;     // MEASURED on this tree, not the predicted 0.656
   const CLOSE_TOL      = 0.08;      // movement beyond this is a real recalibration, not noise
   const CLOSE_BAND     = [0.85,1.18];   // "closed" — the two halves agree
   try{
@@ -1238,15 +1246,42 @@ section('10. closure — modelled metro demand vs the doctors actually there');
         zips++; hh+=dd.households||0;
         visits += (dd.est||0)*OPP_VISITS_PER_DOGHH + (dd.catEst||0)*OPP_VISITS_PER_CATHH;
       }
-      // Supply: every clinic the artifact carries, at its scraped roster. Unknown rosters default
-      // to 2 (the app's own assumption) which UNDERSTATES the true count, so the gap is a floor.
-      let dvm=0, known=0, unk=0;
+      // SUPPLY. The denominator must contain the doctors who actually serve the demand in the
+      // numerator, which is dog-and-cat GENERAL PRACTICE. Two corrections, both measured
+      // 2026-07-30 — before them this check read 0.501 and looked like a model error when most of
+      // it was a counting error in the check itself.
+      //
+      // (a) EXCLUDE what the engine already excludes. _isSpecialtyERAt and _isLargeAnimalAt keep
+      //     ER/specialty and equine/livestock practices out of every competition model in the app;
+      //     counting their doctors here credits the GP pool with 293 + 85 DVMs that never see a
+      //     routine dog visit. Using the engine's own predicates keeps this consistent with what
+      //     it scores, rather than inventing a second rule.
+      // (b) DE-DUPLICATE shared rosters. _vetStaffAt matches within ~330m, and multi-location
+      //     groups publish one "our doctors" page across every site, so the same named roster is
+      //     credited repeatedly — 150 GP clinics carry a roster fingerprint identical to another's.
+      //     Each distinct roster counts ONCE; the duplicates fall back to the app's default of 2.
+      //
+      // Unknown rosters still default to 2, which understates the true count, so the residual gap
+      // remains a FLOOR rather than a point estimate.
+      const _nm=(la,lo)=>{ const v=_vetEnrichAt(la,lo); return (v&&v.name)||''; };
+      let dvm=0, known=0, unk=0, exSpec=0, exLarge=0, dupes=0, dupDvm=0;
+      const seenRoster=new Set();
       for(const cl of ((_catchData&&_catchData.clinics)||[])){
+        const nm=_nm(cl.la,cl.lo);
+        if(_isSpecialtyERAt(nm,cl.la,cl.lo)){ exSpec++; continue; }
+        if(_isLargeAnimalAt(nm,cl.la,cl.lo)){ exLarge++; continue; }
         const st=_vetStaffAt(cl.la,cl.lo);
-        if(st&&st.n>0){ dvm+=st.n; known++; } else { dvm+=2; unk++; }
+        if(st&&st.n>0){
+          // Fingerprint on the NAMES when we have them — two clinics with the same five doctors are
+          // one roster published twice, not ten doctors.
+          const fp=(st.vets&&st.vets.length)? st.vets.slice().sort().join('|') : null;
+          if(fp && seenRoster.has(fp)){ dupes++; dupDvm+=st.n-2; dvm+=2; unk++; }
+          else { if(fp) seenRoster.add(fp); dvm+=st.n; known++; }
+        } else { dvm+=2; unk++; }
       }
       return JSON.stringify({ zips, hh:Math.round(hh), visits:Math.round(visits),
         clinics:((_catchData&&_catchData.clinics)||[]).length, dvm:+dvm.toFixed(1), known, unk,
+        exSpec, exLarge, dupes, dupDvm:+dupDvm.toFixed(0),
         perDVM: dvm? +(visits/dvm).toFixed(1) : null, cap:DVM_VISIT_CAPACITY });
     })()`));
   }catch(e){ CLOSE={ err:e.constructor.name+': '+e.message }; }
