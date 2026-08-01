@@ -956,16 +956,21 @@ body.vf-evallock .leaflet-control-zoom{pointer-events:none;opacity:.45;}
 @media(max-width:900px){.strat-grid{grid-template-columns:1fr;}}
 .site-ren{background:none;border:none;padding:0 0 0 5px;font-size:11px;color:#94a3b8;cursor:pointer;line-height:1;}
 .site-ren:hover{color:var(--navy);}
-.metro-setup{padding:4px 0 0;}
+/* The Opportunity panel ground is --bg #eef2f8. The List view survives that because its rows are
+   white cards on top; this view did not — the controls column sat DIRECTLY on the grey, so half
+   the panel read as a slab (user, 2026-07-30: "make this window white"). The whole setup is now
+   one white working surface, with a navy hairline at the top edge tying it to the active segment. */
+.metro-setup{background:#fff;border:1px solid var(--border);border-top:2px solid var(--navy);
+  border-radius:var(--radius-lg);padding:16px 18px 14px;box-shadow:0 1px 3px rgba(15,23,42,.05);}
 .metro-cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;align-items:start;}
-.metro-foot{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:16px;padding-top:12px;border-top:1px solid var(--border2);}
+.metro-foot{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:18px;padding-top:13px;border-top:1px solid var(--border2);}
 .metro-cost{font-size:11px;color:#475569;}
 @media(max-width:1080px){.metro-cols{grid-template-columns:1fr;}}
 .strat-lead{font-size:12px;color:#475569;line-height:1.55;margin-bottom:11px;}
 .strat-list{display:flex;flex-direction:column;gap:5px;}
-.strat-row{display:flex;gap:9px;align-items:flex-start;padding:9px 11px;border:1px solid var(--border2);border-radius:10px;cursor:pointer;transition:border-color .12s,background .12s;}
+.strat-row{display:flex;gap:9px;align-items:flex-start;padding:9px 11px;border:1px solid var(--border2);border-radius:10px;cursor:pointer;background:#fbfcfe;transition:border-color .12s,background .12s,box-shadow .12s;}
 .strat-row:hover{border-color:#c9d4e8;background:#fbfcfe;}
-.strat-row.on{border-color:var(--navy);background:#eef2fb;}
+.strat-row.on{border-color:var(--navy);background:#eef2fb;box-shadow:0 1px 3px rgba(30,58,138,.10);}
 .strat-row input{margin-top:2px;accent-color:var(--navy);flex-shrink:0;}
 .strat-t{display:flex;flex-direction:column;gap:2px;min-width:0;}
 .strat-h{font-size:13px;font-weight:800;color:#0f172a;letter-spacing:-.01em;display:flex;align-items:center;gap:6px;}
