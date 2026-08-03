@@ -8278,12 +8278,21 @@ const CATCH_MAX_BAND=5;
 const CATCH_REF_DVM=3;
 const BUYBOX_MAX_DVM=6;                     // what a new-build GP practice can realistically absorb
 const BUYBOX_ABSORB=BUYBOX_MAX_DVM*DVM_VISIT_CAPACITY;
-// Catchment-income floor for the metro screen. Swept against the revenue-ranked pool 2026-07-30:
-//   $90k -> mean income $103k / mean revenue $3.25M (admits Red Oak $92k twice, Forney $94k)
-//   $110k -> mean income $122k / mean revenue $2.93M   <-- the knee: +$19k income for -$0.32M
-//   $120k -> mean income $127k / mean revenue $2.55M (revenue falls off fast past the knee)
-// Set at the knee because the buy-box is a HIGH-INCOME suburb thesis; the revenue cost is ~10%.
-const BUYBOX_MIN_INC=110000;
+// Catchment-income floor for the metro screen. Two pieces of evidence pull in opposite directions
+// and this constant sits deliberately between them.
+//   (a) A revenue-ranked sweep put the knee at $110k: $90k -> mean income $103k / revenue $3.25M;
+//       $110k -> $122k / $2.93M; $120k -> $127k / $2.55M. That argued for $110k.
+//   (b) REVEALED PE BEHAVIOUR contradicts it. Measured over 321 DFW PE clinics: median catchment
+//       income $96,557 versus $95,701 for independents — statistically indistinguishable (z=1.59)
+//       — and only 31.7% of PE locations clear $110k against 29.8% of RANDOM metro cells. Ten
+//       years of committed capital shows no income selection at all. Of the large acquirers only
+//       Shore Capital ($118k median) buys to this thesis.
+// $100k is a COMPROMISE, and it is honest to say nothing measures it: it sits above the revealed
+// median but below the sweep knee. The defensible reading of (b) is that PE mostly ACQUIRES, and
+// an acquirer's choice set is existing practices, which sit where people already are — a different
+// question from where to BUILD. That argues the floor should not simply track PE. It does not
+// argue for $110k either. It is a slider, so any run can override it.
+const BUYBOX_MIN_INC=100000;
 // DEFENSIBILITY FLOOR. Metro runs rank on modelled REVENUE (user, 2026-07-30: the unmet-demand
 // ranking favoured thin markets and topped out at $0.85-3.61M). Revenue alone is market size —
 // exactly the pull back toward saturated Dallas that started all this — so the pick additionally
@@ -8313,7 +8322,7 @@ const BUYBOX_MIN_SHARE=0.20;
 // `share` is the equilibrium residual, identically cEq*3200/cReach, so screening on it would be
 // asking for a practice of a given size rather than for a competitive position.
 const EVAL_STRATEGIES=[
-  { id:'buybox', label:'PE buy-box', tag:'default', seed:{obj:'score',  mkt:['urban','suburban','exurban'], inc:110000, cap:0.20, unmet:true},
+  { id:'buybox', label:'PE buy-box', tag:'default', seed:{obj:'score',  mkt:['urban','suburban','exurban'], inc:BUYBOX_MIN_INC, cap:BUYBOX_MIN_SHARE, unmet:true},
     blurb:'High-income, non-rural, genuinely underserved and winnable. What a platform underwrites for a de novo build.',
     rank:g=>g.score,
     screen:g=>g.cUrb!=='rural' && (g.cInc||0)>=BUYBOX_MIN_INC && (g.cUnmet||0)>0 && (g.cShareRef||0)>=BUYBOX_MIN_SHARE },
@@ -10355,6 +10364,51 @@ async function openLeaseSearch(lat,lon,site,mode){
 }
 // Handoff block for a recommended site: an expectation line (set from the local retail fabric so
 // an empty lease search is never a surprise) + Lease and Land-to-build links into Crexi + LoopNet.
+
+// ── INCOMING COMPETITION (2026-07-30) ────────────────────────────────────────────────────────
+// TABS registers every Texas commercial job over $50k BEFORE construction, so a vet project there
+// is a clinic that does not exist yet and will not reach Google Places for months. A de novo site
+// takes 12-18 months to build and ramp, so a clinic delivering inside that window will be open
+// before yours is — it belongs in the analyst's view of the market.
+//
+// WHY IT IS NOT IN THE CAPTURE SHARE. That path reads `cell.cd`, the competitor distribution BAKED
+// INTO dfw-catchments.json at build time; a runtime competitor cannot move it. The alternatives
+// were rebuilding the artifact (a deliberate separate job, and one that would conflate today's
+// market with a future one) or a mean-field fudge to K — which would produce a confident wrong
+// number. An advisory is the honest instrument for something real that the model cannot price.
+//
+// Remodels are excluded by the SAME 150 m test the map paws use: 6 of the 19 DFW projects renovate
+// a clinic already counted, and TABS cannot tell a remodel from a ground-up build.
+let _pipeVetCache=null;
+function _pipelineVets(){
+  if(_pipeVetCache) return _pipeVetCache;
+  const d=_commData; if(!d||!d.list) return null;      // not loaded yet — recomputed on a later render
+  const ex=[];
+  try{ for(const v of _activeVetClinics()) ex.push([v.lat,v.lon]);
+       if(peLoaded && typeof PE_COORDS!=='undefined') for(const p of PE_COORDS) ex.push([p[0],p[1]]); }catch(e){}
+  const isRemodel=(la,lo)=>{ for(const [a,b] of ex){ if(Math.abs(a-la)>0.0025) continue;
+    if(hav(la,lo,a,b)<150) return true; } return false; };
+  _pipeVetCache=d.list.filter(r=>r.kind==='vet' && r.la!=null && !isRemodel(r.la,r.lo));
+  return _pipeVetCache;
+}
+function _pipelineNear(la,lo,mi){
+  const P=_pipelineVets(); if(!P||!P.length) return [];
+  const out=[];
+  for(const r of P){ const d=hav(la,lo,r.la,r.lo)/1609.344;
+    if(d<=mi) out.push({d, n:r.n||'Veterinary project', end:r.end||null, approx:!!r.approx}); }
+  return out.sort((a,b)=>a.d-b.d);
+}
+function _pipelineHTML(g){
+  if(!g) return '';
+  const P=_pipelineNear(g.la,g.lo,evalRadiusMi); if(!P.length) return '';
+  const rows=P.slice(0,4).map(x=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:2px 0">
+    <span>${_ceEsc(x.n).slice(0,40)}${x.approx?' <i style="font-style:normal;opacity:.75">· approx.</i>':''}</span>
+    <b style="white-space:nowrap">${x.d.toFixed(1)} mi${x.end?' · '+String(x.end).slice(0,7):''}</b></div>`).join('');
+  return `<div style="background:#fff1f2;border:1px solid #fecdd3;border-radius:9px;padding:8px 10px;margin-top:8px;font-size:11px;color:#9f1239;line-height:1.5" onclick="event.stopPropagation()">
+    <div style="font-weight:800;margin-bottom:3px">${P.length} clinic${P.length!==1?'s':''} under construction within ${evalRadiusMi} mi</div>
+    ${rows}
+    <div style="font-size:10px;margin-top:5px;opacity:.9">Registered with TDLR before building, so not yet open and <b>not</b> in the capture share above — that reads today&rsquo;s market. Delivery dates are the applicant&rsquo;s estimate.</div></div>`;
+}
 function _leaseBlock(g){
   const la=g.la, lo=g.lo;
   let note='';
@@ -10426,7 +10480,7 @@ function _evalRenderSidebar(){
       body=`<div style="font-size:11px;line-height:2;color:#334155" onclick="event.stopPropagation()">
         <div><a href="https://www.google.com/maps/search/?api=1&query=${g.la},${g.lo}" target="_blank" rel="noopener" style="color:var(--navy);font-weight:700;text-decoration:none">Google Maps ↗</a> <span style="color:#64748b;font-family:'JetBrains Mono',monospace;font-size:10.5px;margin-left:6px">${sid}</span></div>
         ${_leaseBlock(g)}
-      </div>`;
+      </div>${_pipelineHTML(g)}`;
     }
     // The per-card methodology paragraph was removed 2026-07-30 (user: "that long description in the beginning on how it was calculated is not necessary"). The model is already explained once at the top of the Sites pane, and the numbers it narrated are all present as their own labelled rows below. Refine has its own button.
     const metroNote='';
