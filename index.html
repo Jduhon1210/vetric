@@ -540,6 +540,15 @@ input[type=search]::-webkit-search-cancel-button,input[type=search]::-webkit-sea
 .eval-toggle-row{display:flex;gap:6px;padding:0 12px 8px;flex-wrap:wrap;}
 .eval-chip{font-size:11px;border:1px solid var(--border2);border-radius:20px;padding:3px 10px;cursor:pointer;color:#64748b;background:#fff;user-select:none;}
 .eval-chip.on{background:var(--navy);color:#fff;border-color:var(--navy);}
+/* Heat-surface cursor readout. Positioned with transform rather than left/top so it moves on the
+   compositor and never triggers layout — the map is already transforming every frame during a pan. */
+.heat-tip{position:absolute;top:0;left:0;z-index:800;pointer-events:none;display:none;align-items:center;gap:6px;
+  background:rgba(15,23,42,.93);backdrop-filter:blur(3px);color:#fff;padding:5px 10px 5px 8px;border-radius:8px;
+  white-space:nowrap;box-shadow:0 3px 14px rgba(15,23,42,.32);border:1px solid rgba(255,255,255,.12);will-change:transform;}
+.heat-tip i{width:8px;height:8px;border-radius:2px;flex-shrink:0;box-shadow:0 0 0 1px rgba(255,255,255,.35);}
+.heat-tip b{font-size:14px;font-weight:800;letter-spacing:-.02em;line-height:1;}
+.heat-tip .u{font-size:10px;color:#94a3b8;margin-left:-3px;}
+.heat-tip em{font-style:normal;font-size:10.5px;color:#cbd5e1;padding-left:7px;margin-left:1px;border-left:1px solid rgba(255,255,255,.18);}
 .eval-legend{position:absolute;bottom:26px;left:14px;background:rgba(255,255,255,0.97);border-radius:var(--radius-lg);padding:12px 14px;box-shadow:0 4px 20px rgba(0,0,0,.14);border:1px solid var(--border);z-index:500;min-width:188px;max-width:264px;backdrop-filter:blur(4px);display:none;}
 .eval-legend.show{display:block;}
 .eval-legend .legend-grad{height:10px;border-radius:5px;background:linear-gradient(90deg,#3c8a28,#96c459,#f4c430,#ef9c27,#e04444);margin:2px 0 4px;}
@@ -10286,7 +10295,20 @@ function _evalRenderLayers(){
 let _evalHeatTipEl=null, _evalHeatTipT=0;
 function _evalHeatTip(e){
   if(!evalActive || !evalShow.heat || !evalCells.length || _evalSubject){ if(_evalHeatTipEl){ _evalHeatTipEl.style.display='none'; } return; }
-  const now=Date.now(); if(now-_evalHeatTipT<45) return; _evalHeatTipT=now;
+  if(!_evalHeatTipEl){
+    _evalHeatTipEl=document.createElement('div');
+    _evalHeatTipEl.className='heat-tip';
+    (document.querySelector('.main')||document.body).appendChild(_evalHeatTipEl);
+  }
+  // POSITION EVERY FRAME, CONTENT ON A THROTTLE. Both used to sit behind one 45 ms gate, so the
+  // box updated at ~22fps and visibly trailed the cursor (user, 2026-07-30: "follow it closer").
+  // Moving the box is two style writes; the cell lookup is the only part worth throttling, and it
+  // was measured at 0.48 ms — the lag was the gate, not the work.
+  const pt=e.containerPoint;
+  const kb=document.querySelector('.kpibar');
+  const yOff=(kb && !document.body.classList.contains('vf-opp')) ? kb.offsetHeight : 0;
+  _evalHeatTipEl.style.transform='translate3d('+(pt.x+13)+'px,'+(pt.y+13+yOff)+'px,0)';
+  const now=Date.now(); if(now-_evalHeatTipT<40) return; _evalHeatTipT=now;
   const la=e.latlng.lat, lo=e.latlng.lng;
   let best=null, bd=Infinity;
   for(const g of evalCells){
@@ -10294,18 +10316,14 @@ function _evalHeatTip(e){
     const d=Math.abs(g.la-la)+Math.abs(g.lo-lo);
     if(d<bd){ bd=d; best=g; }
   }
-  if(!_evalHeatTipEl){
-    _evalHeatTipEl=document.createElement('div');
-    _evalHeatTipEl.style.cssText='position:absolute;z-index:800;pointer-events:none;background:rgba(15,23,42,.92);color:#fff;font-size:11px;font-weight:700;padding:4px 9px;border-radius:7px;white-space:nowrap;display:none;box-shadow:0 2px 10px rgba(0,0,0,.25)';
-    (document.querySelector('.main')||document.body).appendChild(_evalHeatTipEl);
-  }
   if(!best){ _evalHeatTipEl.style.display='none'; return; }
-  const pt=e.containerPoint;
-  _evalHeatTipEl.textContent='Suitability '+_evalDisp(best.score)+'/100 · share '+
-    (((best.cShareRef!=null?best.cShareRef:best.share))*100).toFixed(0)+'%';
-  _evalHeatTipEl.style.left=(pt.x+14)+'px';
-  _evalHeatTipEl.style.top=(pt.y+14+ (document.querySelector('.kpibar')&&!document.body.classList.contains('vf-opp')?document.querySelector('.kpibar').offsetHeight:0))+'px';
-  _evalHeatTipEl.style.display='block';
+  const disp=_evalDisp(best.score);
+  const sh=(((best.cShareRef!=null?best.cShareRef:best.share))*100).toFixed(0);
+  // The swatch is the cell's own ramp colour, so the number and the shading under the cursor are
+  // visibly the same reading rather than two things to reconcile.
+  _evalHeatTipEl.innerHTML='<i style="background:'+_evalColor(_evalHeatT(best.score))+'"></i>'
+    +'<b>'+disp+'</b><span class="u">/100</span><em>'+sh+'% capture</em>';
+  _evalHeatTipEl.style.display='flex';
 }
 map.on('mousemove', _evalHeatTip);
 map.on('mouseout', ()=>{ if(_evalHeatTipEl) _evalHeatTipEl.style.display='none'; });
