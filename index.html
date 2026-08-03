@@ -540,7 +540,7 @@ input[type=search]::-webkit-search-cancel-button,input[type=search]::-webkit-sea
 .eval-toggle-row{display:flex;gap:6px;padding:0 12px 8px;flex-wrap:wrap;}
 .eval-chip{font-size:11px;border:1px solid var(--border2);border-radius:20px;padding:3px 10px;cursor:pointer;color:#64748b;background:#fff;user-select:none;}
 .eval-chip.on{background:var(--navy);color:#fff;border-color:var(--navy);}
-.eval-legend{position:absolute;bottom:26px;left:14px;background:rgba(255,255,255,0.97);border-radius:var(--radius-lg);padding:12px 14px;box-shadow:0 4px 20px rgba(0,0,0,.14);border:1px solid var(--border);z-index:500;min-width:188px;backdrop-filter:blur(4px);display:none;}
+.eval-legend{position:absolute;bottom:26px;left:14px;background:rgba(255,255,255,0.97);border-radius:var(--radius-lg);padding:12px 14px;box-shadow:0 4px 20px rgba(0,0,0,.14);border:1px solid var(--border);z-index:500;min-width:188px;max-width:264px;backdrop-filter:blur(4px);display:none;}
 .eval-legend.show{display:block;}
 .eval-legend .legend-grad{height:10px;border-radius:5px;background:linear-gradient(90deg,#3c8a28,#96c459,#f4c430,#ef9c27,#e04444);margin:2px 0 4px;}
 .eval-legend .legend-grad-lbl{display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted);margin-bottom:10px;font-weight:600;}
@@ -954,6 +954,16 @@ body.vf-evallock .leaflet-control-zoom{pointer-events:none;opacity:.45;}
 .st-wf-empty{border:1px dashed var(--border2);border-radius:10px;padding:10px 12px;font-size:11.5px;color:#475569;line-height:1.55;background:#fff;}
 .st-limits{font-size:10.5px;color:#475569;line-height:1.5;border-top:1px solid var(--border2);padding-top:9px;}
 @media(max-width:900px){.strat-grid{grid-template-columns:1fr;}}
+/* Subtle "more info" disclosure for method notes. Keeps derivations available without letting them
+   crowd out the data (user, 2026-07-30: "a paragraph of info ... make these a small subtle more
+   info drop down"). */
+.mi{margin-top:4px;}
+.mi>summary{list-style:none;cursor:pointer;font-size:10px;color:#64748b;font-weight:600;display:inline-flex;align-items:center;gap:4px;padding:1px 0;}
+.mi>summary::-webkit-details-marker{display:none;}
+.mi>summary::before{content:'▸';font-size:9px;transition:transform .12s;}
+.mi[open]>summary::before{transform:rotate(90deg);}
+.mi>summary:hover{color:var(--navy);}
+.mi-body{font-size:10.5px;color:#475569;line-height:1.5;padding:5px 0 2px;}
 .site-ren{background:none;border:none;padding:0 0 0 5px;font-size:11px;color:#94a3b8;cursor:pointer;line-height:1;}
 .site-ren:hover{color:var(--navy);}
 /* The Opportunity panel ground is --bg #eef2f8. The List view survives that because its rows are
@@ -1120,7 +1130,7 @@ body.vf-evallock .leaflet-control-zoom{pointer-events:none;opacity:.45;}
         <div style="display:flex;gap:8px;margin-top:10px">
           <button class="vm-export-btn" onclick="scrReset()">Clear all filters</button>
         </div>
-        <div style="font-size:10.5px;color:#64748b;margin-top:10px;line-height:1.5">DVM counts come from scraped website rosters; revenue is modeled (roster × $555k benchmark) unless an analyst value is saved; EBITDA multiples exist only where you've entered them in a clinic's editor.</div>
+        <details class="mi"><summary>Where these figures come from</summary><div class="mi-body">DVM counts come from scraped website rosters; revenue is modeled (roster × $555k benchmark) unless an analyst value is saved; EBITDA multiples exist only where you've entered them in a clinic's editor.</div></details>
       </div>
       <div class="scr-right">
         <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border)">
@@ -10319,7 +10329,7 @@ function _evalRenderLegend(){
   }
   el.innerHTML=`
     <div class="legend-title">Placement suitability</div>
-    ${(evalShow.heat&&!_evalSubject)?`<div class="legend-grad"></div><div class="legend-grad-lbl"><span>${_evalDisp(EVAL_HEAT_HI)}</span><span>${_evalDisp(EVAL_HEAT_LO+(EVAL_HEAT_HI-EVAL_HEAT_LO)*0.6)}</span><span>${_evalDisp(EVAL_HEAT_LO+(EVAL_HEAT_HI-EVAL_HEAT_LO)*0.28)}</span><span>${_evalDisp(EVAL_HEAT_LO)}</span></div><div style="font-size:10.5px;color:var(--muted);margin:-6px 0 8px;display:flex;justify-content:space-between"><span>Winnable</span><span>Saturated</span></div>${evalMetroRun?`<div style="font-size:10px;color:#475569;line-height:1.45;margin:-4px 0 9px">Shaded only <b>within ${HEAT_HALO_MI} mi of a recommended area</b>, and only where a cell still scores as recommendable on its own. The pin is a market, not a parcel &mdash; anywhere shaded works about as well.</div>`:''}`:''}
+    ${(evalShow.heat&&!_evalSubject)?`<div class="legend-grad"></div><div class="legend-grad-lbl"><span>${_evalDisp(EVAL_HEAT_HI)}</span><span>${_evalDisp(EVAL_HEAT_LO+(EVAL_HEAT_HI-EVAL_HEAT_LO)*0.6)}</span><span>${_evalDisp(EVAL_HEAT_LO+(EVAL_HEAT_HI-EVAL_HEAT_LO)*0.28)}</span><span>${_evalDisp(EVAL_HEAT_LO)}</span></div><div style="font-size:10.5px;color:var(--muted);margin:-6px 0 8px;display:flex;justify-content:space-between"><span>Winnable</span><span>Saturated</span></div>${evalMetroRun?`<div style="font-size:10px;color:#475569;line-height:1.45;margin:-4px 0 9px">Shaded within <b>${HEAT_HALO_MI} mi</b> of a pick, where a cell still scores recommendable. The pin is a market, not a parcel.</div>`:''}`:''}
     ${rows.join('')}`;
   el.classList.add('show');
 }
@@ -10887,12 +10897,12 @@ function evalPressure(i, btn){
     ${row('Contested — one to three',Math.round(100*buck[1]/tot)+'% · ~'+hf(buck[1])+' HH')}
     ${row('Heavy — three or more, measured',Math.round(100*buck[2]/tot)+'% · ~'+hf(buck[2])+' HH','#b45309')}
     ${row('At the measurement ceiling'+(ceilK!=null?' ('+ceilK.toFixed(1)+'+)':''),Math.round(100*buck[3]/tot)+'% · ~'+hf(buck[3])+' HH','#64748b')}
-    <div style="font-size:10.5px;color:#64748b;margin-top:2px">Pull, not clinic count: each rival is weighted by its roster and by how long <i>it</i> takes to drive to that household, so a solo clinic ten minutes out applies far less than half the pressure of a six-doctor hospital next door. The catchment build stops counting competitor weight at the ceiling, so households in that last row are <b>at least</b> that contested — how much more is not resolved, and on a dense cell most households land there. Read it as "the model can no longer tell these apart", not as a measured saturation level.</div>
+    <details class="mi"><summary>How pressure is measured</summary><div class="mi-body">Rivals are weighted by roster and by drive time, not counted. A solo clinic ten minutes out presses far less than a six-doctor hospital next door.<br>The build stops counting at the ceiling, so the last row is <b>at least</b> that contested — read it as "no longer distinguishable", not as a measured saturation level.</div></details>
     <div style="border-top:1px dashed #e2e8f0;margin-top:5px;padding-top:5px">
       ${row('Winnable share — 10-minute core',coreShare!=null?(coreShare*100).toFixed(0)+'%':'—','#1e3a8a')}
       ${row('Winnable share — whole catchment',(g.cShare*100).toFixed(0)+'%','#1e3a8a')}
     </div>
-    <div style="font-size:10.5px;color:#64748b;margin-top:2px">Different denominators, not a disagreement: the core share splits only the households within ten minutes, the catchment share splits every household credited out to twenty. The revenue on this card uses the catchment figure.</div>
+    <details class="mi"><summary>Why these two differ</summary><div class="mi-body">Different denominators, not a disagreement. The core share splits households within ten minutes; the catchment share splits everything credited out to twenty. Revenue on this card uses the catchment figure.</div></details>
     <details style="margin-top:5px"><summary style="font-size:10.5px;font-weight:700;color:var(--navy);cursor:pointer">Nearest GP competitors (${near.length})</summary>
       <div style="padding:4px 0 0 2px">${near.map(x=>`<div style="display:flex;justify-content:space-between;font-size:10.5px;gap:6px"><span style="color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0">${_ceEsc(x.c.name||'Clinic')}${x.c.pe?' <span style="color:#dc2626">PE</span>':''}</span><b style="flex-shrink:0">${(x.d/1609.344).toFixed(1)} mi${x.c.staffN?' · '+x.c.staffN+' DVM':''}</b></div>`).join('')}</div>
       <div style="font-size:10.5px;color:#64748b;margin-top:2px">Ordered by straight-line distance, for identification only — the pressure figures above are the drive-time measurement.</div>
