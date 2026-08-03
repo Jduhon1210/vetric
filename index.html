@@ -10058,6 +10058,14 @@ function _evalClearLayers(){ for(const k in evalLayers){ if(evalLayers[k]){ map.
 // legend said they were mid-to-green — and reaching green required raw 0.73, i.e. $4.48M of
 // winnable revenue, against the 0.30 ($1.85M) the legend advertised as the winnable end.
 const EVAL_HEAT_LO=0.05, EVAL_HEAT_HI=0.30;
+// HALO GEOMETRY. 3.0 mi sits inside a single 10-minute catchment, so a cell in the halo serves
+// substantially the same rooftops as the pin. The bar is EVAL_STRONG — the app's OWN recommendation
+// threshold — so a shaded cell is not merely "near a good site", it independently scores as a
+// recommendable one. A relative bar was tried first (within 15% of the pick) and rejected on
+// measurement: it left 1-3 cells per pick, which is a dot, not a zone. At these values every pick
+// gets a visible area (measured 25/6/15/7/4 cells, ~21 sq mi total) against 4,076 metro-wide.
+// Display-only: nothing scores, ranks or screens on them.
+const HEAT_HALO_MI=3.0;
 const _evalHeatT=sc=>(sc-EVAL_HEAT_LO)/(EVAL_HEAT_HI-EVAL_HEAT_LO);
 function _evalColor(t){
   t=t<0?0:t>1?1:t;
@@ -10133,8 +10141,29 @@ function _evalRenderLayers(){
   if(evalActive) markers.forEach(m=>setMarkerVisible(m,false));
   _evalClearLayers();
   if(evalShow.heat && !_evalSubject){   // clinic evaluations show NO suitability heatmap (user 2026-07-25) — the subject is the clinic, not the dirt around it
+    // ── LOCAL heat: the ZONE around each pick, not the whole metroplex ──────────────────────
+    // (2026-07-30, user ask.) A pin implies a parcel, and this engine has NO per-address skill —
+    // subject-removed Spearman ~0, asserted by fit.rank. The honest statement is not "build here",
+    // it is "anywhere in this zone works about as well", which is exactly what a halo of
+    // comparably-scoring neighbours shows. It also answers the question Refine was answering,
+    // without a second ~6-minute run.
+    // Metro-wide heat is kept for single-place evaluations, where the surface IS the evidence and
+    // the user has already chosen the geography.
+    const _heatCells = (evalMetroRun && evalTop.length) ? (function(){
+      const R=HEAT_HALO_MI, out=[], seen=new Set();
+      for(const t of evalTop){
+        if(t.score==null) continue;
+        const cl=Math.cos(t.la*Math.PI/180);
+        for(let i=0;i<evalCells.length;i++){
+          const g=evalCells[i]; if(seen.has(i)||g.score==null||g.score<EVAL_STRONG) continue;
+          const dy=(g.la-t.la)*69.0, dx=(g.lo-t.lo)*69.0*cl;
+          if(dy*dy+dx*dx <= R*R){ seen.add(i); out.push(g); }
+        }
+      }
+      return out;
+    })() : evalCells;
     const heat=L.layerGroup();
-    for(const g of evalCells)
+    for(const g of _heatCells)
       L.rectangle([[g.la-g.stepLa/2,g.lo-g.stepLo/2],[g.la+g.stepLa/2,g.lo+g.stepLo/2]],
         {renderer:_getOverlayCanvas(),stroke:false,fillColor:_evalColor(_evalHeatT(g.score)),fillOpacity:0.5,interactive:false}).addTo(heat);
     heat.addTo(map); if(heat.bringToBack) heat.bringToBack(); evalLayers.heat=heat;
@@ -10261,7 +10290,7 @@ function _evalRenderLegend(){
   }
   el.innerHTML=`
     <div class="legend-title">Placement suitability</div>
-    ${(evalShow.heat&&!_evalSubject)?`<div class="legend-grad"></div><div class="legend-grad-lbl"><span>${_evalDisp(EVAL_HEAT_HI)}</span><span>${_evalDisp(EVAL_HEAT_LO+(EVAL_HEAT_HI-EVAL_HEAT_LO)*0.6)}</span><span>${_evalDisp(EVAL_HEAT_LO+(EVAL_HEAT_HI-EVAL_HEAT_LO)*0.28)}</span><span>${_evalDisp(EVAL_HEAT_LO)}</span></div><div style="font-size:10.5px;color:var(--muted);margin:-6px 0 8px;display:flex;justify-content:space-between"><span>Winnable</span><span>Saturated</span></div>`:''}
+    ${(evalShow.heat&&!_evalSubject)?`<div class="legend-grad"></div><div class="legend-grad-lbl"><span>${_evalDisp(EVAL_HEAT_HI)}</span><span>${_evalDisp(EVAL_HEAT_LO+(EVAL_HEAT_HI-EVAL_HEAT_LO)*0.6)}</span><span>${_evalDisp(EVAL_HEAT_LO+(EVAL_HEAT_HI-EVAL_HEAT_LO)*0.28)}</span><span>${_evalDisp(EVAL_HEAT_LO)}</span></div><div style="font-size:10.5px;color:var(--muted);margin:-6px 0 8px;display:flex;justify-content:space-between"><span>Winnable</span><span>Saturated</span></div>${evalMetroRun?`<div style="font-size:10px;color:#475569;line-height:1.45;margin:-4px 0 9px">Shaded only <b>within ${HEAT_HALO_MI} mi of a recommended area</b>, and only where a cell still scores as recommendable on its own. The pin is a market, not a parcel &mdash; anywhere shaded works about as well.</div>`:''}`:''}
     ${rows.join('')}`;
   el.classList.add('show');
 }
