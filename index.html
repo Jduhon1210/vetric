@@ -9242,6 +9242,20 @@ async function openEvaluateArea(){
   const feat=_drawnAreaToFeature();
   if(!feat){ vfToast('Could not read the drawn area — try redrawing it.'); return; }
   if(evalSitePt && !pointInGeoJSON(evalSitePt.lat, evalSitePt.lon, feat)) _siteClear();   // pin belongs to a different analysis
+  // A NEW RUN MUST NOT INHERIT THE OLD ONE'S MAP (user, 2026-07-30: "when running another eval,
+  // clear the first one"). Nothing cleared the previous evaluation, so a second pass drew its
+  // heatmap, site pins, land plays, competitor dots and rings ON TOP of the first — two runs of
+  // results indistinguishable on one map.
+  // Deliberately NOT _evalResetState(): that also calls _siteClear(), and a dropped-pin or clinic
+  // evaluation has ALREADY established its subject by the time it reaches here, so the full
+  // teardown would destroy the very pin being evaluated. This clears the layers and the result
+  // state and nothing else.
+  try{ _lpHaloClear(); }catch(e){}
+  _evalClearLayers(); _evalHideLegend(); _evalClearDrive();
+  evalCells=[]; evalTop=[]; evalCompsCache=[]; evalLandPlays=[];
+  evalTopMode=null; evalShowWeak=false; evalHiddenWeak=0; evalBuyBox=null;
+  _evalFutInfo=null; evalCapStat=null; evalLandStat=null; evalSepMi=null; evalWetCells=0;
+  evalTab='sites'; _siteCardTabs={};
   evalActive=true; evalAreaMode=true; evalAreaZips=null; evalZip=null; evalFeat=feat; evalZipAffluence=0.5;
   evalSpeciesIgnored=false; evalSpeciesPrompted=false;
   evalNoLand=_evalNoLandPending; _evalNoLandPending=false;   // consume the land-play handoff (default false for every other entry path)
@@ -9264,6 +9278,11 @@ async function openEvaluateArea(){
 }
 async function openEvaluate(){
   if(selectedZips.size!==1){ vfToast('Select a single ZIP to evaluate placement.'); return; }
+  // Same rule as openEvaluateArea: a new run starts from a clean map. ZIP mode had the identical
+  // gap — a second evaluation drew over the first rather than replacing it. Here the full
+  // _evalResetState IS safe, because a ZIP evaluation supersedes any dropped pin by design
+  // (CLAUDE.md records openEvaluate already calling _siteClear for exactly that reason).
+  _evalResetState();
   // ZIP mode was the ONLY evaluation entry point that never warmed the capture dependencies —
   // drop-a-site and clinic both route through openEvaluateArea, which calls this. Without it a
   // fresh-session ZIP evaluation found _catchData null and silently ran GRAVITY with no
