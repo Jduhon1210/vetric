@@ -1,3 +1,17 @@
 .DS_Store
 .claude/
 outputs/
+node_modules/
+package-lock.json
+.env
+.env.*
+
+# TABS build artifacts (derived, local-only)
+.tabs-checkpoint.json
+.tabs-geocache.json
+.services-checkpoint.json
+.land-cache/
+.owners-checkpoint.json
+.osrm-cache/
+.catchments-checkpoint.json
+.acs-hh-cache.json

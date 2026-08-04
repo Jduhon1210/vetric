@@ -9,32 +9,48 @@ There is no build step, no bundler, no framework. Edit `index.html` directly and
 ```
 vetmetric/
 ├── index.html       # Everything: HTML + CSS + JS (~2,900 lines)
-├── pe-data.js       # PE-owned clinic coordinates statewide (~827 TX clinics)
+├── pe-data.js       # PE-owned VET CLINIC coordinates statewide (857 TX clinics; refreshed 2026-07-08
+│                    #   from a national PE list filtered to State==TX; 43 phantom duplicate coords
+│                    #   removed 2026-07-22 (Places-verified); +48 CityVet locations added 2026-07-24
+│                    #   (RiverGlade Capital / CityVet, PE since Apr 2019 — the source sheet missed the
+│                    #   whole brand; user caught it: "I know they aren't independent")
+│                    #   from a national PE list filtered to State==TX, deduped by name+coords, then
+│                    #   44 pet-boarding/grooming/resort businesses removed so competition scoring
+│                    #   counts only real clinics — PetSuites/Destination Pet/kennels etc.)
 │                    # Defines window.PE_COORDS, window.PE_NAMES
 │                    # Loaded as <script src="pe-data.js"> — must be in same directory
 ├── tx-zips.json     # Texas ZIP boundary GeoJSON (ZCTA polygons, ~2MB)
 │                    # Fetched at runtime via loadZipGeometry(), cached in _zipGeoCache
+├── dfw-tracts.json  # DFW census-TRACT boundaries + ACS 2024 demographics (~1MB, 1,730 tracts;
+│                    #   built by build-tracts.mjs from TIGERweb + api.census.gov — the "community"
+│                    #   grain layer; Phase-1 display-only)
+├── dfw-mpc.json     # 30 major DFW master-planned communities (curated 2026-07 from developer
+│                    #   announcements + RCLCO 2025 rankings; ~109k announced homes; coords ±1mi)
 └── CLAUDE.md        # This file
 ```
 
 ## Deploy
 Cloudflare Pages. Push to the connected GitHub repo — Pages auto-deploys on push. No build command needed (`index.html` is served directly).
 
+**Staging RETIRED (2026-07-15, user: 'making things too complicated')**: all work commits straight to `main` → production. The `staging` branch was merged and deleted; the hostname-keyed staging pill code remains (inert on vetric.co). Preview-environment KV/AI bindings + GOOGLE_PLACES_KEY secret remain configured in the dashboard if a branch preview is ever wanted again.
+
 ## Architecture overview
 
 ### Map stack
 - **Leaflet 1.9.4** for the map (CDN)
 - **OpenStreetMap** tiles (CartoDB light in some places)
-- **MarkerClusterGroup** for clinic pins
+- **Clinic pins live in a plain `L.layerGroup()` named `clusterGroup`** (NOT a real MarkerClusterGroup despite the var name — there is no spiderfy/cluster behavior; markers are always individual). `markers[]` is index-aligned to `clinics[]` and **DIFFED per commit, not rebuilt (2026-07-13 perf fix — metro views hold 700-2,500 pins and the old clearMarkers+recreate churned every DOM node on every moveend, visible stutter)**: `_markerByKey` (clinicKey → live marker) reuses existing markers (icon `setIcon` only when `_icKey` color|tier changed), mounts only new clinics, unmounts only evicted ones; popup + click read `m._c`/`m._idx` (set fresh each commit) so reuse can never serve a stale closure — do NOT revert to captured-closure popups with reused markers. Verified: metro pan = 0 DOM adds/removes; Austin jump = exactly 173 mounts. Marker zoom animation was RE-ENABLED 2026-07-13 (user: pins vanished during zoom) — safe now that commits diff instead of rebuild; the per-zoom cost is one transform per pin. `renderList` caps at the **120 nearest** cards (badge/`_vmListScope`/export keep the FULL in-view set; original indices preserved so `focusClinic(i)` works from the capped list; footer discloses the cap). To hide ALL pins at once: `map.removeLayer(clusterGroup)` (O(1), no per-marker work).
+- **Pin auto-hide (`vf_hidepins`, default ON; Settings → Data & Logic)**: `_applyPinZoomVisibility()` detaches `clusterGroup` below `MIN_ZOOM` (and shows `#zoom-msg`), re-attaches on zoom-in. Driven by a `zoomend` handler + the `fetchClinics` zoom-gate + a post-commit call. `_vfHidePins()` reads `localStorage.getItem('vf_hidepins')!=='0'` (default-ON pattern: unset = true). `toggleHidePins(on)` persists + live-refreshes; `openSettings()` syncs the `opt-hidepins` checkbox. Off = pins stay at every zoom. 
 - Map is initialized at line ~689: `const map = L.map('map', {minZoom:4, boxZoom:false})`
 - `boxZoom:false` is intentional — prevents shift+drag zoom conflict with shift-click ZIP multi-select
 
 ### Data sources
 1. **PE clinics** — `PE_COORDS` array from `pe-data.js` (loaded synchronously on page load). Complete statewide dataset. `peLoaded` flag set true when ready, `onPEReady()` called.
 2. **Independent clinics** — Overpass API (OpenStreetMap), viewport-limited, fetched on `moveend` with 900ms debounce
-3. **Income data** — Census ACS 2022 5-year, variable `B19013_001E`, all TX ZIPs, fetched with `force-cache`
-4. **Pet density** — Census ACS 2022 5-year housing variables, modeled dog ownership rate per ZIP
+3. **Income data** — Census ACS 2024 5-year, variable `B19013_001E`, all TX ZIPs, fetched with `force-cache`
+4. **Pet density** — Census ACS 2024 5-year housing variables, modeled dog ownership rate per ZIP. **Cats too (2026-07-01)**: `dogData[zip].catEst` — `TX_CAT_BASE_RATE=0.25` (trimmed from 0.28 on 2026-07-09: AVMA state data puts TX ~17% below the national cat rate — cat-light state; triangulated 25-27% on today's national) adjusted at HALF the homeownership elasticity, NO single-family loading (cats are housing-type independent; reusing the dog adjustment would fake precision), clamp ±15% → rate 0.15–0.45. Computed in BOTH dogData build sites (`toggleDogLayer` + `ensureDogData`) — keep the shapes matched. DISPLAY-ONLY: feeds the demand-walk visits line (`dogHH×2.4 + catHH×1.2`, `OPP_VISITS_PER_CATHH=1.2`), the hex-card chain, and a CSV column; scoring still keys on dog HH (sharper signal, near-collinear — rankings verified unchanged). Gradient anchor: downtown 75201 cat/dog ratio 0.76 vs Prosper 0.55.
 5. **Population growth** — Census ACS: 2024 vintage vs 2021 vintage (same 2020-ZCTA boundaries), variable `B01003_001E`, parallel fetch
+6. **Zoning / land use** (Evaluate only) — three tiers, client-side by viewport: (a) 16 DFW municipalities' ArcGIS zoning layers (`DFW_ZONING_SOURCES`); (b) county appraisal-district **parcels** (`DFW_PARCEL_SOURCES`: Collin/Denton/Dallas, classified by statewide SPTB code) for the exurbs/unincorporated land cities miss; (c) OpenStreetMap `landuse` (via `_overpass`) as last resort. Used to drop residential/civic cells from the placement grid.
 
 ### Key global state
 ```js
@@ -55,6 +71,7 @@ let lastIndependents = []; // Cache of last good Overpass result (Overpass fallb
 
 ### Clinic fetch flow (`fetchClinics`)
 - Increments `fetchSeq` — each fetch checks `myReq !== fetchSeq` after every `await` and bails if superseded
+- **Static sources load a 60% HALO past the viewport (2026-07-14, user: visible "line where clinics load in" when panning)**: PE_COORDS + VET_CLINICS filter against `map.getBounds().pad(0.6)` (`pb`/s/w/n/e) so pins already exist when the user pans; in-memory, zero cost. The Overpass fallback query keeps the UNPADDED box (`os/ow/on/oe` — 2.5× the query area would slow/timeout mirrors); the `lastIndependents` cache fallback uses the halo. KPIs/list/status all re-filter to the true viewport, so counts are unaffected. Do not drop the pad or reuse the padded box for Overpass.
 - Builds into local `local[]` array, only commits to `clinics[]` + redraws at the very end
 - Source 1: PE clinics from `PE_COORDS` (gated on `peLoaded`)
 - Source 2: Overpass with mirror fallback (kumi.systems) and 400ms backoff between mirrors
@@ -62,7 +79,8 @@ let lastIndependents = []; // Cache of last good Overpass result (Overpass fallb
 - `loadedBounds` only set when Overpass succeeded — forces retry on next move if degraded
 
 ### Choropleth layers
-- **Income, pets, growth** are mutually exclusive fills — turning one on turns others off (single-fill rule prevents color muddying)
+- **Income, pets, growth** are mutually exclusive *fills* — turning one on turns others off (single-fill rule prevents color muddying). Clinic density is NOT one of these — it's a heatmap overlay (below).
+- **Clinic Density heatmap: REMOVED (2026-07-13, user: "doesn't work well")** — the leaflet.heat overlay, its CDN script, panel entry, legend, `toggleClinicDensityLayer`/`_clinicHeatPoints`/`clinicHeatLayer`, the mobile-toggle refresh hook, and the AI tool's `density` option are all gone (AI answers "retired" gracefully). Revive from git history before 2026-07-13 if ever wanted.
 - All three call `loadZipGeometry()` which returns a singleton — `tx-zips.json` is only fetched and parsed once, cached in `_zipGeoCache`
 - Each layer's `onEachFeature` registers the feature's Leaflet layer in `zipLayerMap` so `selectZip` can restyle it
 
@@ -82,47 +100,961 @@ let lastIndependents = []; // Cache of last good Overpass result (Overpass fallb
 - KPI bar switches to draw-area mode when active, reverts on `clearArea()`
 
 ### Opportunity scoring (DFW region)
-- `DFW_BOUNDS`: `[32.55, -97.55]` to `[33.45, -96.55]`
+- `DFW_BOUNDS` / `OPP_REGIONS[0]`: the FULL DFW metroplex `[32.25, -97.95]` to `[33.50, -96.20]` (Cleburne/Weatherford SW → Collin/Rockwall NE). This one region drives the ranked list (`buildOppBaseInputs`, ~261 ZIPs) and the Evaluate-metroplex run. Was the tighter `[32.55,-97.55]`–`[33.45,-96.55]`; expanded to cover the whole metroplex.
 - `openOpportunity()`: auto-loads all three data layers, snapshots each into `oppIncomeSnap`, `oppDogSnap`, `oppGrowthSnap`, then tears down all choropleth fills so landing on a ZIP shows the plain base map
 - `buildOppBaseInputs()`: iterates TX GeoJSON features, uses `rawBBox()` for cheap bbox (no Leaflet objects), DFW region reject before any polygon math
-- `rescoreAndRender()`: min-max normalizes each factor 0–100, blends by weights, sorts descending
-- Competition score: `peCount × peMult + indCount`, inverted (less competition = higher score)
+- `rescoreAndRender()`: min-max normalizes each factor 0–100, blends by weights, sorts descending. **A missing factor scores NEUTRAL 50, not 0** (was worst-percentile — a ZIP missing one Census variable sank dozens of ranks on a data gap; mirrors the Surface's null→0.5). All-null ZIPs are already skipped in `buildOppBaseInputs`, so 50s can't float junk into the list.
+- **Vet-desert trap fix (2026-06-30, user-reported: 75217 Pleasant Grove always ranked #1)**: the List's scoring underservice is now **EFFECTIVE dogHH per vet** (`_under` multiplies demand by `_util = 0.35+0.65×income-percentile` — utilization scales with spending power), AND the composite is **multiplied by the same `_util`** (market-viability damper — an open-but-poor market can't buy #1 on the competition factor alone; mirrors the industry screen-then-score funnel + the Surface's multiplicative design). The detail-card display `_oppUnder` deliberately stays RAW households-per-vet (a fact, not the score input). Composite is then presented as a **0–100 region index** (monotonic stretch, best≈95 worst≈5 — the damper compresses raw values; sub-scores are region-relative anyway). Each half alone was verified INSUFFICIENT (raw-metric min-max re-pins the zero-vet outlier at 100; damper-alone lets null-income ZIPs through) — do not remove one without the other. PLUS: the underservice ratio is **LOG-transformed before min-max** (`_underL=log(1+u)`; `underMM` and `fComp` both in log space — keep matched). The ratio is heavy-tailed (zero-vet ZIP ~5,000/vet vs normal ~150), so linear min-max made the sub-score degenerate: outlier=100, every real market 0–5 (the #1 ZIP displayed "Competition 2" — a visible contradiction vs the 33% weight). Log spreads it: region median sub-score ~6→~60. Do NOT revert to linear. Verified top-6 after all three pieces: Southlake 95 (income-led) / Prosper 88 (growth-led) / Frisco 84 (demand-led) / Argyle / Flower Mound / Celina — top-3 each led by a different factor; 75217 → #90.
+- **Commercial-fabric read (2026-06-30, user insight: wealthy zero-vet 75054 has ~no retail land → NOT whitespace)**: `dfw-retail.json` (~108KB, 5,905 retail/commercial landuse centroids + anchor stores, DFW bbox, one-time Overpass pull baked static like `dfw-water.json`; refresh = re-run the query + dedupe ~250m). `_loadOppRetail()` (force-cache, graceful) warms in `openOpportunity` + before hex builds; `buildOppBaseInputs` counts nodes per ZIP → `r.retailN` (null when file absent → UI hides, e.g. non-DFW). **DISPLAY-ONLY, never scored** (land-bank thesis: buildability is a tag). `_oppFabricLine(r)`: ≥3 nodes green "buildable corridors" / 1–2 amber "limited" / 0+hot-growth teal "land play" / 0 red "residential enclave; demand served by adjacent corridors". Hex card: `_nearRetailMi` (cell-indexed) → "Nearest commercial corridor ~X mi". Anchors verified: Southlake 36 / Prosper 35 / 75054 = 1 / Pleasant Grove 48 (its problem is spending power, not land).
+- **Default weights = the "Industry standard" preset: income 20 / demand 22 / competition 33 / growth 25** — mirrors the only published site-selection weighting (competition ≈33%, Esri's worked urgent-care example; see `research/vet-site-selection-report.md`). Replaced the old flat 25×4 "Balanced" preset. Preset chips have an `.active` state — `oppPreset` re-asserts it AFTER calling `onWeightChange()` (which clears it for manual drags); don't reorder those calls.
+- **PE-legible display language (2026-06-30 demo pass; display-only, scoring untouched):** "LowComp"→"Competition" (list, CSV), "Underservice"→"Dog households per vet", hex tooltip "Captured-demand N"→"Opportunity N/100", hex bars→"Spend power/Pet volume/Growth trajectory/Market capture". Detail cards open with a rank anchor ("Ranks #N of M ZIPs in {region}" — ALWAYS built from `oppScored.length`+`oppRegion.name`, never literals) and an **AVMA-style demand walk**: Households → dog-HH → est. annual vet visits (`OPP_VISITS_PER_DOGHH=2.4`, display-only constant) → DVMs serving → dog-HH-per-vet; the hex card shows the same chain + est. capture % (displayed value capped at ~95% so an uncontested exurb doesn't read "100%"). **Practice-size read (2026-07-01)**: `OPP_VISITS_PER_DVM=2000` effective visits per FTE DVM-yr (deliberately below ~3,500-4,000 max throughput — calibrated so a saturation-"balanced" ZIP reads supply≈demand; US actuals ~2,500-3,000). List card: "Demand sustains ~N full-time DVMs vs M today" + three-way verdict — **Whitespace** (head≥2) / **Balanced** (|head|<2) / **"Service hub — draws from surrounding ZIPs"** (head≤−2; NEVER label it "over-supplied": hub ZIPs like Southlake hold more vets than in-ZIP demand because they serve neighbors, and an "over-supplied #1 market" reads as a contradiction). Hex chain ends "→ enough for a solo/~2-doctor/~3-doctor/4+ doctor" from CAPTURED visits (share capped 0.95). All display-only. The expanded List detail persists across slider-drag rebuilds via `_oppOpenZip` (mirrors the surface `#hex-detail` pattern). `openOpportunity` shows staged loading messages (`_oppStage`) at real milestones; the Surface build says "Scoring ~10,000 one-mile sites…". No hardcoded region names in UI strings — use `oppRegion.name` (a login-page literal was also genericized).
+- Competition / "Low competition" score = **underservice = `dogHH / (dvm + 1)`** — demand per VETERINARIAN, not per clinic (`_under`/`_oppUnder`). `dvm` is summed per ZIP in `buildOppBaseInputs` = Σ over the ZIP's clinics of (real scraped `staffN` via `_vetStaffAt`, else **2** = observed median). Capacity is per-DVM (a 6-vet hospital serves far more than a solo); min-max normalized 0–100 → `fComp`. **Pure HH/DVM (no PE weighting)** — the old `peMult` / "PE competition weight" slider was REMOVED (the weighting panel is now 4 factors: income/demand/comp/growth; `getOppWeights` no longer returns `peMult`). Distinct from the Surface/Evaluate gravity-Huff capture and the Saturation KPI.
+- **Saturation KPI** (KPI bar) is also **DVM-based** (not clinic-based) for consistency: `sat = areaDVMs / (dogHH/10000)` = veterinarians per 10k dog-HH (high = saturated). All three paths sum DVMs (real `staffN` via `_vetStaffAt`, else 2): draw area via `_areaClinicCount()` (now returns `{n,dvm}`), viewport + ZIP-selection sum inline. Foot reads "N DVMs / Xk dog HH". `_satTag` thresholds `<12 underserved / <21 saturated` are tertiles of the DFW ZIP DVM-per-10k-dogHH distribution (median ~15). Inverse-ish of the List underservice but in per-10k units.
 - `oppSelect(zip)`: shows overlay on opportunity screen while map prepares behind it, then reveals finished map
+
+### Hex Opportunity Surface — REMOVED (2026-07-25, user: "Remove hex surface feature")
+The one-mile-hex Surface view (List | Surface toggle, ~10,350-hex canvas, buildHexBaseInputs/
+rescoreHexes/redrawHexCanvas, strategy filter, hex detail card, evaluateHexSpot handoff) is GONE —
+revive from git history before 2026-07-25 if ever wanted. Opportunity is now **List | Communities**
+(+ the Evaluate-metroplex button in the same segmented control — see below). KEPT because they were
+shared, NOT hex-specific: `_loadHexWater`/`_hexInWater` + dfw-water.json (drop-a-site "in open
+water" checks), `_barrierDist` (Evaluate water-crossing decay), `_evalColor` (Evaluate heatmap),
+the tract/community system, `ensureConstructionData`. The `oppView` flag remains ('list' | 'mpc').
+The w-comp slider no longer drives any shareExp.
+
+### Evaluate Metroplex (2026-07-25, user ask — the hex surface's replacement)
+`evaluateMetroplex()`: sets `drawnArea` to the full `oppRegion` bounds rect and routes through the
+UNCHANGED `openEvaluateArea` engine — the fixed `cellsAcross=36` grid self-adapts to ~3-mile cells
+at metro scale, so this is the whole site pipeline (zoning gate, retail corridors, capture model,
+land plays) run region-wide as a screening pass (~7 min live; disclosed in the button title).
+**Metro runs return 5 sites, not 3** (user: "if we are doing a whole metroplex evaluation we should
+do 5"): `_metroRun = (bb.maxLa-bb.minLa)>0.9 || (bb.maxLo-bb.minLo)>1.1` in the site pick;
+`TOPN=_metroRun?5:EVAL_TOP_N` and min-separation `0.16×span` (~19mi at DFW scale — verified picks
+17.1mi apart min: E McKinney 96 / Rockwall 95 / NW Denton 95 / Grand Prairie 87 / W Fort Worth 85).
+Ordinary ZIP/draw evaluations are untouched (span far below the gate). **The button lives INSIDE
+`.opp-view-seg` as a third `button.metro` segment beside List | Communities (2026-07-25, user
+rejected the standalone pill via screenshot: "put it with Zip List and communities")** — brand-navy
+`#1e3a8a` text + a `::before` ◎ crosshair (the app's evaluate mark) + hairline left divider
+(`.opp-view-seg button.metro` CSS; the first pass was purple + ⚡, user: "not a fan of the lightning
+and purple text, i want this analyst sleek and modern"); it's an ACTION, not a view:
+clicking runs the evaluation rather than toggling `oppView`, so it never carries the `.on` state.
+Known rough edge (flagged, not yet requested): the unverified-species modal can list ~147 chips at
+metro scale.
+**Metro pins SNAP to commercial ground + per-area REFINE (2026-07-25, user: "when i evaluate dfw
+it is putting the sites in neighborhoods")**: ~3-mi cells pin at the CELL CENTER (usually a
+subdivision street even when the cell won on commercial strength) AND the zoning/parcel fetches are
+CAPPED at a metro bbox so the residential gate barely fires there. Fix, all gated on `_metroRun`:
+(1) `evalMetroRun` global (reset in `_evalResetState`); (2) `_metroSnapSites()` — after the site
+pick, each pin moves to the nearest commercial anchor ≤2.2mi (a `_oppRetailPts` fabric point, else
+a dfw-land vacant-commercial parcel; skips if already ≤120m; `_cellLa/_cellLo` keep the original,
+`g.snapMi` recorded; `evaluateMetroplex` warms `_loadOppRetail()`+`_loadLand()`); mutating
+`g.la/lo` is deliberate so pins/cards/links/catchments stay coherent — verified live: all 5 DFW
+sites snapped 0.19–1.9mi; (3) cards title "Area N" + a screening banner + a snap disclosure +
+**⌖ Refine this area** (`metroRefine(la,lo)` = the drop-site 2-mi box through the unchanged
+engine, where small-bbox zoning/parcels load COMPLETE and the residential gate actually bites —
+verified: refine on the McKinney area returns parcel-grade sites); popup carries the same
+grain note + refine link. The metro pass is explicitly a SCREENER; refine is the siting pass.
+**Print reports are PAPER SHEETS on screen (2026-07-25, user: "look like a pdf document, there
+are no borders")**: `_RP_CSS` body backdrop `#e9ebf0`, `.rp` = bounded white page (1px `#d3d8e0`
+border + soft shadow + `min-height:1100px` letter proportion, margin 26px auto); `@media print`
+strips backdrop/border/shadow so saved PDFs stay clean. Applies to BOTH clinic + site reports
+(shared shell).
+
+## Dark mode (2026-07-26, user ask)
+Settings → Data & Logic → Options → **Dark mode** (`opt-dark`, `toggleDarkMode`, persisted
+`vf_dark`, applied at boot before first paint; `openSettings` syncs the checkbox). Two mechanisms:
+(1) `body.vf-dark` RE-POINTS the `:root` design tokens (surface/bg/border/text/muted + semantic
+hues lightened for dark: red #f87171, green #4ade80, amber #fbbf24, purple #a78bfa) — roughly half
+the CSS runs on `var()` so it flips for free; (2) targeted `.vf-dark` overrides with **!important**
+for the rest, because the JS-built cards/popups carry ~757 HARDCODED hex values and **inline styles
+can only be beaten by !important**. Those overrides match on attribute selectors
+(`[style*="background:#fff"]`, `#f8fafc`, `#eef2f8`, `#f1f5f9`…, plus the matching border/text
+patterns) and on the class-styled surfaces (.sidebar/.leaflet-popup-content-wrapper/.settings-modal/
+.eval-card/.vm-star/.vm-export-btn/.adm-sec/…). Base map swaps to **CartoDB dark_all** (free, no
+key, same OSM data — a plain OSM raster in dark mode is a glaring white slab); `.leaflet-container`
+background is darkened too or it flashes light-gray under loading tiles. `_applyMapTheme()` calls
+`baseTiles.setUrl()`. Semantic color meaning is UNCHANGED (green strong / rose advisory / solid-red
+negative / amber data-viz) and no number or model is touched. Verified live: popup + list + KPI bar
++ settings modal all dark with 0 light blocks remaining inside the popup, and the light-mode round
+trip is pristine (body lum 242, sidebar 255, OSM tiles back). KNOWN STAGE-2 SCOPE: surfaces whose
+inline hex isn't in the matched set may still read light-on-dark — the fix is to add the pattern to
+the override block (or tokenize the source), not to re-theme by hand.
 
 ## Sensors / gotchas
 
 ### Things that broke and were fixed — don't re-break them
+- **MAP PERF, two rules (2026-07-21, user: 'zooming feels laggy')**: (1) **NEVER put an SVG `<filter>` / `feDropShadow` / CSS `filter:drop-shadow()` on clinic pins** — filtered elements are re-rasterized by the browser on EVERY frame of a CSS transform, so Leaflet's zoom animation was re-filtering 429-2,500 pins per frame. Measured A/B on 429 pins: **1.05ms/frame with filters vs 0.05ms without = 21×**. The pin shadow is now a plain offset path behind the pin (`_PIN_D` drawn twice); keep it that way. (2) **Choropleth fills (income/pets/growth/tracts) render to `_fillCanvas` (`L.canvas({padding:0.6})`), NOT the shared SVG pane** — statewide ZIP polygons meant ~1,939 individual `<path>` DOM nodes to transform and composite per frame (**9.93ms → 4.73ms/frame, 1,939 paths → 1 canvas, DOM 7,545 → 5,607**). Canvas keeps full interactivity: click-to-select and `zipLayerMap` registration verified working. The map's DEFAULT renderer stays `L.svg({padding:1})` — ZIP borders and drawn areas depend on that padding (see the padding rule below).
 - **`boxZoom:false` on map init**: must stay. Shift+click for ZIP multi-select requires this.
 - **`leaflet-interactive:focus { outline: none }`** in CSS: must stay. Without it, Chrome draws a blue focus-ring rectangle around clicked ZIP polygons.
 - **`_vfZipClick` flag on ZIP click events**: must stay. Without it, the bare-map `click` handler immediately clears the ZIP selection.
 - **Standalone `zipBorderLayers`**: borders for selected ZIPs are drawn as separate non-interactive geoJSON layers (in the default overlay pane, NOT a custom pane). Custom pane caused coordinate desync on zoom — revert any attempt to use a custom pane or renderer for borders.
 - **Map renderer `padding:1` must stay** (`L.svg({padding:1})` in the `L.map` init). Leaflet's default SVG renderer padding is 0.1, which sized the shared overlay SVG only ~38px larger than the viewport. Panning more than that clipped vector overlays (ZIP borders, choropleth fills, drawn areas) at the SVG edge, so a selected ZIP/area appeared to "follow" the screen / drift out of its boundaries during a drag until the next redraw. `padding:1` draws a full viewport beyond every edge. Do NOT drop it back to the default. Don't crank it far higher either — the SVG area grows as (1+2·padding)² and it renders that much more off-screen choropleth, hurting pan perf with the statewide layer on.
+- **`onPEReady` MUST clear `clinics[]` before refetching (2026-07-21, user: 'sometimes a pin is missing, e.g. Lantana Animal Hospital')**: if a fetch lands before `pe-data.js` parses, Source 1 is skipped AND the same clinics arrive from `VET_CLINICS` tagged INDEPENDENT (checkPE has no PE data to match). A plain refetch does NOT heal it — `fetchClinics` MERGES into `clinics[]`, so the stale independent entry survives and dedups away its own PE counterpart. Lantana Animal Hospital (Harvest Partners, present in BOTH datasets at identical coords) then renders as a blue independent pin permanently. Reproduced 3/3 and fixed by `clearMarkers(); clinics=[];` before the refetch. Verified: pe:false → pe:true/'Harvest Partners', 1 entry, 414 clinics = 414 markers = 414 DOM pins.
+- **Marker identity is NOT `clinicKey`**: the pin-diff map is keyed `lat.toFixed(5)_lon.toFixed(5)|name`, because `clinicKey` rounds to a ~110m grid — two distinct clinics in one cell would share a marker slot (one leaks, the other renders at the wrong coords). `clinicKey` remains the key for overrides/deleted/watchlist; do not merge the two. The reuse path also calls `setLatLng` when coords differ, so a recycled marker can never sit at the previous clinic's position.
 - **`fetchSeq` token in `fetchClinics`**: must stay. Rapid panning triggers concurrent fetches; without the token guard they corrupt `clinics[]` and `markers[]`.
 - **`loadedBounds = null` on Overpass failure**: intentional. Forces retry on next move rather than serving stale PE-only results.
+- **`fetchClinics` Source-2 (independent) dedup is NAME-AWARE — do NOT revert to proximity-only**: it used to drop any independent within ~330m of an already-loaded clinic, which silently HID distinct clinics sitting near a PE one (e.g. Vetsavers ~90m from a VCA). Now a near neighbor is dropped only if the normalized NAMES also match (`cn===_vn` or a ≥6-char `includes` either way), or the coords are identical within ~20m (`<0.0002`). This still merges the same clinic appearing in both `PE_COORDS` and `VET_CLINICS` (same name) but keeps genuinely-distinct nearby clinics. Verified 0 duplicate pins in a dense view.
 - **`force-cache` on Census fetches**: intentional. Census data doesn't change intraday; cache prevents re-downloading on layer retoggle.
-- **Evaluate competition is ABSOLUTE Huff capture, NOT relative `1-comp/maxComp`**: in `_evalComputeAndRender`, per-cell `share = A_OWN/(A_OWN+comp)` (A_OWN=1.0) and the core is MULTIPLICATIVE (`core = demandN * share`). Do NOT revert to `lowComp = 1-comp/maxComp` or an additive core (`0.55*demand + 0.45*lowComp`). The old version normalized competition relative to the worst cell in the SAME ZIP, so a ZIP ringed by PE clinics always had a "least-bad" cell that looked green — a real, reported bug (75077). Absolute share means a saturated ZIP scores low everywhere and means the same thing across ZIPs. PE weight (1.6×) is already baked into `comp`; a cell sitting within 700m of a PE clinic is hard-capped at share≤0.20. The heatmap colors by absolute `Math.pow(g.score,0.7)` (NOT `scoreRel`) for the same reason, and the sidebar shows an A–F `evalSat` saturation grade off the absolute capture ceiling. Known limitation: A_OWN is calibrated to the 3mi default radius, so the slider at 6mi over-penalizes (comp grows with radius) — a future fix scales A_OWN with `evalRadiusMi`.
+- **Evaluate competition is ABSOLUTE Huff capture, NOT relative `1-comp/maxComp`**: in `_evalComputeAndRender`, per-cell `share = A_OWN/(A_OWN+comp)` and the core is MULTIPLICATIVE (`core = demandN * share`). Do NOT revert to `lowComp = 1-comp/maxComp` or an additive core (`0.55*demand + 0.45*lowComp`). The old version normalized competition relative to the worst cell in the SAME ZIP, so a ZIP ringed by PE clinics always had a "least-bad" cell that looked green — a real, reported bug (75077). Absolute share means a saturated ZIP scores low everywhere and means the same thing across ZIPs. PE weight (1.6×) is already baked into `comp`; a cell sitting within 700m of a PE clinic is hard-capped at share≤0.20. The heatmap colors by absolute `Math.pow(g.score,0.7)` (NOT `scoreRel`) for the same reason, and the sidebar shows an A–F `evalSat` saturation grade off the absolute capture ceiling.
+- **`A_OWN = 1.0 × (evalRadiusMi/3)²` — FAIR-FIGHT entrant since 2026-07-16 (user: '36% winnable next to three incumbents isn't real — fix the algorithm')**: the entrant is ONE MORE typical 2-3 DVM clinic (orthodox Huff), not the 2.5× gravity well of the 2026-07 era — that 2.5 was a display crutch from before `_evalDisp` existed and inflated shares everywhere (validated-good Celina read 51%, knife-fight Prosper corners read 36%). Honest shares now: open exurb site ~0.30, contested corridor ~0.15-0.20, dense suburb ~0.10, empty land → 1.0 (capped 0.85). ALL downstream constants re-derived on this scale and verified on the Celina/Prosper/Argyle trio: `EVAL_STRONG=0.22` / `EVAL_FLOOR=0.12`, strong-tier share floor **0.24** (≡ old 0.40), PE 700m hard-cap **share≤0.10** (both eval loops + hex), evalSat cuts A≥0.22/B 0.17/C 0.12, saturated-headline `capCeil<0.15`, weak-why medShare<0.15, acquisition-play medShare≤0.16, `_evalDisp` anchors FLOOR→55/STRONG→85/0.40→95, `HEX_AOWN=1.0·(R/3)²`. Trio verification: Celina good/A (87, share .30, strong), Prosper fair/B (77, share .19, memo 'acquisition play'), Argyle fair (89 held by the ret guard, share .38). Do NOT bump A_OWN back for 'nicer' shares — the display scale (_evalDisp) is where presentation lives; the share % is a REAL claim. Historical context of the old calibration: two coupled changes made when independents moved from sparse Overpass to complete Google Places (`VET_CLINICS`). (1) **Base 2.5 @3mi** (was 1.0): against full competition `comp` per cell roughly tripled (a dense DFW suburb medians ~8.7 weighted competitors within 3mi), and `A_OWN=1.0` crushed every cell — growth exurbs (the app's primary target) landed at median share ~0.25 and dense suburbs ~0.10, so the whole map went red/F. Base 2.5 puts growth exurbs at a fair fight (~0.46) and dense suburbs honestly hard (~0.22); empty land still = 1.0. Validated by sampling comp across Plano/Frisco vs Prosper/Celina. (2) **×(radius/3)² scaling** fixes the long-standing 6mi over-penalty (was a documented known-limitation): `comp` grows with catchment AREA (∝R²), so `A_OWN` now scales the same way → capture share is radius-INVARIANT (Plano 3mi 0.18 ≈ 6mi 0.21; previously 6mi crashed to ~0.03). Do NOT revert to a fixed `A_OWN` — it re-breaks both the calibration and the radius slider.
+- **Evaluate competitors are SINGLE-SOURCED from `VET_CLINICS` + `PE_COORDS` (NOT also `evalData.vets`)**: `_evalCompetitors` builds `comp` from PE (`PE_COORDS`) ∪ independents (`VET_CLINICS`, PE-typed via `checkPE`), gated by `USE_VET_CLINICS`. It deliberately does NOT also fold in `evalData.vets` (the Overpass vet fetch in `_evalFetchContext`) — that double-counted the same clinics at slightly different coordinates (dedup is only ~110m by cell key), inflating `comp` and crushing share. `evalData.vets` is still populated by the context fetch (harmless) but no longer consumed in the VET_CLINICS path; the Overpass-fed `clinics[] ∪ evalData.vets` path remains only as the `USE_VET_CLINICS=false` fallback. The A_OWN base (2.5) was calibrated AGAINST this single-source `comp` — do not re-add the Overpass merge or the calibration is wrong.
+- **Independent clinics now come from `VET_CLINICS` (Google Places static scan), NOT live Overpass — gated by `USE_VET_CLINICS=true`**: `vet-clinics.js` (built by `build-clinics.mjs`, format `[{name,lat,lon,mobile?}]`) is loaded like `pe-data.js` and is complete statewide, replacing the viewport-limited Overpass independents. Three consumers read it through the `_activeVetClinics()` helper: `fetchClinics` (map pins), `ensureRegionIndependents` (opportunity), `_evalCompetitors` (evaluate). Set `USE_VET_CLINICS=false` for a one-line rollback to Overpass (the old paths are intact as fallback; Overpass is also the automatic fallback OUTSIDE the scanned area). `build-clinics.mjs` is run locally (needs Node 18+ and `GOOGLE_PLACES_KEY`); the committed output has no key. The scan uses adaptive quadtree tiling (subdivide a cell when it returns the 20-result cap) and the `displayName`+`types`+`primaryType`+`businessStatus` field mask (all one "Pro" billing tier).
+- **`build-clinics.mjs classify()` drops non-clinics at SCAN time; the filter is CONSERVATIVE (mirrors the zoning classifier's "when unsure, keep")**: Google's `veterinary_care` type pulls in pharmacies, in-store vaccination kiosks (Vetco/PetVet/ShotVet), B2B suppliers, shelters, boarding/grooming, and permanently-CLOSED businesses (~9% of raw results in DFW). `classify()` drops those but KEEPS any entry with a strong clinic signal (`primaryType==='veterinary_care'`, or `animal hospital`/`veterinary clinic|center|medical|surgery|surgical|wellness`/`surgical`/`DVM` in the name) even when it also says boarding/humane/etc. — e.g. "Towne Center Animal Hospital and Pet Hotel" and "Legacy Humane Veterinary Clinic" survive. Under-counting real competition (over-dropping) is worse than keeping a borderline entry. Only `clinic` + `mobile` ship to `vet-clinics.js`; the rest are dropped (counts logged). DEFINITIVE-junk name patterns (pharmacy/supply/kiosk/animal-control) override the clinic signal; SOFT ones (shelter/store/boarding/mobile) defer to it. **Breeder/cattery tier (2026-07-13, user spotted "Persian & Ragdoll Kittens Texas" shipping as a competitor)**: Google types many breeders `veterinary_care`, so the TYPE alone can't protect them — breeder vocabulary (cattery, kitten substring, ragdoll/bengal/maine-coon/sphynx/persian, breeder, puppy/puppies, poodles/frenchies/doodles, stud service) drops the entry UNLESS the NAME carries a clinic signal. That name signal (`nameSignal`) was simultaneously WIDENED (bare hospital/clinic/vet, veterinar-, animal health, spay/neuter) because `--refilter` runs have NO primaryType — the first narrow-signal refilter wrongly dropped real clinics (PetSmart Veterinary Services ×4, Zoot Pet Hospital, Aggieland Animal Health Center, HF Veterinary Services, nonprofit spay/neuter clinics); the wide signal re-protects them name-only. Net: 6,400 → 6,334 (49 catteries/breeders + 17 shelters/kennels/groomers/MX-border stores). **Out-of-state purge (2026-07-14, user: 'remove pins in Mexico')**: 6,334 → 3,765 — the statewide scan bbox spilled over every border (1,295 Mexico incl. Monterrey, 779 OK, 242 NM, 169 AR, 81 LA, 3 MO); filtered offline by point-in-TX_OUTLINE (5-probe ±0.02° tolerance) + foreign-address regex, with a **TX-address whitelist overriding the coordinate test** (barrier islands — Port Aransas/Padre — aren't in the simplified mainland ring and were false-positive dropped without it). Verified: Laredo shows TX-side only, El Paso 49 pins, Port Aransas islands kept, zero OK across the Red River. Slices re-run. Sentinels that must hold: "Kitten to Cat Hospital"→clinic, "KittenBerry Castle"→breeder, "Veterinaria Puppy"→clinic, "PetSmart Veterinary Services"→clinic. GOTCHA that caused a silent no-op here: python heredoc patches turn `\b` into a backspace char unless the replacement string is a RAW string (r"""…""") — the regex "worked" only for alternatives without \b. After any refilter: re-run `build-region-slices.mjs` (slices carry the same junk otherwise).
+- **Species focus is WEBSITE-VERIFIED (`vet-species.js` via `build-species.mjs`, 2026-07-09) — the layered classifier `_isLargeAnimalAt(name,la,lo)` supersedes name-only checks at all six competition call sites**: `_speciesAt(la,lo)` (exact cell then ~330m window, same tolerance as `_vetStaffAt`) reads the scrape verdict — `large` → excluded even with a benign name (Elgin Veterinary Hospital, a Thrive/PE large-animal hospital the name test missed — 64 such statewide); `mixed` → competes even with an equine name (Argyle Vet, Bay City Vet & Equine — site proves small-animal service); `small`/absent → falls through to the conservative NAME classifier (`_isLargeAnimal`), because **a bare thin-page 'small' verdict must NOT overturn an explicit equine name** (audit: 'Waller Equine Hospital → small' was a one-generic-term JS-page artifact — the tie-breaker keeps it excluded). Scrape: `node build-species.mjs --all` (~4,400 sites, ~5 min, checkpointed like build-vets) → 3,526/4,379 classified (80.5%), 3,044 unique cells: 2,567 small / 346 mixed / 131 large. Distinct-term counting over homepage (+1 services page when thin); mixed requires ≥2 large AND ≥2 small signals. Loaded `defer` with graceful `onerror`. **The clinic-type TAG system is species-aware (user ask)**: `_kindOf(c)` = analyst override → name `specialty` (an axis the scan can't see) → website species (`large`/`mixed`/new first-class `mixed` kind; a thin-page `small` verdict can't overturn an equine NAME — same rule as scoring) → name heuristic. `mixed` added end to end: `CLINIC_KIND_LABEL`, `TYPE_ON`, a "Mixed (small + large)" filter chip (caption now "from websites + names"), and the editor's Clinic type select. Pin popup shows ONE kind badge with a provenance suffix: `· analyst` (override) / `· site-verified` (species scan) / none (name), navy-tinted when data-backed. **Unverified-species prompt (Evaluate) — a SCREEN MODAL (user preference over the inline card)**: `#species-overlay`/`.spmod` auto-pops ONCE per analysis from the `_evalComputeAndRender` tail (`evalSpeciesPrompted` guard — slider-drag recomputes don't re-pop) when comps in range have NO site verdict and NO analyst kind (`_speciesUnverified()`); chips → `_evalGotoComp(i)` closes the modal → `_gotoClinic` fly+popup → gear editor; footer = "Ignore for this analysis" (`evalSpeciesIgnored`) vs "I'll review them" (close only, a slim amber reopen LINK stays in the sidebar). Esc/backdrop close. Both flags reset in `_evalResetState` AND at the start of each openEvaluate/openEvaluateArea (ignore must not leak across analyses). **The analyst clinic-type override is now AUTHORITATIVE both ways** — `_isLargeAnimalAt` checks `_ovKindAt(cellKey)` FIRST (cached reader, reparses only when `vf_overrides` changes): kind `large` ("Large animal / equine" in the editor) → excluded; any other explicit kind → competes, beating both the site verdict and the name (the old `!(_ov&&_ov.kind)` skip-guards at the three add() sites were removed — the helper owns the decision). `saveClinicEditor` already re-runs an active evaluate, so classifying a clinic live-updates the analysis and drops it off the prompt.
+- **Pure specialty/ER practices are EXCLUDED from GP competition (2026-07-23, user: "if clinics don't compete for GP visits that needs to be taken into account"; found via the Double Oak eval — 4 of its 11 counted competitors were VEG ER, an emergency&specialty center, dentistry-only, and TeleCardiology)**: `_isSpecialtyER(name)` — `_SPECER_RE` (specialty/referral/emergency/ER/dental/oral surgery/cardiology/oncology/dermatology/ophthalmology/neurology/radiology/internal-medicine/behaviorist/telemedicine/rehab/acupuncture/imaging/chiropractic) with a GP-anchor override (`_SPECER_GP_RE`), BUT the probe **strips the emergency phrase first** — "Emergency Animal Hospital of Collin County" is an ER (its GP words are part of the emergency phrase), while "Animal Hospital and Emergency Clinic of Conroe" is a hybrid and competes. Validated statewide: 140 excluded / 6 hybrids kept / zero GP false-positives. `_isSpecialtyERAt(name,la,lo)` honors the analyst clinic-type override both ways (kind `specialty` → excluded; explicit other kind → competes). Wired at ALL competition sites like the equine rule — `_evalCompetitors` (NOTE: its equine check is MID-LINE in the one-liner `add()`; a line-anchored patch missed it once — a shipped near-miss caught by re-verification), `buildHexClinicIndex`, `_areaClinicCount`, `ensureRegionIndependents`, `_aiEnsureOpp`, `buildOppBaseInputs`. **`_oppIndKey` bumped `_s1`** (region-independent localStorage caches stored the pre-exclusion set). No settings toggle (unlike equine) — the per-clinic analyst kind IS the escape hatch. Map pins/search unaffected. Verified: Double Oak comps 11→9 in range, share 0.235→0.242, verdict "Balanced ~97% of capacity."
+- **Equine / large-animal practices are EXCLUDED from small-animal competition by default (`_isLargeAnimal`, Settings toggle `vf_count_equine`, 2026-07-09, field-validated in 76226 Argyle horse country)**: a name-signaled pure large-animal practice (/equine|large animal|livestock|\bcattle\b|bovine/ with NO small-animal signal — mixed practices like "Equine & Small Animal" always count) doesn't compete for dog-and-cat visits, so all competition/saturation consumers skip it: `_evalCompetitors` + `buildHexClinicIndex` (check inside `add()`, skipped when an analyst `kind` override exists — user classification wins), `_areaClinicCount` (cache key carries the flag), `ensureRegionIndependents` (+`_oppIndKey` cache key varies with the toggle), `_aiEnsureOpp`, and `buildOppBaseInputs`'s PE per-ZIP DVM sum. ~169 independents + 3 PE statewide excluded; map pins/search still show them. `toggleCountEquine(on)` live-refreshes; AI tool set_preference supports `count_equine`. KNOWN LIMIT: a mixed practice's equine DVMs (Argyle Vet) are invisible to a name classifier — its roster still counts fully. Word-boundary gotchas encoded in the regex: no "dairy" (Dairy Ashford Rd), no "ranch"/"horse" (Robson Ranch, Horseshoe Bay), \bcattle\b not /cattle/ (Cattleman St).
+- **Low-income demand damp (`_incDampF` + `modelIncome`, 2026-07-09, AVMA research)**: modeled dog rate ×= `_incDampF(zip)` — 1.0 at median income ≥$55k, linear to the 0.85 floor at ≤$30k (published suppression band ~$25-45k in 2017$, CPI-adjusted to the 2024-ACS dollars the model runs on; fires on the bottom ~20% of ZIPs). Cats at half elasticity. DELIBERATELY a bottom-tail damp with NO affluence boost — income already earns points in the Income factor (20% composite), the underservice `_util` damper, and the Surface spend index; a linear multiplier would triple-count wealth. Evaluate cells do NOT get it (their `demandN` already prices income via `affl` — adding it would double-count within Evaluate). `modelIncome` is a NEVER-cleared model-scoped income store fetched in the same Census call as `ageData` (B01002+B19013 — `incomeData` can't be reused because the income layer toggle wipes it). Detail card discloses when it bites ("Low-income adjustment −N% pet demand"). Anchors: El Paso 79905 ($25.7k)→0.85, South Dallas 75210 ($33.7k)→0.87, Brownsville 78521 ($44.5k)→0.94, Pleasant Grove 75217 ($55.7k 2024)→1.0, DFW top-6 unchanged.
+- **Senior-age demand damp (`ageData`/`ensureAgeData` B01002 median age + `_ageDampF`, 2026-07-09, field-validated: Robson Ranch 55+ community counted as full pet-demand rooftops)**: modeled dog rate ×= `_ageDampF(zip)` — 1.0 through median age 48, then −1.1%/yr, floor 0.75 (AVMA: senior households own dogs at ~3/4 average). Cats damp at HALF elasticity (matches the cat-model design). Applied in BOTH dogData build sites (keep matched; `dogData[zip].ageF` stored) → List demand + Surface volume + AI inherit automatically; Evaluate gets it per-cell via `_cellAgeF` (mirrors `_cellAffl`; `_buildAreaZips` now carries `zip`) multiplying `demandN`; `_ensureEvalDemographics` + both dogData sites `await ensureAgeData()` BEST-EFFORT (a failed age fetch must never break the dog layer — everything defaults ageF=1). List detail card discloses the adjustment when <0.97 ("Senior-age adjustment −N% pet demand · median age M"). Anchors verified: Sun City Georgetown 78633 (median 67.9) → 0.78; Frisco/Southlake/Argyle → 1.0; DFW top-6 order unchanged. ZIP-GRAIN LIMIT: a senior enclave inside a young ZIP (Robson Ranch in 76207, median 39.9 — diluted by Denton students) is NOT caught — that case is covered by the honest-verdict site bar instead.
+- **Mobile/traveling vets are tagged `mobile:1` and EXCLUDED by default via the `vf_include_mobile` settings toggle**: their listed coordinate is usually a home/PO box (no real trade area), so `_activeVetClinics()` filters them out unless the user enables "Count mobile / traveling vets as competition" in Settings → Data & Logic → Options. `toggleIncludeMobile()` writes `vf_include_mobile` and live-refreshes all consumers (map fetch, opportunity rebuild via cleared `oppRegionIndependents`/`oppBaseRows`/`oppScored`, density heatmap, active evaluate). Default OFF.
+- **`vet-clinics.js` rows carry enrichment: `{name,lat,lon,addr?,mobile?,rating?,reviews?,web?,tel?,days?}`** (Enterprise field mask: rating/userRatingCount/websiteUri/nationalPhoneNumber/regularOpeningHours/formattedAddress — same scan, ~$80 statewide). PE clinics (from `PE_COORDS`, which has no Google fields) are enriched at runtime by `_vetEnrichAt(lat,lon)` — a cell-indexed nearest-match (~330m window, checkPE's tolerance) into `VET_CLINICS`. Used in popups, the clinic list, acquisitions, and `_evalCompetitors` (rating/reviews are DISPLAY-only — `_revW` review-weighting was neutralized to 1.0 on 2026-07-08 so a new PE clinic with 1 review still competes at full strength).
+- **`_evalCompetitors` PE loop var MUST NOT be named `e`** — the function destructures `const {s,n,w,e}=_evalBuffer(...)` (east bound), and the PE loop's bounds check reads `c[1]>e`. A `const e=_vetEnrichAt(...)` inside the loop body block-scopes a NEW `e` whose TDZ makes that bounds check throw `ReferenceError`, killing the ENTIRE Evaluate engine (no dots/sites/grade). It's named `enr`. This was a real shipped regression caught by adversarial review — do not reintroduce.
+- **PE-lens UI layer (CSV export, watchlist, drill-downs, strength pins) is ALL additive/display-only** — none of it touches the scoring/map engine. Key pieces: `downloadCSV()` + `VM_METHOD` (provenance-stamped, formula-injection-safe but keeps pure numbers numeric) power Export buttons on the clinic list/Acquisitions/Opportunity/Evaluate; the **Watchlist** (`vf_watchlist`, the repurposed "Reports" nav tab) stores VALUES + save-time weights/date (not geojson refs) via star buttons, with a markets-compare table; Opportunity rows expand to `renderOppDetail` (real numbers + region-relative caveat); Evaluate site pins/competitor dots get popups (popup shows the REAL clinic name + PE firm, via `_evalCompetitors` carrying `name`/`owner` from `PE_COORDS[4]`/`[2]` and `VET_CLINICS.name`) + a cannibalization advisory. **In Evaluate, competitor dots are color-coded independent=BLUE `#2563eb`, PE/corporate=RED `#dc2626` (rings + legend match) — this is the OPPOSITE of the main-map pin convention (PE=navy, independent=red); intentional, do not "fix" it.** Dots sized by review strength (Huff proxy); the **Competition-Strength pin encoding** toggle was REMOVED 2026-07-25 (user ask) — `STRENGTH_PINS` frozen `const false`, `pinTier` kept inert (see the removal tombstone below); `_iconCache` remains keyed `color+'_t'+tier` (harmless, tier is always null now). The Acquisitions statewide independent pool is **memoized** in `_acqIndPool()` keyed on mobile-toggle+overrides (a per-pan ~6,400×checkPE rebuild was a perf cliff) — keep the memo. **Acquisitions has a `Targets | PE groups` segment (2026-07-13, Terminal-teardown steal; restyled same day — `.peg-row` cards: owner + navy count pill + market-share bar (n/max, `.peg-track`) + muted brands/cities lines + `.peg-filter` client-side name/brand filter `_pegFilter`; BOTH acquisition views wrap their body in `.eval-scroll` — without it the sidebar's overflow:hidden ate scrolling, a user-reported bug)**: `acqView`, `_peGroups()` (rollup of PE_COORDS by owner c[2]; brands c[3]; REAL cities via `_vetEnrichAt` addr parse — c[4] is the LOCATION name, not a city; license-aware via `_vfInLicense`), `_renderPeGroups`, `peGroupFocus(owner)` → statewide footprint dots drawn STRAIGHT from PE_COORDS as `_peGroupLayer` (independent of loaded pins) + `#pe-group-chip` clear-chip + fitBounds, `peGroupClear()`. **Focus does NOT switchSection — the map is visible in Acquisitions and jumping to Map closed the list (user bug 2026-07-13).** **Acquisition TIMELINE (2026-07-13)**: clinic editor Ownership section gains `acqYear` ("Year acquired") → when the active group has ≥1 dated clinic, `_pegTimelineHTML()` renders a year slider under the filter (`pegTimeline(y)` → `_peGroupDraw()`): dated dots pop in once the slider passes their year, undated render dimmed 0.30 with "date not recorded" tooltips + an honest counter; no dates → a note explaining how to add them. NO acquisition dates exist in any dataset today — the field is analyst-fed (or a future re-import if the source PE sheet carries deal dates). **Modeled revenue + EBITDA — the two-sided practice-economics model (rebuilt 2026-07-22; see "Practice economics" below)**: `_revEst(c)` = analyst `revenue` override as-entered, else REAL scraped roster through `_practiceEcon` (never invents from the default-2 assumption); `_revEstLine` on Acquisitions cards, popup line inside `_staffPopupHTML`, 2 CSV columns (DVMs scraped + modeled $).
 - **Overpass mirror order (`OVERPASS_MIRRORS`) — private.coffee FIRST, overpass-api.de LAST**: do NOT reorder to put `overpass-api.de` first. As of 2026 it 406-bounces "programmatic-looking" browser requests via an anti-scraper filter, and a browser `fetch()` cannot set `User-Agent` (a forbidden header), so it often fails outright from this app. `overpass.private.coffee` (no rate limit, no filter, full CORS) and `overpass.kumi.systems` are the reliable primaries; `overpass.openstreetmap.fr` is an independent-operator fallback. Exclude `overpass.osm.ch` (Switzerland-only data — returns 200 but empty for TX).
 - **`_overpass` is the single Overpass client — every caller must use it**: `fetchClinics` (map), `_refreshRegionIndependents` (Opportunity), and `_evalFetchContext` (Evaluate) all route through it. It has a per-attempt AbortController timeout (a hung mirror previously had NO timeout in `fetchClinics` and froze the map for minutes on the browser's default socket timeout), sequential mirror fallback, one 429/504 backoff retry, and a guard that returns null on a "200 but query-timed-out" body (no `.elements`). Do not reintroduce a raw inline `fetch` to Overpass — it loses the timeout and the rate-limit handling.
 - **Mutual exclusion of choropleth layers**: income, pets, and growth are radio-button exclusive at the fill level. Both datasets can be loaded simultaneously (for scoring snapshots) but only one paints the map.
 - **`buildOppBaseInputs` uses `rawBBox()` not `L.geoJSON(f).getBounds()`**: intentional perf fix. The Leaflet call was creating thousands of throwaway objects for non-DFW ZIPs.
+- **An active analysis is STICKY (user rule, 2026-07-09)**: the bare-map click handler returns early when `evalActive` — clicking off can NOT dismiss a running Evaluate; only the sidebar **Clear** button (`clearEvaluate`) closes it. The `_evalResetState()` guards inside `clearArea`/`clearZipSelection` remain as the BACKSTOP for programmatic clears (layer-toggle teardowns etc.) so nothing can orphan the heatmap — they're just no longer reachable from a stray click.
+- **Honest-verdict site tiers (2026-07-09, user-validated against 76226; RECALIBRATED 2026-07-15 after a top-10 audit): the engine no longer presents weak sites as picks.** `EVAL_STRONG=0.40` / `EVAL_FLOOR=0.22`, and **'strong' additionally requires `g.ret>=EVAL_RET_MIN` (2.0) — ABSOLUTE grav-weighted retail mass within 1mi — via `_evalStrongOK(g)`** (skipped when retail data didn't load). WHY: the multiplicative score's realistic ceiling in a CONTESTED market is ~0.40-0.45 (demandN ~0.9 × share 0.45-0.5 × access ~0.85 × retail ~1.05), so the old 0.50 bar was only reachable where share≈1 — a top-10-ZIP audit graded 9/10 'fair' and the only 'good' was the 75054 zero-vet enclave (the bar measured EMPTINESS). The ret guard separates same-score sites: 76226's field-bad 45s carry ret 0-1.0, real retail corners 3.8-14.9 (75009's 45 → good; 75071's 47-point pasture cell → demoted). Do NOT raise STRONG back without re-deriving the formula ceiling, and do NOT drop the ret guard (it's what preserves the 76226 field validation at the lower bar). evalSat grade cuts moved with it (A≥0.40 / B 0.32 / C 0.22). **Site scores are DISPLAY-STRETCHED via `_evalDisp(sc)` (2026-07-15, user: 'top ZIPs all have below-50 sites')**: piecewise anchors FLOOR(0.22)→55, STRONG(0.40)→85, 0.55→95, 1→100 — the raw multiplicative score (ceiling ~0.45 in contested markets) read as a failing grade at raw×100. PRESENTATION ONLY (g.score stays raw internally; tiers/ranking/CSV-ordering unchanged); all Evaluate display sites route through it (site cards/popups/banners/CSV/site-drop/saved placements/evalSat headline). Watchlist records saved BEFORE this date carry raw-scale numbers. **Demand gravity is SQUARED (`_gravD`) + ZIP-mode demand is PURE rooftops (2026-07-15, user: 'demand 48 in the middle of nowhere' / 'grade close proximity + high volume')**: the two dem loops use `_gravD=(1-d/R)^2` (a rooftop at 0.5R counts 25% not 50% — demand mass PULLS sites toward it; competition/retail/access keep linear `_grav` — A_OWN was calibrated against linear comp sums, do NOT steepen it), and in single-ZIP mode `demandN=_roofN` (the affluence percentile is one constant across a ZIP — blending it added a ~0.4 floor that made empty pasture read 'demand 48'; area mode keeps the 55/45 blend because affl varies per cell there). Bars re-derived for the compressed scale: EVAL_STRONG=0.35 / FLOOR=0.20 (ceiling = 1.0×share-cap×access ≈ 0.38-0.42), evalSat cuts A≥0.35/B 0.28/C 0.20, `_evalDisp` anchors track the constants. Verified 75009: #1 site moved INTO the rooftop mass (demand bar 100, share 0.44, ret 6.0 → 86 Recommended), the old empty-east cell collapsed to demand 22/'weak', land plays show demand-mix futPct 36/30/66. **Share SATURATES at 0.85 in the core + 'strong' needs demandN≥0.45 AND share≥0.40 (floor added 2026-07-16, user caught a 'Recommended' 86 touching THREE incumbents at 36% share while the same ZIP's KPIs read saturated/hub — maxed demand must not drag heavily-contested corners over the bar; below the floor a site tops the list as 'Best available' and the memo steers to acquisition) + retail-fabric JUNK FILTER (2026-07-15, user caught Site 1 at an empty rural crossroads next to an RV park)**: (1) `core = demandN × min(share,0.85)^GAMMA` — past ~0.85 uncontested is uncontested; share 1.0 at 5.6mi-from-anything must not outbid share 0.47 on real rooftops (demand now decides between open sites, pulling winners toward rooftops + injected MPC demand); (2) `_evalStrongOK` also requires `demandN>=0.45` (emptiness + a gas station can't earn the green badge); (3) `_evalFetchContext` drops OSM junk from `evalData.retail` by tag (`shop=storage_rental|trade|wholesale|farm`) and name (/self-?storage|mini-?storage|storage unit|\brv\b|caravan|campground|mobile home/i) — storage compounds and RV parks carry landuse=commercial but have zero co-tenancy value. Verified 75009: old #1 (RV-park crossroads, demandN .48/share 1.0) is GONE from top-3; new #1 = downtown Celina/Preston corridor (demandN .89, share .47, real fabric) at display-85 Recommended so grade and verdict can never contradict. Each `evalTop` site gets `g.tier` (strong/fair/weak); `evalTopMode` = 'good' (best≥.50, normal recommendations; sub-.50 extras chip "Best available"), 'fair' (best .26–.50 → amber "No strong site in this area" banner citing `_evalWeakWhy()` reasons — incumbent capture / demand away from buildable land / no commercial fabric — cards demoted to "Best available, not endorsements", gray pins), 'none' (best <.26 → red "No recommendable site" banner, NO cards, NO pins until `evalRevealWeak()` "Show the N best spots anyway"). Summary line reads "N recommended sites · M below the bar"; site popups + CSV carry the verdict; `_evalResetState` clears `evalTopMode`/`evalShowWeak`. Validation case: 76226 (Argyle) ranked #4 on the List but its best sites scored 45/41/39 and field-checked poorly (residential road by a 55+ community / parking area / I-35W frontage) — now they render under the amber banner instead of as endorsements. The heatmap stays visible in every mode (the surface is the evidence; only the endorsement is withheld).
+- **Evaluate SITE BUFFER (`bufM`/`BUF_CELLS` in the cell loop) — candidate cells extend ~0.5mi PAST the polygon, intentionally**: a clinic's demand catchment ignores ZIP/area lines, so the optimum is often just over the border; without the buffer the grid was hard-clipped to the polygon and piled recommendations on the edge (looked like it was "trying to leave"). The grid grows into a ring; a cell is kept if inside the polygon OR within `bufM` (800m) of its boundary (tested against ALL `polySegs` — no lat-band prefilter, because ZIP boundary segments can be long/sparse and a prefilter misses the true-nearest). `bufM` is FIXED (not scaled to ZIP size — a big ZIP must not open a huge outside area). The zoning/parcel/OSM fetch bbox is expanded ~12% (min 0.009°) to keep the buffer ring covered so it can't reintroduce residential false-positives. `EVAL_TOP_N=3` (was 5) — user preference. Recommended sites can therefore land just outside the analyzed ZIP — this is intended, noted in the sidebar.
 - **`oppGeoSnap` holds a reference to the GeoJSON object**: setting `incomeGeoData = null` (in toggle-off) doesn't destroy the object, just drops the variable reference. The snap survives because it holds the same reference.
 - **`pointInGeoJSON` handles Polygon + MultiPolygon + holes**: the free-draw `pointInPolygon` only handles simple rings. Use `pointInGeoJSON` for ZIP polygon containment tests.
 - **Growth ZIP parsed from `r[r.length-1]`, NOT `r[1]`**: the ACS5 ZCTA geography column shape differs by vintage. ≥2021 returns `[pop, zip]` (ZCTA flat); ≤2019 returns `[pop, state, zip]` (ZCTA nested under state). Hardcoding `r[1]` made every nested-vintage row resolve to state FIPS `"48"`, so `popOld` was never stored and the entire growth layer showed "No data" statewide. Always read the zip from the last column. The requested variable is always col 0.
 - **Growth OLD vintage must be ≥2021 (2020-ZCTA boundaries)**: `GROWTH_YEAR_OLD = 2021`, not 2019. ZCTA boundaries were redrawn after the 2020 Census — vintages ≤2020 use 2010 ZCTAs, ≥2021 use 2020 ZCTAs. Comparing across that line is invalid wherever a ZCTA was split/merged/created. Real example: 2019's single 75034 (108k pop) was split into 75033/75034/75036 by 2024, so a 2019↔2024 join showed Frisco at a fake −50%. 2021 is the earliest 2020-boundary vintage = longest valid window. Do NOT move OLD back to ≤2020 to "get a longer time span" — it silently corrupts every fast-growing exurb (the app's primary targets).
 
+- **Evaluate zoning/land-use gate (`_zoneClassAt` in the cell loop) — primary = municipal ArcGIS, fallback = OSM landuse**: a cell whose zoning resolves to `exclude` (residential/civic) is DROPPED from the siteable grid before scoring — this is what stops Evaluate recommending sites inside subdivisions. Order matters: city zoning is authoritative and checked FIRST (`evalData.zoning`), OSM landuse polygons (`evalData.osmLU`) only fill gaps (unincorporated county land — TX counties have NO zoning authority — and the few cities not in the registry). `gate` is one of `exclude` (residential/park/civic/water/ROW → drop), `allow` (commercial/office/industrial/mixed → site directly, bypasses the corridor gate), `fallback` (agricultural/PD-without-base/unknown → defer to the existing road/retail corridor gate). Toggle `evalZoning` (default ON) gates application; `evalShow.zoning` paints the overlay (red=excluded, green=siteable).
+- **SITING GATE is GREEN-or-BLUE ONLY — there is NO road-frontage fallback (removed on purpose)**: a cell is siteable only if `zgate==='allow'` (GREEN — commercial/office/industrial/mixed from city zoning + county-CAD parcels + OSM landuse; these load via CORS ArcGIS / Overpass) OR it sits within `SITE_COMM` (280m) of a tagged retail/commercial point in `evalData.retail` (BLUE — shop POIs + commercial-landuse centroids). The gate is literally `if(zgate==='allow') siteable=true; else siteable=(hasRetail && nearRetail<SITE_COMM);`. **Do NOT re-add `(nearRoad<SITE_ROAD)` or the OSM-resid dev mask** — accepting arterial/road frontage ALONE placed sites on residential road frontage (an arterial runs straight through a subdivision → a recommended site on Highland Village Road with no blue dot and no green area; user-reported, twice). Consequence: if NEITHER retail (OSM) NOR commercial zoning/parcels load for an area, it yields no sites — intentional ("don't guess"). This is acceptable because the zoning + parcel layers load independently of a slow/down Overpass, so DFW commercial areas still get green sites even when OSM retail (blue) is unavailable. `SITE_ROAD`/`bGate`/`DEVGATE`/`haveDev` are now unused by the gate (kept harmless).
+- **Zoning classifier (`_zoneClassGeneric` + `_zoneClassFW`) is deliberately CONSERVATIVE and was validated against ~700 real distinct codes across all 16 cities (zero residential→`allow` leaks)**: the safety property is "never let residential through as siteable." When uncertain, a code returns `fallback` (defers to OSM/corridor), NOT `allow`. Description text (where a city exposes one) is checked before code-prefix rules because it's far more reliable. Do NOT "simplify" the regex order — residential/special checks run BEFORE commercial on purpose, and the desc residential check runs before desc commercial. **Fort Worth needs `_zoneClassFW` because its legacy single-letter codes INVERT the convention: `A`/`B`/`C`/`D` = residential, `E`/`F`/`G` = commercial, `I`/`J`/`K` = industrial.** A generic `C→commercial` rule would mis-site FW. If you add a city, add it to `DFW_ZONING_SOURCES` with the right `code`/`desc` field names (they differ per city — e.g. Dallas `ZONE_DIST`, Frisco `ZONE_` with a trailing underscore, Carrollton `Zoning` with parens-wrapped values that `_zoneNorm` strips) and re-run the classifier check.
+- **All 16 city zoning endpoints are CORS-enabled → no proxy/Function needed**: `_fetchCityZoning` hits every service client-side in parallel, viewport-filtered (`esriGeometryEnvelope`), best-effort (a city that errors/times-out is skipped, OSM covers it). Queries use `f=geojson&outSR=4326`. Do not move these behind a Function — they work from the browser as-is (verified live).
+- **County appraisal-district PARCEL fallback (`_fetchParcels` → `evalData.parcels`) sits BETWEEN city zoning and OSM in `_zoneClassAt`**: it fixes the exurb/unincorporated coverage gap the 16 zoned cities miss (e.g. 75078 Prosper went from "0 cells dropped" to ~250 residential cells excluded). Sources (`DFW_PARCEL_SOURCES`): Collin (Allen's CCAD mirror, field `GIS_DBO_AD_Entity_state_cd`), Denton (`gis.dentoncounty.gov`, `STATE_CD`), Dallas (`DallasTaxParcels`, `SPTBCODE`) — all CORS-OK, geoJSON. **The classifier `_parcelClass` keys on the Texas STATEWIDE SPTB code, so one map works for every county**: A/B/M/O→residential (exclude), F→commercial (allow), J/EX/X→utility/exempt (exclude), C/D/E/G/L/S→vacant/rural (fallback→corridor gate). The Dallas `DallasTaxParcels` service despite its name only really holds **Dallas-county** parcels (0 in Plano/Frisco/Prosper — verified) — that's why per-county CADs are required, not just the Dallas one.
+- **`_fetchParcels` reliability guards are load-bearing — parcels are HIGH-VOLUME (a ZIP can be 20k+)**: do NOT remove (1) the WHERE filter that pulls only gate-deciding classes (`LIKE 'A%' OR 'B%' OR 'F%' OR 'M%' OR 'O%' OR 'J%' OR 'X%' OR 'EX%'`) — skipping the numerous vacant/ag lots is what keeps volume sane; (2) `maxAllowableOffset=0.0002` geometry generalization; (3) `outFields=<sptb field>` only; (4) the per-source `CAP`/`MAXPAGES` paging caps; (5) the per-request 11s `AbortController` timeout AND the caller's 16s `Promise.race` budget. It's best-effort and purely ADDITIVE — a county that errors/caps-out just falls through to OSM/corridor, never blocks or breaks the evaluate. Only `exclude`/`allow` parcels are stored (fallback ones are dropped — they don't change the gate).
+- **OSM landuse fetch in the zoning stage is capped at 14s (`Promise.race` + AbortController)**: OSM is only the gap fallback, so a slow/down Overpass mirror must never block the whole evaluate. The municipal zoning (primary) always proceeds. Do NOT remove the cap — without it, a dead Overpass adds 25s×mirrors to every Evaluate.
+
+- **Post-login loading screen (`#app-loader` + `_vfRevealApp`) — readiness signal must stay tied to `_peReadyP` && `_tilesReadyP`, NOT to a clinic fetch**: the app opens statewide at zoom 7 (< `MIN_ZOOM` 10) so `fetchClinics` does NOT fire on load — tying the veil to a first-fetch-commit would hang it. The loader dismisses when base tiles paint AND `pe-data.js` parsed (`onPEReady` resolves `_peReadyResolve`), each with a safety cap (3.5s tiles, 4.5s overall) + a 380ms minimum so it never just flashes. `_vfRevealApp()` is called unconditionally near the top of the inline script — by the time index.html runs at all, `functions/_middleware.js` has already guaranteed the visitor is authenticated (see below), so there's no client-side auth branch anymore.
+- **Real server-side access control (2026-07-08) — replaced the old client-side login gate entirely.** `functions/_middleware.js` runs on EVERY request (the HTML shell, the data files, everything) and requires a valid `vf_session` cookie backed by a live session record in KV; unauthenticated HTML navigations redirect to `/login`, everything else (a direct fetch of `pe-data.js` etc.) gets a flat 401 — this is what makes it real: the raw data files are actually inaccessible, not just hidden by JS. Flow (ACCESS-CODE mode, 2026-07-08 — the email-OTP flow was removed to stay in the Resend free tier; `request-code.js`/`verify-code.js` are in git history if ever needed again): `/login` (`functions/login.js`, navy Resend-style page — must stay reachable pre-auth) → email + access code → `POST /api/auth/login` checks the KV allow-list where **the entry's VALUE is that person's access code** (`allow:<lowercase email>` = e.g. `mesa-vet-2026`; value `1` = legacy, rejected with "no access code set"); non-allowlisted → explicit 403 "doesn't have access yet" (owner's choice — clear UX over allow-list secrecy), wrong code → 401 + a `fail:<email>` counter (10 tries / 5 min, KV TTL 300); match issues a random 30-day session token (`session:<token>` in KV) as an HttpOnly/Secure/SameSite=Lax cookie → `GET /api/auth/me` lets the front-end show who's signed in (avatar initials) → `POST /api/auth/logout` deletes the session server-side (not just the cookie). Setup (KV namespace + binding + Resend key) is manual, one-time, dashboard-only — see `functions/README.md`. The old `vf_authed` localStorage flag, the `#login-screen` split-screen markup/CSS, and `vetricSignIn` are gone; `vetricSignOut` now calls the real logout endpoint and redirects to `/login`. **Licensing tiers (2026-07-12, user ask — pilot firms get one metroplex)**: optional `acct:<email>` KV record `{firm,tier,regions,started}` rides next to `allow:` — NO record = full access (legacy accounts untouched; login/me/middleware all fail open on parse errors). `tier:'demo'`+`regions:['dfw']` = pilot: `_middleware.js` REWRITES the four proprietary statewide files to committed DFW slices via `env.ASSETS.fetch` (`REGION_SLICES` map → `pe-data-dfw.js`/`vet-clinics-dfw.js`/`vet-staff-dfw.js`/`vet-species-dfw.js`, built by `build-region-slices.mjs` — re-run after any data refresh; slice responses get `Cache-Control: private` + ETag stripped; any rewrite error FAILS OPEN to the full file). tx-zips/dfw-* context files deliberately not gated (public geography). Middleware also re-checks `allow:<email>` on EVERY request → revocation kills live sessions immediately (session deleted on first denied hit). Login embeds the acct snapshot in the session (`tier/regions/firm/started`) + stamps `seen:<email>`; `/api/auth/me` returns it; pre-update sessions read as full/tx. **Admin** (`tier:'admin'`, bootstrap = one manual KV record, see functions/README §6): Settings gains **Access & licensing** (`#cat-access`, `_admLoad/_admSubmit/_admEdit/_admRevoke/_admGen` → `/api/admin/accounts` GET/POST/DELETE in `functions/api/admin/accounts.js`, admin checked FRESH from acct: not the session; self-revoke/self-demote blocked server-side) — roster table (firm, Demo/Licensed/Admin chip, started, market, code, last login) + add/update form (code generator = crypto-random 12-char unambiguous alphabet "MYKU-SKA9-R5EY" style; click-to-copy on roster codes + a Copy button in the save message). Client (`_vfApplyLicense` off the me-fetch): demo → header pill "Demo · DFW metroplex" (start date is ADMIN-ONLY, user rule), `map.setMaxBounds(VF_METRO_BOUNDS.dfw)` viscosity 1 + **`map.setMinZoom(8)`** (was zoom-out to statewide), `downloadCSV` guard toast, `selectOppRegion` gate. **Leak defense-in-depth (2026-07-13, user zoomed out and saw out-of-metro pins)**: (1) middleware re-reads `acct:<email>` for PRE-LICENSING sessions (no embedded tier) instead of failing open to statewide — a stale pilot session gets slices without re-login (harness: 34 cases); (2) client HARD-FILTERS to `VF_LICENSE_BBOX` (= the slice bbox exactly) via `_vfMetroLimited()`/`_vfInLicense()` in `_activeVetClinics`, the fetchClinics PE loop, and `_clinicHeatPoints` — even a statewide file in memory renders nothing outside the box (verified: 6,278→993, 0 outside); (3) fetchClinics' Overpass fallback is DISABLED for metro-limited accounts (a licensed pilot must never pull live out-of-license clinics); (4) `VF_METRO_BOUNDS.dfw` tightened to [[32.10,-98.15],[33.62,-96.00]] (old padding reached Sherman/Gainesville/Corsicana); license arriving after a first fetch clears+refetches pins. All 4 functions covered by a 32-case Node harness (stub KV/ASSETS) in the session scratchpad — rerun pattern documented there; adding a metro = bbox in `build-region-slices.mjs` REGIONS + `REGION_SLICES` map + `VF_METRO_BOUNDS` + region-select option.
+- **Opportunity scoring DELIBERATELY `await`s `ensureRegionIndependents()` (Overpass) — do NOT make it fire-and-forget**: independent clinics are REAL competition and ONLY come from Overpass (PE comes from `PE_COORDS`; the four demographic factors come from Census). Scoring without the region independents under-counts competition on a cold first load — at the statewide default view the on-map `clinics[]` union is ~empty, so independent-heavy ZIPs would look artificially high. Accuracy beats load speed here. Returning users are instant via the localStorage cache (`vf_oppind_<region>` inside `ensureRegionIndependents`); only the cold first load waits on Overpass (and can hang 30s+ if Overpass is down — accepted trade-off). A non-blocking "score now, rescore later" version was tried and **rejected** (it showed competition-blind scores on cold loads). Decision 2026-06-25. NOTE the demographic loads are still optimized — idle prefetch warms tx-zips+income, and `openOpportunity` parallel-`force-cache`-warms the 4 Census endpoints; only this last independents step blocks.
+- **Load-path perf hooks (don't regress)**: `_iconCache` memoizes one Leaflet `divIcon` per color (don't rebuild per marker); markers bind popups LAZILY (`.bindPopup(()=>buildPopup(c))` — content built on open, not per-commit); `_vfWarmCaches` idle-prefetches `tx-zips.json` geometry + all-TX income after the app shows (the two heaviest UNIVERSAL deps, so the first choropleth/evaluate/opportunity is instant); `openOpportunity` warms all 4 Census endpoints in parallel (`force-cache`) up front so the sequential mutual-exclusion toggles hit a warm cache. `<head>` has preconnect/dns-prefetch for cdnjs, Google Fonts, OSM tiles, Census, and the primary Overpass mirror. None of these change any data — they only change WHEN bytes arrive / avoid redundant work.
+
 ### Known limitations (intentional, not bugs)
+- Zoning coverage is the 16 largest DFW municipalities in `DFW_ZONING_SOURCES`. Smaller cities and unincorporated land fall back to OSM landuse, which is a viability heuristic (uneven coverage), not legal zoning. Planned-Developments (PD) without a readable base zone also defer to OSM. Adding a city = one registry entry + a classifier spot-check.
 - Independent clinics are viewport-limited (Overpass). PE clinics are complete statewide. `ensurePEClinicsForSelectedZips()` supplements PE counts on ZIP select.
 - Opportunity scoring loads growth data as the third sequential async load. The three loads are sequential, not parallel, because mutual exclusion teardown is interleaved.
 - Population growth uses ACS 2024 vs 2021 (same 2020-ZCTA boundaries, ~3yr window). ZIPs with <500 baseline population are excluded (noisy denominators). Values clamped to [-50%, +150%]. Window is 3yr rather than 5yr to stay on consistent ZCTA boundaries (see gotchas).
-- Income data is ACS 2022 5-year. Pet density is modeled from ACS 2022 housing variables (not direct survey data).
+- Income data is ACS 2024 5-year. Pet density is modeled from ACS 2024 housing variables (not direct survey data).
 - DFW scoring region is hardcoded. Adding a new region means changing `DFW_BOUNDS`, `DFW_MIN_LAT/LON/MAX_LAT/LON`.
 
-## Section nav
-Four nav items: Map (working), Opportunity (working), Properties (stub — shows toast), Reports (stub — shows toast).
-`switchSection(s)` handles routing. The opportunity panel is an `position:absolute` overlay inside `.main` — it covers the map div without resizing it.
+## Owner identification — `build-owners.mjs` (pilot, validated 2026-07-08)
+Identifies the OWNER of each INDEPENDENT clinic from TX franchise-tax filings (public record, free, no key needed for the pilot). Local Node 18+ crawler like `build-vets.mjs`. Data path: the **keyless** endpoint the public search page calls — `GET comptroller.texas.gov/data-search/franchise-tax?name=<entity>` (list: `{name,taxpayerId,mailingAddressZip}`) → `GET .../data-search/franchise-tax/<11-digit taxpayerId>` (detail: `name,dbaName,mailing addr,registeredAgentName,effectiveSosRegistrationDate,sosRegistrationStatus,officerInfo[{AGNT_NM,AGNT_TITL_TX,AGNT_ACTV_YR,...}]`). For a **statewide** run set `CPA_API_KEY` (free registration) to switch to the official `api.comptroller.texas.gov/public-data/v1/public/franchise-tax*` endpoint (`x-api-key` header) — do NOT hammer the keyless public proxy at scale. Pipeline per clinic: search list by name → pick best entity by **ZIP match** (strong) + distinctive-name-token overlap (tiebreak; `JUNK` regex rejects "Brookside Animal Hospital"→"Brookside Storage LP") → detail fetch → owner = first `officerInfo` with a PRESIDENT/OWNER/MEMBER/MANAGER/DIRECTOR title, else `registeredAgentName`. Also yields **practice tenure** = years since `effectiveSosRegistrationDate` (the succession-age proxy). `zipOf` parses the ZIP AFTER "TX" (not the street number). Clinic set = VET_CLINICS filtered to DFW + non-mobile + non-PE (via pe-data.js) + a clinic-signal name (drops catteries/breeders + bare individual-vet listings, which are county-level sole props). **Measured pilot hit rate ~47% raw (30-50 DFW-core independents), ~55-60% on genuinely incorporated clinics**; misses are clinics whose legal entity name shares no token with the trade name (the fundamental name-only-search limit — the API can't search by address) + chains/nonprofits. Of matched owners, median practice tenure ~23y and ~40% are 25y+ (prime succession targets). NEXT (not built): statewide run → cross-reference each owner NAME to the TBVME license issue date for true owner age → succession-risk score on the Acquisitions tab. Output (`--out=owners.js`) = `window.CLINIC_OWNERS={cellKey:{owner,title,entity,tenureFrom}}`.
 
-## Dev mode
-Toggle in search bar. Adds clinic/property via map click, persists to `localStorage`. `getCustomClinics()`, `saveCustomClinics()`, `getDeleted()`, `getOverrides()` all read/write localStorage keys prefixed `vf_`.
+## Find-spaces-to-lease deep-link (Crexi / LoopNet)
+Each recommended site in the Evaluate sidebar (`_evalRenderSidebar` cards) carries a handoff block (`_leaseBlock(g)`): an **expectation line** set from the site's retail-access score (`g.retailN`: <0.35 → amber "Sparse retail — likely a build-to-suit or land play; try Land first", ≥0.6 → green "Established retail nearby — lease space more likely", shown only when `evalDataOk.retail`) + two link rows, **Lease space** and **Land to build**, each into Crexi + LoopNet. Crexi/LoopNet have NO free public API and block scraping, so this is a **location-filtered deep-link handoff**, not a data pull (stays inside the free-usage rule + their ToS). `openLeaseSearch(lat,lon,site,mode)` reverse-geocodes the site's coords via Nominatim (`_leaseGeo`, cached in `_leaseGeoCache`, reads city + `ISO3166-2-lvl4` state) then opens by `mode`: LEASE → Crexi `/lease/properties/{ST}/{City}`, LoopNet `.../{city-slug}-{st}/for-lease/`; LAND (buy land to build — the exurb whitespace play where lease inventory is thin but land isn't) → Crexi `/properties/{ST}/{City}/Commercial-Land`, LoopNet `.../{city-slug}-{st}/for-sale/`. All four formats verified against live indexed pages (single- + multi-word cities). **Popup-blocker-safe**: opens `window.open('','_blank')` SYNCHRONOUSLY inside the click gesture, then sets `.location` after the async geocode resolves (also nulls `opener`). Falls back to the state-level page if the city can't be resolved. Verified URL formats for single- + multi-word cities; the marketplaces 403 automated fetchers (bot protection) but serve real browser tabs normally.
+
+## Drive-time capture model (2026-07-27/28) — METROPLEX RUNS ONLY
+Design + full validation record: `research/site-capture-model.md`. Replaces the two circles that
+matter — demand and competition — with measured road-network reach. **`EVAL_MODEL='capture'` is the
+switch; set it to `'gravity'` to put metro runs back on the crow-flies engine exactly as it was.**
+Ordinary ZIP / drop-site / clinic evaluations NEVER consult it and are untouched.
+
+**`dfw-catchments.json`** (built by `build-catchments.mjs` against a LOCAL OSRM container — Docker,
+`ghcr.io/project-osrm/osrm-backend`, DFW-clipped OSM extract, port 5001). No API cost, no request
+cap, no redistribution restriction (ORS was rejected on LICENSING, not capability — its free tier
+forbids redistributing hosted output, which is what shipping it in a commercial product would be).
+Ships **derived numbers, never road geometry**, which keeps us on the produced-work side of ODbL.
+Per candidate cell (0.61-mi grid, two-source commercial-fabric gate = OSM retail ∪ county vacant-
+commercial parcels): `b[band]` = ZIP coverage per travel-time band, `cd[band][i]` = household-
+weighted distribution of EFFECTIVE competitor weight (i×0.5), `ov` = per-competitor household
+overlap, `fu[band]` = announced NCTCOG units, `a8..a25` = ring areas. Budgets 8/10/12/15/20/25 min.
+
+### The four things that were WRONG and are load-bearing now — do not undo
+1. **Decay lives ONLY in the share, never on demand.** A household makes its ~2.4 visits/dog-HH
+   wherever it lives; distance decides WHICH clinic wins them. Multiplying demand by `W[b]` as well
+   double-counts distance — measured at **0.27-0.31× actual rosters, a 3× undershoot**.
+2. **Competitors carry ALL SIX of their own rings, weighted by the same curve a site uses.** A
+   single 10-min ring made a household 20 min out read UNCONTESTED (it sat outside nearly every
+   competitor ring) — the model read 1.4-1.8× rosters.
+3. **The entrant is SIZED, not a fixed 2.5-DVM probe** (`_catchEquilibrium`): solve
+   `reach × share(n) = n × DVM_VISIT_CAPACITY`. A constant `A_OWN` asked "how much could a SMALL
+   clinic win here" and could never return 7 doctors — ceiling was 4.8 DVM against an observed 20.
+   `_catchAttract` is deliberately NOT `_staffW`: that carries an unknown-roster sentinel (making it
+   NON-MONOTONIC across fractional sizes — `_staffW(0.5)=1.0` but `_staffW(1)=0.8`) and a [0.8,1.8]
+   measurement clamp. Both are right for an OBSERVED competitor, wrong for a solved-for entrant.
+4. **The score is REVENUE, not doctors.** The income effect splits
+   `0.36 total = 0.85 ownership × 0.74 visits × 0.57 price` (BLS ÷ `_incDampF` ÷ AVMA participation).
+   Applying one combined floor to VISITS made total spend right — so the BLS check PASSED — while
+   both halves were wrong. A poor market supports MORE doctors and LESS revenue; ranking on doctors
+   put a $59k catchment first, ranking on revenue puts a $97k one first. `_catchSpendF` (visits,
+   floor 0.74) and `_catchACTF` (price, floor 0.57) are separate on purpose.
+
+### Distance decay varies by URBANICITY (user ask: "based on studies and location")
+Log-logistic `w(t)=1/(1+(t/θ)^β)`, form + urban/rural ratio from a study fitting decay by urbanicity
+in TRAVEL TIME (Florida hospital inpatient flows, PMC6598965: β 2.22 metro / 1.82 rural, ≤60-min
+mean 12.1 vs 28.0 min = 2.31×). **Only the FORM and the RATIO transfer** — that is inpatient care,
+travelled far further than a routine vet visit — so θ is refit to the Pfizer vet anchors (mean 5.3
+mi, 27% within 2 mi) giving θ 4.0 min suburban. GOTCHA: integrating `f` as a kernel does NOT
+reproduce the study's published means; `f` IS the observed travel distribution, so using it directly
+as a band weight would double-count population. Classification is `_catchUrbanClass` on INNER-RING
+household density only — never reach, which the weights themselves produce (circular).
+`CATCH_MAX_BAND=5` credits demand to 20 min: empirically 0.89-1.12 vs rosters, against 0.52-0.62 at
+15 min and 1.19-1.83 at 25. The 25-min band ships and is one constant away.
+
+### Validation — the gate that must keep passing
+`research/decay-validate.mjs` + the scratchpad validators compare modelled practice size against
+**scraped DVM rosters** at real clinic locations (GP-only; ER/urgent-care draw regionally and must
+be excluded as SUBJECTS or they flatter the top end). Target ~1.0 across the distribution: with a
+sized entrant and symmetric competition, equilibrium size IS what a mature market supports. Current:
+**p25 1.12 / p50 1.06 / p75 0.95 / p90 0.89**, Spearman ρ 0.64 vs the previous build (so it
+re-orders rather than uniformly lifting). Earlier entries arguing ~0.7× was correct belonged to the
+fixed-probe era — that reasoning is retired.
+
+### Scope — EVERY evaluation inside the artifact's bbox (2026-07-28)
+Gate is `EVAL_MODEL==='capture' && _catchData && _catchCovers(bb)`. Metro runs use the catchment
+cells AS candidates; drop-site / ZIP / clinic keep their FINE 36x36 grid (a 2-mi box is ~55m
+spacing — the parcel grain Refine exists for) and borrow capture numbers from the nearest cell via
+`_catchNearest`. **Clinic mode**: attraction is the subject's REAL roster, and the subject is
+removed from its own competitor distribution by shifting the bucket index down `staffW x W[b]`
+(verified: same 4-DVM practice reads 0.1325 as entrant vs 0.1536 as incumbent, +15.9%).
+`demandN` derives from WINNABLE visits, NOT `cReach` — since decay moved into the share, `cReach` is
+every visit in the catchment (~530k for a Plano cell) and reach/anchor pinned at 1.0 everywhere.
+
+### W4 / W5 are CLOSED — tested and rejected 2026-07-28, do not re-litigate
+- **W4 (attractiveness beyond roster size)**: the mechanism test is WRONG-SIGNED — neighbour rating
+  b=+0.638 vs own +0.214, where Huff requires negative. Huff-consistent form adds +0.4% of residual
+  variance; ranking impact Spearman 0.99851. And `_revW` reproduces with the sign flipped: **66% of
+  clinics with 0-5 reviews sit at exactly 5.0 stars**, so a rating term hands MAX attractiveness to
+  the least-established competitor. `_staffW`/`_catchAttract` stay the sole attractiveness axis.
+- **W5 (competitor utilization)**: i2SFCA puts capacity in the attraction numerator (which `_staffW`
+  does); congested-facility OR models are undefined at rho>=1 and our median rho is 1.01; and the
+  premise is currently false (AVMA 2023-24 visits -2.3%, Brakke Nov-2025 finds no queue). Feasible
+  effect is a 1.24-1.48x spread against a 27x demand term, in the perverse direction.
+- Both reverse ONLY on client-supplied per-clinic visit/revenue data (the W3 Benchmark tier).
+
+### TWO KNOWN DEFECTS THAT ARE COUPLED — never fix one alone
+- **K=8.0 bucket ceiling** (`build-catchments.mjs` `KBUCKETS=17, KSTEP=0.5`): 84-88% of the median
+  cell's households sit in the clipped top bucket; 58% of cells exceed it (median true K 17.5),
+  inflating share ~2.05x. **But `CATCH_MAX_BAND=5` was chosen empirically to make the roster gate
+  read ~1.0 WITH that clip.** They are offsetting errors — un-clipping alone drops implied rho to
+  ~0.4-0.6 and the gate fails. Fix requires jointly re-deriving CATCH_MAX_BAND against the gate.
+- **No validated firm-level signal**: corr(modelled size, actual roster) = **0.002** per clinic, but
+  **0.697** at market level. The engine says where demand is, NOT how big a practice at a given
+  address will be. The quantile gate can therefore be passed by a model with zero per-site
+  discrimination — any future gate must add a RANK-correlation test.
+
+### Known gaps (documented, not bugs)
+- Saturation KPI + Opportunity list remain crow-flies, so they can disagree with an eval on screen.
+- `evalOverlap` still calls the live Routes API even though the overlap numbers are precomputed.
+- `vet-staff.js` must be EVALUATED, not sliced-and-JSON.parsed: a brace-containing comment above the
+  object makes slicing yield garbage silently (reported "0 rosters", would have flattened every
+  competitor to one weight while still writing a plausible file).
+- Non-DFW regions have no artifact and silently fall back to gravity (~90 min per metro to build).
+- The BUILD weights competitors with the suburban reference curve (urbanicity is a runtime
+  classification). Per-class competitor curves are a refinement, not a correction.
+- A `dfw-pipeline.json` refresh now requires a derive rerun (~25 min, no OSRM) since `fu[band]` is
+  baked in.
+
+## v8 artifact — the K-clip fix + joint recalibration (2026-07-29)
+The audit's #1 CRITICAL, and the root cause of BOTH bad numbers on the site card. Fixed properly
+rather than worked around, at the user's direction.
+
+**What was wrong.** `build-catchments.mjs` bucketed effective competitor weight with
+`KBUCKETS=17, KSTEP=0.5` — a LINEAR ladder clipped at 8.0 — while true K runs to ~50 (median 17.5).
+Measured: 92.3% of all band-0 household mass sat in the clipped top bucket (100% of urban, 96.8% of
+suburban, 30.4% rural). Because the censoring rate rises with density, the clip inflated share
+3.22x urban / 2.03x suburban / 1.00x rural — that IS the urban-over-suburban bias. Across 3,087
+suburban cells recorded band-0 K ran p10 7.79 -> p90 8.00 (CV 0.040): the variable was a CONSTANT
+exactly where the buy-box lives.
+
+**The fix: a LOG ladder, same 17 buckets.** `KMID=[0,.5,1,1.5,2,3,4,5.5,7.5,10,13,17,22,29,38,50,65]`.
+Resolution where share = A/(A+wBar*K) is steep (small K), coarse where it is flat. Covering K=65
+linearly at KSTEP 0.5 would need 131 buckets and a ~6x bigger artifact; the log ladder keeps the
+file at 17.4 MB. **`kMid` SHIPS IN THE ARTIFACT** and `_catchShareBand` reads it (v7 linear
+fallback retained) so build and runtime can never drift. Verified: top-bucket mass 92.3% -> 0.00%.
+
+**Clinic-mode self-removal changed from a bucket-INDEX shift to a K SUBTRACTION.** The old
+`drop=(selfW*W[b])/step` shift is only equivalent to removing the subject's competition on a
+UNIFORM ladder; on a log ladder it would remove wildly different amounts depending on where the
+bucket sits. Now `K=max(0, kMid[i] - selfW*W[b])`.
+
+**Joint recalibration (the clip and the level are ONE calibration).** Un-clipping alone drops every
+class to 0.11-0.15x of actual rosters, because `CATCH_MAX_BAND=5` had been chosen empirically to
+OFFSET the clip. Swept `CATCH_MAX_BAND` x attraction divisor x exponent against 521 GP clinics with
+scraped rosters. **Shipped: `CATCH_ATTRACT_DIV=0.35` (was 2.5), `CATCH_MAX_BAND=5` (unchanged).**
+Result: fit.roster p25 1.449 / p50 1.082 / p75 0.835 / p90 0.632, per-class spread **8.9x -> 1.53x**
+(rural 0.246->0.723, exurban 0.481->0.957, suburban 1.116->1.103, urban 2.182->1.065).
+
+**A BETTER-FITTING CALIBRATION WAS REJECTED — do not "restore" it.** `CATCH_MAX_BAND=6` (25 min)
+with DIV 0.6 fit marginally better (p50 1.05, spread 1.40) but made **Waxahachie the
+highest-revenue cell in DFW at $9.24M / 15.7 DVM** — an exurban town modelled as one of the largest
+GP practices in Texas, purely because its 25-minute ring sweeps unopposed countryside. The roster
+gate CANNOT see this: its subjects are real clinics, and real clinics are not on the metro rim.
+**A fit statistic computed on interior points must not be allowed to choose the horizon.** At
+MAXB 5 the DFW max is $6.05M / 10.1 DVM.
+
+**`CATCH_ATTRACT_DIV` is a FITTED constant, not a measured one.** Roughly half its lift absorbs the
+documented metro-closure gap (demand supports ~1,268 DVMs against 2,530 practising, ratio 0.501 —
+now asserted as `closure.metro` in the gate). It also breaks the old property that entrant and
+competitor attraction sat on one scale (a 2.5-DVM entrant reads 2.04, not 1.0). The principled fix
+is reconciling the pet model against DVM_VISIT_CAPACITY; until then do not quote this as measured.
+
+**Effect on the recommended sites** (the contradiction the user caught — "$3.92M revenue?"):
+practice size at the picks went 0.7-1.0 DVM -> 1.4-6.0 DVM and revenue $0.44-2.11M -> $0.85-3.61M,
+against real 5-, 7- and 8-DVM practices operating within 4 mi. Model and ground truth now agree.
+
+### Gate hardening (restored + extended, 45 pass / 4 warn / 0 fail)
+- **`fit.pairing`** — the quantile-ratio statistic is PAIRING-BLIND (proven: p50 1.082 identical
+  under a seeded permutation). Neighbour-cell coherence 0.782 vs 0.101 permuted catches it.
+- **`fit.byclass`** — per-class ratio vs `FIT_CLASS_BASELINE`; FAILs a class that moves away from
+  1.0, WARNs when one moves toward it and asks for a deliberate re-record. Baseline re-recorded to
+  the v8 figures; the v7 numbers are kept in the comment as the re-clip regression signature.
+- **`fit.rank`** — Spearman per class, WARN with an explicit PROMOTION PATH: make it FAIL below
+  0.25 the day anything is presented as per-address accuracy.
+- **`share.identity`** — asserts share === cEq x 3200 / cReach (worst 1.09e-11). It is a RESIDUAL.
+- **`closure.metro`** — the 0.501x gap, so no future one-sided recalibration can pass silently.
+
+### Reported capture share is a FIXED-REFERENCE measurement (2026-07-29)
+User: *"all of these sites are showing 1-4% market capture which is so low."* He was right, and the
+number was wrong twice over. `cShare` is winnable/cReach, and substituting the solved fixed point
+shows it is the IDENTITY `cEq x DVM_VISIT_CAPACITY / cReach` (asserted by `share.identity`, worst
+1.09e-11) — so it is practice size re-expressed as a fraction, not a competitive read, and "20%
+share" is arithmetically a request for an 18-doctor practice. Its denominator is also the WHOLE
+20-minute pool, of which the inner ring is ~6.6% at the median cell.
+**`cell.cShareRef`** replaces it on every card, report and drill-down: `_catchShareBand(cc, 0,
+CATCH_REF_DVM=3, wBar)` — a typical new 3-DVM clinic, measured on the 0-8 min ring where the decay
+weight is 1.0 by construction. In CLINIC mode `cSelfW` is passed, so the helper uses the subject's
+real roster and removes it from its own competition — i.e. the incumbent's actual inner-ring share.
+DISPLAY ONLY; nothing ranks or scores on it, and `g.share` still carries the residual internally
+(the gravity path scores on it, so do not repoint that field).
+Verified metro-wide: residual p10/p50/p90 1.6/6.9/40.0% -> reference 10.8/33.1/69.1%, and unlike the
+residual it MOVES WITH COMPETITION — rural 57.6% / exurban 30.2% / suburban 15.9% / urban 8.6%,
+monotone in density and on the gravity engine's documented scale (dense suburb ~0.10, contested
+corridor ~0.15-0.20). The five recommended sites read 11-30% instead of 1.6-7.7%, ordered by how
+contested they actually are (Lewisville 11% with 5 clinics/7 DVMs in 3 mi; Wylie 30% with 1/2).
+
+### STILL TRUE AFTER THE FIX — no per-site skill
+Un-clipping fixed the LEVEL and the CLASS BIAS. It did NOT buy parcel-level discrimination.
+A subject-removed rank test was added (the old one is mechanically rigged: a bigger incumbent
+raises K at its OWN address, so modelled-entrant vs actual-roster is guaranteed to slope down);
+removing the subject moves rho -0.064 -> -0.037. Still zero. **This engine ranks MARKETS, not
+parcels** — Refine is what answers "which corner". Do not present a site card as per-address.
+
+## ONE attraction scale — the selfW conflation fix (2026-08-04)
+User: *"make sure it makes sense for all the clinics and we are not just adjusting numbers but we are
+making the algorithm more realistic."* A clinic was modelled **2.67x less attractive as the subject of
+a clinic evaluation than as a hypothetical new entrant of the same size in the same market** — so
+clinic evaluations read practices at **p50 0.64x** of the visits their scraped roster implies (the
+"4 doctors but $600k revenue" class of complaint).
+
+**ROOT CAUSE — a conflation, not calibration drift.** `selfW` in `_catchShareBand` was ONE variable
+doing TWO jobs on TWO scales: the subject's **attraction** (numerator A, which belongs on the entrant
+scale `_catchAttract`) and the competition **subtracted from K** (denominator, which must be in the
+`_staffW` units the artifact's `cd[]` buckets were built in). Fused, you could not put the incumbent on
+the entrant's attraction scale without corrupting its self-removal — so the incumbent was left on
+`_staffW`, and re-fitting `CATCH_ATTRACT_DIV` 2.5 -> 0.35 during the v8 un-clip silently opened the gap
+by exactly that factor. The roster gate validates only the ENTRANT path, so nothing caught it.
+
+**THE FIX.** `_catchShareBand(cell,b,n,wBar,selfW,selfKw)` and `_catchWinnable(...,selfW,selfKw)` take
+the two jobs as SEPARATE parameters; `selfK` derives from `selfKw` when supplied. `_applyCapture`'s
+clinic branch sets `cell.cSelfW=_catchAttract(dvm)` (attraction) and `cell.cSelfK=_staffW(dvm)`
+(self-removal). Three downstream readers thread `cSelfK`: `cShareRef`, the card-share loop, and the
+band drill-down. **A_entrant/A_incumbent = 1.000 at every size**, no clamp discontinuity. NO artifact
+rebuild — `dfw-catchments.json` is byte-identical and its `kMid` ladder is read exactly as before.
+
+**Constants that MOVED WITH IT, and why they are not free knobs:**
+- `DVM_VISIT_CAPACITY` 3200 -> **2038**. Once A_E==A_I the roster gate and the incumbent read are the
+  SAME equation, which FORCES the equilibrium constant to equal realised throughput. The metro measures
+  it: 4,059,118 modelled visits / 1,992 observed GP DVMs = 2,037.7.
+- `CATCH_ATTRACT_DIV` 0.35 -> **0.863**. Forced, not chosen: with CAP pinned, the roster gate admits
+  exactly one divisor (invariant D*a/CAP = 5.281e-4).
+- `BUYBOX_MIN_SHARE` 0.20 -> **0.14**. MANDATORY bookkeeping — `cShareRef` is measured through
+  `_catchAttract`, so it rescales with DIV. Leaving it at 0.20 collapses the buy-box pool 431 -> 288
+  for reasons with nothing to do with the buy-box. At 0.14 the pool is preserved (431 -> 430).
+- **DEMAND IS UNTOUCHED, and that is a finding.** DFW models 1.388 visits/HH against the national
+  identity 1.336 (AVMA 175.5M visits / 131.4M HH) — 3.9% ABOVE national, not short. The closure gap was
+  entirely supply-side: DFW carries 1,469 HH per GP DVM vs 1,921 national, i.e. 31% MORE doctors per
+  household. Raising demand ~24% to "close" the metro would have implied 1.71 visits/HH with no evidence.
+
+**PROOF IT IS NOT AN ALGEBRAIC UNDO — do not re-litigate this.** The two pieces are provably orthogonal:
+- The structural split ALONE (constants untouched): roster gate and closure come back **BIT-IDENTICAL**
+  ({1.449,1.082,0.835,0.632} and 2,037.7), while the incumbent read moves **2.40x**. No re-scale of
+  demand, capacity or the divisor can do that — each multiplies the entrant path and so must move
+  constraint 1 or 2. The split touches only the incumbent branch.
+- The (CAP, DIV) rescale ALONE (no split): the incumbent read and the entire by-size curve come back
+  **BIT-IDENTICAL**, as does demand conservation to the unit. **The (CAP, DIV) pair is an exact
+  algebraic identity on the defect — it literally cannot touch it.** Every prior re-fit in this project
+  lived on that manifold, which is why each bought nothing. That is now demonstrated, not asserted.
+- Untargeted corroboration: **demand conservation** (sum of every clinic's winnable / total metro
+  visits; orthodox Huff wants ~1.0) went **0.705 -> 1.109** — a diagnostic never optimised against and
+  which no re-scale moves at all.
+
+**WHAT CLOSURE PASSING DOES AND DOES NOT PROVE.** `closure.metro` reads 1.000x for the first time, but
+it is now near-DEFINITIONAL: CAP was set to the ratio closure measures. What makes it non-vacuous is
+that the numerator was validated INDEPENDENTLY against the national identity above. The honest framing:
+after the split there are two free parameters (CAP, DIV) and two independent constraints (roster fit,
+incumbent read), with closure the definition linking them — the system stops being underdetermined
+because a knob was REMOVED, not added. Do not quote "the metro closes" as fresh external validation.
+
+**Results** (n=569 GP clinics, gate's own filter): incumbent read p50 **0.640 -> 1.023**, below-0.5x
+35.5% -> 10.5%; per-class spread **1.65x -> 1.19x** (rural 0.953->1.153, exurban 0.631->1.004, suburban
+0.651->1.024, urban 0.578->0.968 — the K-clip failure mode explicitly checked for, and it does not
+recur). Roster gate per-class spread also improves 1.53x -> 1.31x (rural 0.723 -> 0.886). Downstream
+nearly inert: **same five picks, same three land plays** (slight reorder only), pool 431 -> 430, pool
+median income identical, 2SFCA underservice EXACTLY unchanged (CAP is a common factor in `U=AMED/A` and
+cancels). `FIT_BASELINE` in eval-gate.mjs was re-recorded to {1.48,1.14,0.89,0.71} as a deliberate act
+— it had gone stale at the v8 un-clip and the shipped tree was passing p25 by 0.001 of tolerance.
+Gate: **47 pass / 2 warn / 0 fail**, the best this tree has produced.
+
+**RESIDUALS — none hidden, two newly measurable:**
+- **The by-size slope SURVIVES at 3.88x** (was 6.09x): solo practices read 1.58x their roster-implied
+  throughput, 9+ DVM hospitals 0.41x. Tested and BOUNDED: raising the attraction exponent flattens it
+  (alpha 1.0 is nearly flat) but at alpha=1 the sized-entrant equilibrium is DEGENERATE — attraction and
+  capacity both scale linearly so there is no interior root, and the roster gate collapses (p50 0.025).
+  That collapse also names what flattening buys: making winnable depend more on the subject's own roster
+  is making the model echo the input it is scored against.
+- **`REV_PER_VISIT` $192.71 -> $302.58** (= REV_PER_DVM / realised throughput). Revenue at a given
+  practice size is CAP-INVARIANT (n x $616,667) and the buy-box ceiling is unchanged at $3.70M x cACT.
+  **INVESTIGATED 2026-08-04 after the user flagged $303 as too high — see the section below. It is
+  defensible; the two corrections that morning's entry got wrong are recorded there.**
+- **Zero per-site skill, UNCHANGED**: Spearman rho vs rosters -0.070 -> -0.067. The incumbent read
+  landing on 1.0 is a DISTRIBUTION match, not per-address accuracy — only 36.4% of clinics sit within
+  +/-33% of it. This engine still ranks MARKETS, not parcels.
+- **The subject still out-attracts an identically-sized COMPETITOR 1.70x** (down from 2.67x) — that
+  premium is what covers the residual conservation gap. Full three-way coherence (DIV=2.5) is NOT
+  reachable: it fails closure at 1.70x and leaves the incumbent read at 0.508. A documented level
+  constant remains, now smaller and size-independent.
+- **REJECTED FOR THIS PASS — the attraction-exponent variant** (alpha 0.65, DIV 1.104): strictly better
+  on every gate statistic (47/2/0, roster {1.198,1.096,1.021,0.867}, size slope 2.73x, within-33% rises
+  to 46.4%) BUT rho is unchanged at -0.068, so it orders clinics no better and buys its tighter band
+  partly by making winnable track the roster it is scored against; and raising the SUBJECT's exponent
+  while every competitor stays baked at 0.5 re-opens the same asymmetry this fix closes (premium would
+  grow 1.17x at 1 DVM to 2.39x at 10). Doing it honestly requires rebuilding `dfw-catchments.json` with
+  the matching competitor exponent (~25 min derive, no OSRM) and re-running the gate against it. A clean
+  follow-on; NOT something to fold in on the strength of a marginal statistic.
+
+## $303 a visit — investigated and CLEARED (2026-08-04)
+User: *"303$ a visit sounds really high."* Fair challenge, wrong conclusion — and the investigation
+falsified BOTH suspects, including one this register had asserted as fact hours earlier.
+
+**THE COMPARISON WAS WRONG TWICE.**
+1. **$302.58 is never a price the model charges.** `_catchACTF` scales it by
+   `(catchment income / $110k)^0.3794`, so it is the price AT A $110k CATCHMENT. Measured across all
+   9,627 cells: applied p10 $255 / p50 $284 / p90 $322, **winnable-weighted $279.90**; at the US
+   median household income it prices $266. The constant overstates the applied price by 8%.
+2. **The unit is a HOUSEHOLD TRIP, not a practice INVOICE.** `OPP_VISITS_PER_DOGHH=2.4` /
+   `_CATHH=1.2` are AVMA household trip frequencies. The "$200-250 ACT" everyone quotes is per
+   invoice, and practices bill tech appointments, refills, rechecks and product-only pickups that no
+   owner recalls as a visit. AVMA's own household survey disagrees with ITSELF by ~30% on this
+   (recall "cost of last visit" ~$215 vs annual spend / its own visit frequency ~$280).
+
+**THE RECEIPTS CENSUS SETTLES IT.** Economic Census 2022 NAICS 541940 (an actual receipts census,
+free, neutral — not a recall survey): US receipts $62.819B / 127.48M HH = $492.77 per household;
+over the AVMA identity 1.3767 visits/HH = **$357.95 per household trip, all vet services**. Net out
+specialty/ER + large-animal (GP share 70-85%) and bridge 2022->2024 at ~5%/yr -> **$276-335**. The
+model applies **$279.90** — inside the band, at the LOW end. At the requested $225 it would sit
+BELOW the band on even the most hostile GP-share assumption. Cross-check: AVMA household spend
+($598/dog-HH, $529/cat-HH) x national pet-household counts lands within ~1% of the same census total.
+
+**BOTH SUSPECTS REFUTED:**
+- **"Doctor-dense metro, so lower revenue per DVM" — the premise is FALSE and it was MY error.**
+  This register claimed DFW carries 31% more doctors per household than national. That is a property
+  of the model's own DVM census, not of DFW. Three independent sources disagree: BLS OEWS May 2025
+  location quotient **0.80** (20% BELOW national), AVMA West South Central holds 9.6% of US vets
+  against 12.6% of population (**0.76**), Census CBP 2023 **+3%** employees per household (essentially
+  at national). DFW also BILLS MORE than national — receipts per household **1.113x** — and AVMA's
+  regional cut puts West South Central HIGHEST of nine regions on practice gross revenue. Every
+  DFW-specific series points UP, so regionalising `REV_PER_DVM` down has the sign backwards.
+  The mechanism fails too: across 49 metros (BLS) and 289 metros (CBP), corr(vet density, pay per
+  vet) is ~0 (+0.08 / +0.11; partial on income -0.05). What DOES predict it is local income
+  (+0.58), which `_catchACTF` already prices — a second "affluent metro" adjustment would double-count.
+- **"The DVM census is inflated by the assumed-2 rosters" — CONFIRMED at 1,992, three ways.**
+  Route A, DFW receipts / $616,667 per FTE: 1,759-2,135. Route B, CBP employment / AVMA's own
+  staffing ratio (3.8 nonvet FTE per vet = 4.8 total/DVM): 1,586-2,340. Route C, internal roster
+  audit: 2,027-2,359. 1,992 sits inside all three. The internal audit also inverts the intuition —
+  assume-2 is a FLOOR, not a central estimate: the scraped mean is **2.799**, and 145 of the 404
+  "assumed 2" clinics are dedup-collapsed multi-site groups whose own raw rosters average **3.92**.
+  Review-conditional expectation never drops below 2.30 in any decile. A BLS-derived 1,550 was the
+  lone outlier and its own source note explains it — OEWS excludes self-employed vets (national
+  capture 83,900/127,131 = 66%). **CAP=2595 therefore stays rejected on the record**; its rejection
+  was conditional on a 1,992 census and the census was confirmed, not moved.
+
+**A FALSE CAUSAL CLAIM, CORRECTED.** The v8-unification entry above recorded that `_evalStrongOK`
+widened 1,053 -> 1,379 *because the price rose 1.57x*. **That is wrong, measured both ways.** Cutting
+the price 25.6% (REV_PER_DVM -> $458,550) leaves the count at **1,379 — unchanged**, with the pool at
+430 and all five picks and three land plays BIT-IDENTICAL. Holding the price fixed and moving CAP
+2038 -> 3200 collapses it **1,379 -> 187**. **CAP is the lever** (it sits in `BUYBOX_ABSORB=6xCAP` and
+in `cUnmet/CAP`), not the price. Algebra confirms it: site score = `min(cUnmet/CAP,6) x cACT/10 x
+accessMult`, in which REV_PER_DVM cancels against `CATCH_REV_FULL=10 x REV_PER_DVM`. So
+**`REV_PER_VISIT` is a PURE DISPLAY SCALAR in the metro engine** — it ranks nothing, gates nothing,
+picks nothing. Do not wait for "the price to settle" before touching EVAL_STRONG.
+
+**WHY NOT JUST LOWER IT ANYWAY.** Measured: it would print $459k/DVM on every capacity-bound clinic
+card against AVMA's published companion-exclusive median of **$616,667** — near their p25 of
+$411,111. A PE buyer knows those quartiles; a 2-doctor Dallas practice modelled at $920k reads as an
+error. It would also drive total modelled metro revenue to $863M against an Economic-Census GP
+figure of ~$1.28-1.38B. The model already UNDER-bills at 0.917 of the AVMA aggregate.
+
+**WHAT SHIPPED (display only, no constant moved):** `_evalCatchmentStats` now returns `act`, and the
+clinic card prints the **applied** $/visit for that catchment with the income delta, plus a one-line
+note that a visit is a household trip rather than a single invoice. The stale `616667/3200 = ~$193`
+comment at the `REV_PER_VISIT` declaration was refreshed and now carries the full unit argument.
+
+**THE REAL DEFECT THIS SURFACED — cat visits, NOT price. NOT FIXED, deliberately.** At the national
+income reference the model bills **$639 per dog household vs AVMA's $598 (1.069)** but only
+**$320 per cat household vs $529 (0.604)**. `OPP_VISITS_PER_CATHH=1.2` looks ~40% light.
+Tested: `1.2 -> 1.99` with CAP re-measured 2038 -> 2327 gives price $265 raw / $233 national-equivalent
+— the band originally asked for — with the SAME five picks, same three land plays, strong 1,379 ->
+1,372, and **clinic cards identical to the dollar** ($1.160B metro revenue both ways). That last fact
+is the point: it is an exact algebraic identity on the money, so it is a COMPOSITION fix, never a
+pricing one. BLOCKED on a question free data cannot answer — whether AVMA's ~1.83 cat visit frequency
+is CONDITIONAL on visiting at all. If it is, and a quarter to a third of cat households never go, the
+unconditional rate is ~1.3 and 1.2 is about right. It also trades a check that currently PASSES
+(visits/HH 1.388 vs the AVMA identity 1.3767) for one that fails (1.585). Needs its own pass with
+that question resolved — do NOT fold it in to make a price look nicer.
+
+**RESIDUAL, honestly bounded:** the GP share of NAICS 541940 receipts is ASSUMED at 70-85%, not
+measured, and it is load-bearing. "The model is not too high" survives the whole range; "the model is
+if anything LOW" only survives above ~GP 0.75. The 2022->2024 vintage bridge (~5%/yr) is chosen, not
+measured, worth ~5 points on a ~30-point question. And no free source publishes ACT or revenue-per-DVM
+at metro granularity — that gap is unchanged. What IS newly usable: BLS OEWS 29-1131 and Census CBP
+541940 are both free at MSA grain and good enough to serve as a standing sanity check on the DVM
+census, which is the check that would have caught the false density claim above.
+
+## Buy-box screen-then-score (2026-07-29) — METRO RUNS ONLY
+User: *"PE firms and regional groups dont build rural so we really shouldnt be looking at rural
+areas unless its a land play that is being developed in an exurb like celina. I was expecting it
+to give me sites in high income suburb areas that may be underserved?"* Audit that motivated it:
+`research/algo-audit-2026-07-29.md` (four lenses, all converging).
+
+**THE OBJECTIVE WAS WRONG, and no re-weighting could fix it.** Ranking on total winnable revenue
+ranks MARKET SIZE — reach explains 81.4% of log-revenue variance — so the metro top-50 came back
+50/50 urban Dallas at mean catchment income $93k. Every one of the 3,224 high-income
+suburban/exurban cells is strictly Pareto-dominated on BOTH (reach, share), so the buy-box was
+literally unreachable by any monotone function of the two existing axes.
+
+**The missing axis: 2SFCA local underservice** (`_catchBuildAccess` / `_catchAccessAt` /
+`_catchDem10`). A naive "DVMs within 10 min" count has a UNIT BUG — a clinic whose ring covers 200
+cells gets credited in FULL against each one, while only that cell's local demand sits on the other
+side. Two-step floating catchment fixes it: divide each clinic's capacity by ALL the demand it
+serves (step 1), sum those ratios at the cell (step 2). Each clinic's own measured `a10` ring area
+gives a road-speed-adapted radius, so it stays road-derived without shipping road geometry.
+**`ov` is deliberately NOT used** — build-catchments trims it to the top 8 *for display only*, and
+it would truncate supply hardest in dense markets. Cross-check: metro-median A = **1.93** (browser
+1.969), which independently reproduces the audit's separately-measured 0.50 closure ratio. Used
+RELATIVELY (`U = AMED/A`, `unmet = dem10 x max(0, 1-A/AMED)`) so the documented metro-closure gap
+(demand supports ~1,262 DVMs against ~2,526 observed) can NEVER leak in as an absolute shortage.
+
+**Score (metro only):** `cOppRev = min(cUnmet, BUYBOX_ABSORB) x REV_PER_VISIT x cACT`, normalised by
+the SAME `CATCH_REV_FULL`, so every threshold keeps its dollar meaning (EVAL_STRONG 0.22 = $1.36M
+capturable). **The hard cap at `BUYBOX_MAX_DVM=6` is load-bearing** — it is what stops this
+collapsing back into a market-size ranking. Verified by sweep: soft/exponential saturation or any
+cap >=8 DVM drifts straight back to Garland/Rowlett at $101k. User CHOSE 6 over 3-4 and 8-10 on
+2026-07-29. Sensitivity: the income floor is nearly irrelevant (identical top 5 from $80k-$100k);
+the cap decides the answer (only 1/5 places survive either extreme).
+
+**Screen** (`_bbOK`, applied to the PICK, never to the surface — the heatmap stays whole because it
+is the evidence, same rule the weak-site tiers follow): not rural, catchment income >= 90k, unmet > 0.
+It **barely binds** — of the top 100 cells by the new objective the screen removes exactly ONE. The
+objective change did the work; the screen is a safety rail. Falls back to the unscreened order if
+fewer than TOPN survive (`evalBuyBox.on`), so a metro run can never come back empty.
+
+**SINGLE-PLACE EVALUATIONS ARE UNTOUCHED** (ZIP / dropped site / clinic): there the user already
+chose the geography, so re-ranking answers a question they did not ask. Gated on `_metroBB &&
+!g.forced`. The underservice numbers are still ATTACHED to every cell and reported on the card.
+
+**Land plays** now rank on `cLandRev` = future unmet, not `cEqFut` (which is future MARKET SIZE and
+ordered plays by pipeline size regardless of whether anyone already served it — Midlothian's 24k
+announced units ranked BELOW a Garland cell with 2k). Result: Celina, exactly the case the user
+carved out.
+
+**`_catchACTF` no longer saturates at $110k** — constant elasticity through the SAME two BLS anchors
+($25k->0.57, $110k->1.00), exponent FORCED at `ln(0.57)/ln(25/110) = 0.3794`, no new constant.
+The old linear form clamped, scoring every catchment from $110k to $183k identically (2,757 cells,
+disproportionately the buy-box's: 50% of exurban vs 6% of urban at the ceiling). $175k now prices
+1.193x. **`_catchSpendF` was deliberately NOT changed** — it feeds the equilibrium solve and
+therefore the validated roster gate; it moves only with a re-validation.
+
+### Bugs found here — do not reintroduce
+- **`_vetStaffAt` returns an OBJECT `{n,vets,...}` or null, NEVER a number.** `obj*3200` is NaN,
+  and **a single NaN score destroys `Array.sort`** (`b.score-a.score` returns NaN, the comparator
+  becomes inconsistent and the order is arbitrary). This shipped into the first metro run and
+  produced a plausible-looking, meaningless top 5 — pick #1 scored 42/weak while pick #3 scored
+  88/strong. The idiom is `(_vetStaffAt(la,lo)||{}).n || 2`. There is now a **permanent guard**
+  that zeroes and `console.warn`s non-finite scores before the sort; keep it.
+- **The offline replica did not catch it** — it used a local helper returning `.n`. Validate the
+  ENGINE (`research/eval-gate.mjs` harness), not a reimplementation.
+- **Separation is computed BEFORE the land plays** because both picks consume it. It used to be
+  derived next to the site pick, so the land block read the PREVIOUS run's `evalSepMi` — stale on
+  every run after the first, null on the first. Metro land separation now uses `evalSepMi` too
+  (a fixed ~1.2mi returned three cells of one town).
+- Bucket-index spans are computed SEPARATELY for lat and lon: a degree of longitude is ~19% shorter
+  at this latitude, and one shared span under-covered the longitude axis and dropped competitors.
+
+### Verified output (metro, 4,076 siting-gated candidates)
+Sites: Allen $128k (A 0.48, U 4.1x, unmet 19,170, $3.92M) / Little Elm $121k / Wylie $119k /
+Lewisville $103k / Rowlett $102k — all `strong`, correctly ordered, mode `good`, pool 673.
+Ground truth from RAW clinic data: Allen has 1 clinic / 2 DVMs within 3 mi, Wylie 1/2, Little Elm
+2/2, against a metro baseline of 3.7 clinics / 8.8 DVMs. Land plays: Celina (71,679 announced
+units) x2 + Justin. Gate 43 passed / 1 warned / 0 failed, unchanged from baseline.
+
+### Still open (from the audit, NOT fixed here)
+- **K=8.0 bucket clip and `CATCH_MAX_BAND` remain coupled** — un-clipping alone drops every class
+  to 0.19x. Still needs the joint re-derivation documented above.
+- **`share` is still the accounting identity** `doctors x 3200 / reach` (exact to 1e-9), so a "20%
+  share" asks for an 18-doctor practice. It is REPORTED, never ranked on, but the number on the
+  card still means less than it looks like it does. Fix is to report at a fixed reference entrant.
+- **No per-site skill**: corr(modelled, actual roster) = 0.002 per clinic vs 0.697 at market level.
+  These are five MARKETS, not five parcels — which is what Refine exists for.
+
+## Catchment-overlap analysis (2026-07-16, user idea: overlap the site's 10-min catchment with every nearby clinic's)
+`evalOverlap(i,btn)` — button in the site card's Catchment tab. Computes the SITE's 10-min isochrone + the nearest ≤6 in-range clinics' (each clinic's ring cached PERMANENTLY in localStorage `vf_iso_<cellkey>` — clinic catchments never change; ~1 Routes call each first time, free after). Samples the site catchment on a 42×42 household-weighted grid (rooftop gravity within 1.2km, `_fut` excluded, 0.05 area floor) and reports: household-weighted per-clinic overlap %, uncontested %, and a **network-adjusted winnable share** — within each sample point the entrant splits demand `1/(1+Σ _staffW(covering clinics))`, i.e. the road network supplies the geometry and fair-fight Huff supplies the split (consistent with A_OWN=1.0). Displayed alongside the gravity share with an agree/diverge interpretation line (diverge ⇒ a road barrier the crow-flies model can't see). VALIDATION INVARIANT: with uniform circular catchments the network share converges to the gravity share (verified with stubbed isochrones — 30%=30%) — if they diverge under stubs, the split arithmetic drifted. Phase 2 (not built): `build-catchments.mjs` batch-precompute of all ~3,765 TX clinic catchments via self-hosted OSRM (free) → ship as a static file feeding the same vf_iso_ format, then use measured overlaps to calibrate `_grav` itself.
+
+## Drop-a-site (2026-07-10, user ask: "place a potential site down and it evaluates it")
+Header **Drop Site** button (`#site-btn`, `toggleSiteDrop()`) arms a placement mode (crosshair cursor, `.vf-armed` button state, Esc cancels via a global keydown listener). The next map click → `_siteDropCommit(lat,lon)`: draggable purple ★ marker (`.vf-site-pin`, `evalSiteMarker`, dragend re-commits), a 2-mi context box into `drawnArea` (same box as the hex handoff), `captureAreaClinics()`, `openEvaluateArea()`. **The pin's exact cell is a FORCED candidate** in `_evalComputeAndRender` (`evalSiteCell`, `forced:true`, pushed into `grid`): identical formulas (demand/comp/share/access/retail), but it BYPASSES the zoning-exclude drop and the green/blue siting gate — the user asked about THIS parcel — while recording the verdicts (`zgateRaw`, `gateOk`) for the card's warning lines ("City land-use data reads Residential (parcel) (Collin)…" / "Not inside a mapped commercial corridor…"). Guards: forced cell EXCLUDED from the `evalTop` pick (`if(g.forced) continue`); normalization maxes computed over NON-forced cells (`_realGrid`) + `Math.min(1,…)` clamps on demandN/retailN so the pin can't self-normalize to 100% (degenerate zero-siteable-cell area adds a low-confidence warning instead). Site card hides the `_communityHTML` block when the verdict is k:'land' (community context of an airport/park tract is meaningless — the land warning owns that story). Sidebar renders a purple-bordered **"Your site"** verdict card FIRST (score; chip = **land reality OUTRANKS the score tier** (2026-07-13, user caught a DFW-Airport pin reading "Workable · share 94%" — emptiness IS the problem there): in-water (`_hexInWater`, outlines warmed by `_siteDropCommit`) → solid-red "In open water — not buildable"; **on-airport (2026-07-13, user caught the DFW-Airport pin reading Workable AGAIN — the terminals carry real OSM retail + commercial landuse, so the generic corridor gate legitimately passes there)** → `tx-airports.json` (385 statewide OSM `aeroway=aerodrome` polygons ≥0.35km², built by `build-airports.mjs`, same static-bake pattern as dfw-water; sanity anchors DFW/Love/Alliance) via `_loadAirports()`/`_siteInAirport(la,lo)` (returns the airport NAME for the warning line) → solid-red "On airport grounds — not buildable"; **generalized (2026-07-13, user: "not just airports or lakes")** — the zoning-stage OSM fetch now pulls the full UNBUILDABLE vocabulary (landuse cemetery/military/railway/landfill/quarry/recreation_ground + leisure park/golf_course/nature_reserve/stadium + amenity school/university/college/hospital/prison; ways AND closed relation-outer rings — big parks are relations) tagged `hard:'Park'|…` + `name` in `evalData.osmLU` (they also gate normal cells via `_zoneClassAt` tier 3); `_siteLandAt(la,lo)` is ONE lane — water → airport → OSM-hard poly (returns the OSM `name` when present: "Arbor Hills Nature Preserve (nature preserve)") → `_siteVerdict` k:'land' solid-red chip + named warning. Verified: injected-poly render test + live Overpass query proof (54 polys in the Arbor box incl. the preserve; kumi responded when others 504'd). When Overpass is down entirely, city zoning/parcels still catch it as the "Zoned non-commercial" ADVISORY (watched live — Plano zoning caught Arbor Hills during an Overpass outage); `zgateRaw==='exclude'` → amber "Zoned non-commercial — verify land"; `!gateOk` → amber "No commercial context — verify land"; only a gate-passing pin gets Strong/Workable/Weak on the EVAL_STRONG/FLOOR bars — score/bars stay visible in every case (they read the market AROUND the point). **Metric drill-downs (2026-07-13, user ask)**: the site card's four factor bars are CLICKABLE (`_siteMetricToggle`/`_siteMetricHTML`, open-state in `_siteMetricOpen` survives re-renders) → an inset panel with the scored inputs + a benchmark line: demand = rooftop clusters in 2.5mi + tract pet weight + tract income + spend percentile ("recommended sites usually 60+"); competition = share % + weighted pressure + PE-cap note + top-5 nearest competitors w/ mi + DVMs ("50%+ open; dense suburb ~20-25%"); retail = points within 1mi + nearest + corridor y/n; road = AADT + road name or class fallback ("~25k cars/day = full marks"). The wrapper strips bar()'s closing div + inlines flex:1 — bar() output shape is load-bearing there. **Analysis-sidebar restyle (2026-07-13, user: "cluttered, conflicting colors")**: `.sidebar.eval-wide` widens 300→400px during any placement analysis (added by `_evalStage`/`_evalRenderSidebar`, removed by `renderNormalSidebar`; each toggle schedules `map.invalidateSize()`); the factor `bar()` is MONOCHROME navy `#3b5bb5` + a `.eval-pct` numeric column (quality reads moved to chips/verdicts — do not reintroduce per-value green/amber/red bars); the site card is calm (1px `#d7def0` border + 3-stat inset row nearest/competitors/share; no purple border — only the small ★ badge stays purple); `_leaseBlock` note + links went neutral gray/navy (teal links removed); the MPC sweet-spot box is slate with only the ⚡+name in teal. Color now means something: **rose=advisory** (user swapped amber out 2026-07-13: fg `#be123c`, deep `#9f1239`, bg `#fff1f2`, border `#fecdd3` — applied to ALL tag/chip/pill/warn-box surfaces incl. the demo pill, admin Demo chip, MPC Announced/watch/First-homes lines, verdict advisories, warning boxes), green=strong verdict, **solid red fill=true negative** (Weak / In-open-water chips are white-on-#dc2626 so they can't be read as rose advisories). DELIBERATE amber keeps (data-viz, not tags — do not rose these): ★ rating stars, the 4-factor bar palette (competition #b45309 in List/hex bars), grade-C in the evalSat scale, the 55+/active-adult tract archetype color, score ramps, capture share, bars, cannibalization advisory, community block, MPC sweet line, lease links, "best spot nearby scores N" compare, Remove button = `siteRemove()`); legend gains a "Your dropped site" row; area-title reads "dropped site". Lifecycle: `_siteClear()` runs in `_evalResetState` (Clear analysis), `openEvaluate` (ZIP mode supersedes), and openEvaluateArea self-heals when the drawn area isn't the pin's own box (draw/hex flows drop a stale pin). **Saved placements + site-context KPIs (2026-07-13, user ask)**: "Save placement" button (replaces the slim star on the dropped card) → rich `vf_watchlist` record `{type:'site',placement:1, score,verdict/vk,share,nComp,nPE,savedAt, kpi:{r,pePct,growth,sat,satTag,dogHH,clinics}}` via `saveSitePlacement()`; `_siteVerdict(g)` is the SHARED verdict helper (card chip + save + popup — keep them from drifting). Saved placements render as GOLD ★ pins (`.vf-site-saved`, `_siteWatchLayer`, `_refreshSavedSitePins()` — boot-drawn by a retry loop; NOTE `let` bindings aren't on `window`, so probe them BARE, a test-harness gotcha that looked like a boot failure) with a popup (verdict/share/KPI snapshot + Re-run analysis = `_siteDropCommit` + Remove); Watchlist site cards are placement-aware (verdict/date/KPI line, click = `watchSiteGo` fly+popup). **KPI bar in site mode**: `_updateSiteKpis()` paints clinics/PE%/growth/saturation from `_siteKpis(_siteCtxMi)` — clinics from the statewide static sets (NOT evalCompsCache, so the radius can exceed the analysis box; same exclude/equine/mobile rules), ZIP demographics by **bbox-intersects-circle** membership (centroid-in-circle was too strict: at 3mi a big suburban ZIP contains the pin while its centroid sits 3.5mi out — the pin's own ZIP must count at every radius; bboxes cached on `f._bb`). Guards at the top of `updateClinicKpis`/`updateLayerKpis`/`updateDrawLayerKpis` hand the bar to site mode while `evalSitePt && evalActive` (the site's context box IS a drawnArea — without the third guard the area path stomped growth/sat). "Market context" slider (1–6mi, `_onSiteCtx`, 120ms debounce) lives in the site card and drives ONLY these KPIs — never the capture model. `_siteDropCommit` warms income/growth/dog/geometry then repaints; `clearEvaluate`/`siteRemove` hand the bar back. `selectZip` + the bare-map click handler both check `siteDropMode` FIRST (the placement click must not select the ZIP under it; dropping is allowed while an analysis is active — an explicit new-analysis gesture). Verified live: Flower Mound saturated pin → 15/100 "Weak — not recommended" (share 21%, 16 comps); Celina growth pin → 27 "Workable" + real Collin-parcel residential warning; remove/Esc/drag paths clean.
+
+## Community layer (census tracts — Phase 1, display-only; 2026-07-09)
+`dfw-tracts.json` (~1MB: 1,730 DFW tracts, TIGERweb 2020 boundaries server-generalized at 0.0004°, ACS 2024 demographics embedded per tract `{g,inc,hh,own,sf,cons,age,pop}`) is built by **`build-tracts.mjs`** (local Node, free — TIGERweb envelope query + one ACS tract call, re-run to refresh). A tract ≈ one community (~4k people) — this is the sub-ZIP grain that fixes the Robson Ranch blind spot (its tract reads **median age 70.9** vs its ZIP's 39.9). Runtime: `_loadTracts()` (force-cache singleton, graceful null outside DFW/file missing) → `_tractAt(lat,lon)` (0.05°-bucket spatial index + `pointInGeoJSON`) → `_communityType(t)` archetype (ORDER MATTERS: **non-residential FIRST at hh<120** (2026-07-13, user caught the DFW-Airport tract reading "Rural / low-density" — hh=0; airports/industrial/big parks are special-use land and every demographic off them is noise; real rural tracts hold hundreds of households) → 55+/active-adult at age≥58 → renter-heavy at own<0.40 → young-family-growth at cons≥0.35 & age<42 → established-affluent at inc≥$140k → rural at pop<1200 → established suburban; anchors validated: Robson 55+, Lantana young-family, Uptown renter, Southlake affluent, Houston null) → `_communityHTML(lat,lon)` compact block rendered in the **hex detail card** and **Evaluate site cards**, with an explicit senior warning ("expect lower pet demand than the ZIP average suggests"). Warmed fire-and-forget in `buildHexBaseInputs` + `_ensureEvalDemographics`. **Map layer**: "Communities (census tracts)" in the Layers panel (`toggle-tracts`, `toggleTractLayer`, `tractLayer`, legend `#tracts-legend`) paints all 1,730 tracts archetype-colored with sticky hover tooltips (full profile + tract id) — the precision-inspection view. It joins the choropleth SINGLE-FILL mutual exclusion (all four toggles exclude each other; `_oppKillChoropleths` kills it too; note toggleGrowthLayer uses single-line off-blocks vs the multiline style in income/pets — anchors differ). **Sticky-tooltip strand fix (2026-07-10, user-reported)**: a click-drag starting on a tract/MPC polygon strands its sticky tooltip (Leaflet never delivers the mid-drag mouseout), scattering cards over the map — `_stickyTipSweep()` on `map.on('movestart')` closes all tooltips on BOTH sticky layers (tracts + MPC); the next hover reopens one cleanly. Registered once at top level, guards on the layers existing. **Phase 2 (2026-07-09): EVALUATE demand now runs at tract grain — user ask: "weight the specific areas with higher pet population so a site is more attracted to the demand."** `_tractPetRate(t)` recomputes the FULL ownership model per tract (owner-occ+SF deviation from the DFW household-weighted average clamped **±40%** — wider than the ZIP model's ±30% because tract extremes are real, e.g. Uptown own=0.068 — × the same senior-age curve × the same low-income damp; cached `t._pr`). `_tractPetW(lat,lon)` = rate/0.45 clamped [0.4,1.6]. In `_evalComputeAndRender`, every `evalData.resid` rooftop is tagged `r._pw` once per context-fetch and the demand sum multiplies `(tractsOn?(r._pw||1):1)` — the sum itself is gated on `tractsOn=!!_tractsGeo` so absent tract data can never half-apply. When tractsOn, the ZIP-grain `g.ageF` multiplier on demandN is SKIPPED (rooftops already carry age at tract grain — double-damp guard); ZIP ageF remains the non-DFW fallback. `_ensureEvalDemographics` + `openEvaluate` now AWAIT `_loadTracts()`. **Verified by controlled experiment**: identical synthetic rooftop clusters at Lantana vs Robson Ranch — tracts off → demand ratio 0.999 (symmetric); tracts on → 1.311, matching the predicted weight ratio (Lantana 1.40 / Robson 1.067 = 1.31) to three decimals; Robson-side site score dropped 87→72. Weight anchors: Lantana 1.40, Robson 1.067 (housing maxes the clamp, age separates), Uptown 0.60, non-DFW null→neutral. **Surface hexes still inherit ZIP demographics** (next candidate); the List stays ZIP-grain by design. Growth stays ZIP-grain forever (tract ACS deltas are statistically noisy).
+
+## Developing-communities layer (master-planned communities; 2026-07-09)
+`dfw-mpc.json` (curated, ~30 entries: name/city/lat/lon/homes/status/dev/note/src — developer-announced totals from news + RCLCO 2025 rankings; anchors: Legacy Hills Celina 11,100 units, Fields Frisco 5,320, Walsh 15,000, Furst Ranch Flower Mound 1,400 announced-2027 phase). **Refresh = edit the JSON by hand** (no build script — it's a curated list; bump the `?v=` on the fetch). Layer: "Developing communities (master-planned)" (`toggle-mpc`, `toggleMpcLayer`, `mpcLayer`, `_loadMpc` force-cache singleton) — an **OVERLAY like the density heat, combinable with any fill** (NOT in the single-fill exclusion; `_oppKillChoropleths` does not touch it). **20 of 30 entries carry REAL boundaries** (`polys`: arrays of `[lon,lat]` outer rings, OSM `landuse=residential|construction` ways name-matched + proximity-filtered (≤12km of entry coords) + area-filtered (≥0.05km²), DP-simplified 0.0004° — Painted Tree = 15 phase polygons, Pecan Square/Light Farms/Walsh single clean outlines; fetched via 4 lean name-batched Overpass queries on the .fr mirror — the full-regex single query TIMES OUT server-side, keep them split); rendered by COVERAGE (user-reported regression: Furst Ranch "disappeared" when its single 173-acre OSM fragment replaced the scale circle): mapped-area ≥ 45% of the implied footprint (`homes/618` km², ~2.5 homes/gross-acre) → pure `L.polygon`; below that → **hybrid `L.featureGroup`**: light dashed context circle + the real fragments on top (tooltip "· partly mapped"); no polys → `L.circle` ("· approx. area"). Current split ~8 pure boundaries / 12 hybrids / 10 circles. Dashed stroke = `status:'announced'`; sticky tooltip; **opening date is explicit in the popup header** (`opened` year in the JSON, 27/30 curated from developer/press records): past → gray "First homes 2019 · selling 7 years", future → amber "First homes expected 2027", announced-no-date → amber "First homes TBD" (Ten Mile Creek, Veale Ranch, Myra Park); popup runs the buildout demand walk: residents ≈ homes×3.0, dog-HH ≈ homes×0.55 + cat-HH ≈ homes×0.25 (young-family MPC profile = top of the ownership model's range) with a provenance/disclosure line. **Pad-engagement phases (2026-07-10, user ask — the chain site-acquisition motion)**: `_mpcPhase(m)` classifies each community `sweet` (engage now) / `watch` (pre-threshold) / `late` (pads likely committed). Rules: curated `phase` override in the JSON wins (Harvest/Windsong/Inspiration late, Legacy Hills/Fields sweet) → announced + anchor regex on `note` (/h-?e-?b|kroger|grocery|anchor/) = sweet ("the trade-area starting gun", e.g. Furst Ranch) → polys-based buildout estimate (mapped km² ÷ `homes/618` implied × homes): progress ≥0.8 = late, est ≥700 homes = sweet (the 1,500–2,500-rooftop trigger zone), else watch → selling-unmapped = watch. Current split 13 sweet / 11 watch / 6 late. Rendering: sweet = bold teal (weight 3, fill .26) + ⚡ tooltip + a teal "PAD-ENGAGEMENT WINDOW" callout in the popup ("chains typically sign MPC sites 12–24 months before opening"); watch/late get a one-line gray phase note. **Evaluate site cards**: `_mpcSweetNear(la,lo)` (≤4mi) adds a ⚡ line naming the community + distance + reason (`_ensureEvalDemographics` awaits `_loadMpc`). DISPLAY-ONLY on the map layer — future-rooftop demand is NOT in the ZIP/hex scoring (candidate Phase next: feed announced homes into Surface trajectory). **Opportunity · Communities view (2026-07-10, user ask)**: a third `List | Surface | Communities` segment (`setOppView('mpc')`, `oppView==='mpc'`) ranks the region's MPCs with the SAME four weight sliders. `_buildMpcBase()` (async, cached `_mpcBase`, reset on region switch) computes per community: containing ZIP via pointInGeoJSON over `oppGeoSnap` → income/growth from the ZIP snapshots; demand = announced buildout dog-HH (homes×0.55); competition = DVMs within 3mi (roster else 2, equine + analyst-exclude + mobile rules, PE ∪ independents deduped by ~110m cell). `_rankMpcs()` min-maxes with LOG transforms on demand and underservice (announced totals are heavy-tailed: Walsh 15k vs Furst 1.4k), missing factor = neutral 50 (mirrors the List), weighted sum via `getOppWeights()`. **Income prefers the community's own builder pricing (2026-07-10, user ask)**: `price:[low,high]` ($k, curated ~2025 base-price ranges, 26/30 — the 4 announced-no-pricing fall back to ZIP) → `_mpcIncome(m)` = (low + 35% of spread, volume skews to entry) ÷ 3.7 affordability ratio. Validated where the ZIP is community-dominated: Heartland $86k vs ZIP $88k, Elevon $100k vs $102k; the payoff case is Walsh (~$221k buyers inside the $80k 76108 ZIP — jumped to #2). Shown in the row ("Homes $450k–$1.5M · est. buyer income $221k"), the map popup, and CSV (`incVia` provenance column). Slider drags re-rank live (rescoreAndRender → renderOppList → `_renderMpcList`). Pad-engagement phase + opened year are DISPLAY chips, never scored. **MPC pipeline feeds the ZIP List's growth factor (2026-07-10, user ask)**: `_mpcRemaining(m)` = announced homes × (1−buildout progress) (polys footprint estimate; announced=all remaining; selling-unmapped=assume half). `buildOppBaseInputs` APPORTIONS it per ZIP by footprint sampling (9 points per community — center + ring at 0.55× the implied footprint radius — homes split by the share of points each ZIP contains, so a straddling MPC no longer credits everything to its center's ZIP; ~22 DFW ZIPs carry pipeline) → `r.mpcRem`/`r.mpcNames`/`r.mpcPipe` (= rem×0.55 ÷ current dogHH, capped ×4; null when MPC data or dogHH absent — openOpportunity + `_aiEnsureOpp` both warm `_loadMpc()` first, graceful if missing). `rescoreAndRender`: growth blend is now **gN 0.45 / cons 0.30 / pipeline 0.25** (was 0.6/0.4), pipeline log-spread + min-maxed like underservice (heavy-tailed: most ZIPs 0, Celina 75009 holds 6 MPCs = 13k homes), weights RENORMALIZE when a piece is missing so behavior without the data file is unchanged. Loaded-but-no-MPC ZIPs get a real 0, not neutral. Verified: Celina 75009 → #3 (was #6), Prosper #1, Southlake #2 (91 — no-pipeline ZIPs still compete). Detail card shows "Master-planned pipeline ~N homes to come · names"; CSV column "MPC pipeline homes". Surface hexes/Communities view untouched. Row click = `oppMpcGo(i)`: map section, MPC layer on, fly + open popup via the `circ._mpcN` name tag set in toggleMpcLayer. CSV via `exportMpcCSV()`. Verified: Legacy Hills #1 (86, 11.1k homes / $168k ZIP / 0 DVMs in 3mi); growth-heavy weights re-rank Heartland into top-3.
+
+## Announced-development demand + land-play epicenter (2026-07-14, user ask — staging)
+**Evaluate now prices future rooftops.** `_evalInjectFuture(bb)` (called per-compute in `_evalComputeAndRender`, after the tract pass) injects each MPC's REMAINING pipeline (`_mpcRemaining`) as synthetic resid points at its real footprint (poly-fragment centroids, else center+8-ring at 0.55×implied radius): `w=(rem/points)/300×conf` clamped ≤6 (calibration: one OSM residential-landuse point ≈ ~300-home subdivision at w:1), conf = selling 0.6 / announced 0.4, `_pw:1.3` hardcoded (young-family MPC pet profile — set at creation so the tract pass, which only fills `_pw===undefined`, can't zero empty pasture). Tagged `_fut:1`; filter+rebuild each compute so the "⚡ Announced homes" chip (`evalFuture`, default ON, session-only) toggles cleanly. **NORMALIZATION IS REAL-ONLY (regression fix 2026-07-15, user-reported: every top-ranked ZIP graded 'no strong site')**: the cell loops split `g.dem` (real) / `g.demF` (future); `maxDem` maxes over REAL demand only and `demandN=min(1,(dem+demF)/maxDem)` — future demand lifts MPC-adjacent cells to the clamp but can NEVER deflate the rest of the grid. Do not fold future points back into maxDem: one cell near a big footprint becomes the ceiling and sinks the whole ZIP's scores below the EVAL_STRONG bar. Teal dashed dots in the hoods overlay + legend row + a teal disclosure line naming communities and the discounted home total. **RANKED land plays (2026-07-15, user ask — replaced the single epicenter)**: gate-FAIL cells inside the polygon (city-zoned residential/civic still excluded) stay alive in `landGrid` when `_hasFut`, get the IDENTICAL demand/competition/access math as sites, and are scored with the retail term held NEUTRAL (`score=demandN×min(share,.85)^GAMMA×accessMult` — fabric assumed to arrive with the rooftops). Qualify on `demF>=0.8` (must be a FUTURE play), top-3 at fixed ~1.2mi separation → `evalLandPlays[]` (`.coms` = communities in reach) → numbered dashed-teal ⚡ pins + a ranked sidebar card (score via `_evalDisp`, homes in reach, fabric distance, Map→/Land↗ links) + Crexi/LoopNet LAND links in popups. Verified 75009: LP1 96 east/Trinity Falls reach, LP2 95 at the Ramble/Serenade/Wilson-Creek ring cluster, LP3 95 Light Farms/Mosaic corridor — sites unchanged (85 downtown #1). **Homes-in-reach uses FRAGMENT geometry + ⌖ Evaluate (2026-07-25)**: `g.coms` matches communities via the injected `_com`-tagged future points within DEM_R (the SAME geometry that fed demF) — the old center+implied-radius test let a play qualify on demF≥0.8 yet list "~0 homes in reach" at metro grain (user screenshot). Land rows + popups carry **⌖ Evaluate** → `metroRefine(la,lo)` (closes popups first) = the full 2-mi engine on the play. **LP-A dossier pair (2026-07-25, user pick off a 3-concept board; "no lightning emoji")**: the Land pane renders full dossier cards (`.cdx-*`: teal eyebrow "LAND PLAY N · BUY-DIRT POSITION", corridor title from `coms[0]`, score/100, FUTURE DEMAND + POSITION TODAY kv sections, navy ⌖ Evaluate + ghost Map/Land buttons) and the popup is the matched compact version. **Evaluating a land play returns SITES ONLY (2026-07-26, user: "when evaluating a land play i dont want it to give me more land plays")**: the two land-play ⌖ Evaluate call sites pass `metroRefine(la,lo,1)`, which sets `_evalNoLandPending`; `openEvaluateArea` CONSUMES it into `evalNoLand` on entry (handoff, NOT a sticky flag — a sticky first version leaked into the next ordinary drop-site and silently suppressed its land plays; verified by test). `evalNoLand` skips the whole land-play build, hides the Land tab, coerces `evalTab` off 'land', and shows a "Land-play evaluation · parcel grain" banner. `openEvaluate` (ZIP) clears both flags; `_evalResetState` clears `evalNoLand`. Verified: land-play evaluate → 0 plays / no Land tab / 0 land pins / 3 sites; the next plain drop → 3 plays and the tab back. Land popup widened to `minWidth:325,maxWidth:370` (measured 346px, every kv row single-line).
+**The ⚡ emoji is BANNED from all UI strings** (user vetoed it 3×: metro button, ring board era, LP pick) — swept from MPC tooltips/popups/pad-engagement chips, sweet-spot lines, the Announced-homes chip, and the catchment future-demand label; teal color alone now carries the "future" signal. Do not reintroduce. The lease-gate is right that pasture isn't siteable — this surfaces the buy-dirt play the gate would otherwise hide (land-bank thesis). **GOTCHA FIXED: ZIP-mode `openEvaluate` never awaited `_loadMpc`** (area mode did via `_ensureEvalDemographics`) — `_mpcSweetNear` and the injector silently no-oped on ZIP evaluations; now loaded in both paths. **ZIP-select MPC highlight**: `oppSelect` → `_zipMpcHighlight(zip,feat)` draws `_zipMpcLayer` (teal dashed footprints/circles of every MPC whose center/ring/fragment-centroid falls in the ZIP, sticky tooltip w/ homes-to-come); cleared in `clearZipSelection`.
+
+## Development-pipeline layers (2026-07-22, user ask: "I want this data all across DFW no matter how small")
+Two OVERLAY layers (combinable with any fill, NOT in the single-fill exclusion), both DISPLAY-ONLY —
+scoring untouched (the Evaluate future-demand injection still reads only dfw-mpc.json; folding
+dfw-pipeline.json in is the natural next step but needs name+proximity dedupe against the MPC file
+first or MPC-tracked projects double-count). Both render on a DEDICATED shared `L.canvas({padding:0.5})`
+(`_getOverlayCanvas()`) — 1,600+ points must never hit the shared SVG pane (perf rule). Source research
+with every verified endpoint: `research/development-pipeline-sources.md`.
+
+- **Development pipeline (`toggle-pipeline`, `dfw-pipeline.json`, built by `build-pipeline.mjs`)**:
+  NCTCOG Development Monitoring forward pipeline — 1,666 records (1,200 residential = 578,680 units +
+  466 commercial), one HTTP call, ~5s build, license "no use constraints" (credit line embedded in file
+  + popup). Indigo=residential (sized √units), amber=commercial (√sqft); fillOpacity by status
+  uc/an/co; `stale:1` (LastEdited < 2024, only 9 records) renders dimmed + rose disclosure in the popup
+  — a 2016-edited "Under Construction" strip center must not present as live intel. Popup: units/sf/ac,
+  developer, start year, NCTCOG credit + edited year. Refresh: `node build-pipeline.mjs`, bump `?v=`,
+  update VF_DATASETS (cadence 30d). VALIDATED: every dfw-mpc.json MPC present at phase grain, plus
+  majors our curation missed (Goodland Grand Prairie 15,000u, Minto Waxahachie 13,270u, Honey Creek
+  McKinney 10,000u). dfw-mpc.json STAYS — it carries curated pricing/phases/opened-years NCTCOG lacks.
+
+- **Commercial pipeline & tenants (`toggle-commercial`, `dfw-commercial.json`, built by `build-tabs.mjs`)**
+  — popup = **B3 delivery-timeline card** (start→today→delivery bar + "Delivers in ~N months"; grey/done
+  state past delivery) with the **B4 analyst-ticket rows in a "Details" `<details>` dropdown** and the
+  committed-tenant chips in a second dropdown (user picks 2026-07-23; timeline needs both dates, else
+  ticket rows render open):
+  TDLR TABS (every TX commercial project ≥$50k must register pre-construction; public record, no auth,
+  next-day currency) across 9 DFW counties, trailing 15 months + Comptroller sales-tax outlets NAICS
+  541940 statewide. Amber circles = new construction ≥$100k (retail shells = future leasable space) w/
+  est. start→delivery dates, cost, sqft, owner; popup rolls up COMMITTED TENANTS at the same
+  FacilityName (finish-out registrations carry the tenant's actual name). RED paw divIcon = vet project
+  in TABS (pre-opening, months of warning); GREEN paw = Comptroller-confirmed newly-open vet (first-sales
+  date). **RED paws are TOGGLE-INDEPENDENT but ride the clinic-pin ZOOM GATE (2026-07-25, two user
+  asks same day: "always visible" then "load in and out with the pins" — he saw 19 paws floating
+  alone over DFW at statewide zoom)**: `_drawVetAlerts()` builds `_vetAlertLayer` ~2.5s after boot
+  (idle, via `_vfWarmCaches`) but attaches it via `_applyPinZoomVisibility()`, which now
+  adds/removes the paw layer ALONGSIDE `clusterGroup` (same MIN_ZOOM + `vf_hidepins` + watchMode
+  rules) — so paws appear exactly when clinic pins do, at every zoomend. Independent of the
+  Commercial-pipeline toggle; the toggle layer SKIPS kind==='vet' so pins never double (its status
+  counts only the green newly-open vets). ALL dates are applicant estimates — disclosed in every popup. Build is polite + checkpointed
+  (`.tabs-checkpoint.json`/`.tabs-geocache.json`, git-ignored): 400ms between TABS detail fetches,
+  1.15s Nominatim spacing (their hard limit), identifying UA; cold run ~2h, warm reruns minutes (only
+  new registrations fetch). Refresh: `node build-tabs.mjs`, bump `?v=`, VF_DATASETS cadence 14d.
+  HARDENED after a real failure (one ETIMEDOUT killed the first 2h run at detail 2,362): every fetch
+  routes through `fetchRetry` (3 tries, backoff), a dead detail marks `{fail:1}` and continues, and
+  the output file FLUSHES INCREMENTALLY (every 500 details / 100 geocodes) so a crash never leaves
+  nothing. `--priority` mode ships an interim file in ~10 min (vet-flagged + top-200 new construction
+  + Comptroller vets, then exits) — used for the first ship; the full run replaces the file.
+  Vet classifier mirrors build-clinics: `VET_RE` hit + NOT `VET_JUNK_RE` (shelters/adoption/animal
+  control/police/PET-CT imaging/grooming/boarding/resorts/pet-supply stores) UNLESS `VET_STRONG_RE`
+  (animal hospital/veterinar/pet hospital) overrides the junk. Comptroller rows drop first-sales
+  < 2025 (permit re-issues at old clinics are not "newly open") and dedupe name+addr.
+  GOTCHAS: TABS list rows have NO address (detail fetch per record is mandatory for coords); city comes
+  back CODED (lookup scraped live from the search page's <option> tags); Comptroller county codes =
+  TDLR county codes − 2000 zero-padded; tenant finish-outs are usually un-geocoded on purpose (they
+  attach to center popups by facility-name match, no own pin). **Geocode LADDER (2026-07-22, user:
+  'how can we get around the geocoding failures')**: lane 1 Nominatim free-text → lane 2 Nominatim
+  after TX cleanup (`_txVariants`: SWC/side-of prefixes stripped, SH→State Highway, IH→I-, CR→County
+  Road, "A & B"→"A and B" intersections) → lane 3 **Census TIGER** (`_censusTiger`, free/no-key —
+  TIGER learns newly-platted streets from county filings before OSM maps them: the win case for
+  construction sites) → lane 4 city-centroid **for vet rows ONLY**, shipped as `approx:1` (ghosted
+  dashed paw + rose "Location approximate" disclosure; ordinary projects never approx-pin — no fake
+  blobs at city centers). Cache shapes: `[la,lo]` precise / `{a:[la,lo]}` approx / `{x:1}` terminal
+  miss / `null` legacy v1 miss (ladder retries lanes 2-4 exactly once). Recovery measured: new-const
+  66%→78% precise (2,156→2,531), all 19 vet projects pinned (15 precise + 4 approx). Remaining ~729
+  unpinned = streets no free geocoder knows yet + lot/block legal descriptions (list-only, honest).
+
+## Clinic evaluation (2026-07-23, user ask: "site evaluations on other clinics tabs")
+Every clinic pin popup has an **Evaluate button** (target icon left of the gear) → `_evalClinicGo(la,lo,nameEnc)`
+sets `_evalSubject={la,lo,name,dvm}` (roster via `_vetStaffAt`) and reuses the ENTIRE drop-a-site engine
+at the clinic's coordinates. Two differences from a plain drop: (1) **the subject clinic is EXCLUDED from
+its own competition** — `_evalCompetitors`'s `add()` skips anything within ~50m of `_evalSubject`
+(without this it competes against itself and share craters); (2) the card titles "Clinic evaluation —
+<name>" (🩺 badge) and the catchment readout gains the **two-sided practice read** when the roster is
+known: demand ceiling (winnable = catchment visits × share) vs capacity ceiling (DVM × DVM_VISIT_CAPACITY)
+→ binding side + **staffing-headroom verdict** (green "Understaffed: ~N visits ≈ X DVM of headroom —
+revenue growth without fighting for share" / rose "Over-doctored"). This is the both-ceilings-known case
+`_practiceEcon` was built for. Lifecycle: `_siteClear()` nulls the subject; a commit >60m from the
+subject (pin drag) demotes to a plain site eval. The dropped/clinic card gained its own catchment button
+(`evalDriveTime(-2,…)` — **index -2 = the forced cell**; `evd--2` container) with TWO fixes made there:
+the readout writes into the LIVE node re-queried AFTER `_evalRenderSidebar()` (the re-render detached the
+captured one — readout silently vanished), and a **~3.5mi radius fallback ring** when the Routes proxy is
+unavailable (header discloses which ring was used; also what makes local preview testable — serve.py has
+no /api/route). **Clinic-first card (2026-07-23 same-day rework, user: "I want the actual clinic pin evaluated
+with its own data")**: NO dropped ★ in clinic mode — `_siteMarkerPlace` draws a dashed purple HALO
+(`L.circleMarker` r17, non-interactive) around the clinic's own pin instead (lives in the
+`evalSiteMarker` slot so every lifecycle path treats it identically; not draggable, correctly).
+`_evalClinicGo` snapshots the full identity (`rating/reviews` via `_vetEnrichAt`, `pe/owner` via
+`checkPE`, roster names). The card leads with an IDENTITY block (PE·owner / Independent, ★rating,
+reviews) + PRACTICE block (N DVMs, capacity, roster-names `<details>`, `_revEst` modeled
+revenue/EBITDA/value — analyst multiple honored) and the catchment+two-sided read AUTO-RUNS
+(`_evalAutoCatch`: radius ring computed once ~60ms after first render, cached by sid, re-render
+picks it up inline in `evd--2`; the shared readout template was extracted to `_evalCatchHTML(cs)`
+used by both the auto pass and the drive button, which relabels to "Show true 10-min drive-time
+on map" once the radius read is in). No-roster clinics get a rose prompt pointing at the editor.
+Verified live (Animal Hospital of Celina, 1 DVM, PE/Harvest, ★4.6·197): halo not star, subject
+absent from evalCompsCache, identity+practice blocks render, auto two-sided read "Understaffed
+~957 visits ≈ 0.3 DVM headroom", future-demand 25 devs/20,656 units — all with zero clicks.
+**Clinic report (`clinicReport()`/`_clinicReportHTML()`, 2026-07-23; REDESIGNED same day to the
+user's Claude-Design pick "direction 2a" — reference copy `research/report-design-2a.html`, pulled
+from his claude.ai/design project via Chrome since the design MCP wasn't connected)**: BOTH print
+reports (clinic + `siteReport`) now share the 2a language via `_RP_CSS`/`_rpShell`/`_rpKV`/`_rpL`/
+`_RP_FOOT` — calm white page (NO navy band), Inter 400/500/600 light weights, ink #1d222c / accent
+#24466e / faint #9aa2b1, uppercase hairline-rule section labels, soft-gray `.card` 2×2 grid, key
+numbers accent-600, the two-sided ceilings drawn as PROPORTIONAL BARS (widths = each/max), hairline
+competitor rows with faint provenance, single-line 9.5px footer, letter @page. Original content
+notes: navy "Download clinic report (PDF)" button on the clinic-eval
+card → print-window one-pager (same open-window+print pattern as `siteReport`), assembled ONLY from
+already-computed state (no new fetches): navy brand band w/ score/100, identity strip (PE·owner /
+Independent, ★reviews, DVMs, species), roster names, services line, two-column Practice-economics +
+Market-position | Catchment + Future-demand tables, the two-sided read w/ colored verdict box, top-6
+GP competitors, and a method-notes footer (AVMA derivation, margin = Vetric assumption, incumbent-share
+model, "screening artifact — verify in diligence"). GOTCHA fixed at review: `_siteKpis().pePct` is
+ALREADY a percentage (82, not 0.82) — don't ×100 again (the draft printed "8200%").
+**Contested-share competitor ranking (2026-07-24, user ask)**: the report's competitor list is ranked
+by CONTESTED SHARE, not distance — each rival's pull at the subject's location using the engine's own
+formula (`_staffW × mult × _grav` over `_barrierDist`, `_revW`≡1), normalized against the
+incumbent-weighted subject attraction (`A_OWN × _staffW(dvm)`), so the listed shares + the subject's
+share are one coherent 100%. Each row: share% (accent) · ~visits/yr taken (share × catchment visits)
+· mi · DVMs. Also added "Market-supported revenue (visit model)" (= winnable × REV_PER_VISIT, accent)
+to the Practice-economics card beside the roster benchmark. Verified on Double Oak: the 4-DVM
+Shore-Capital sister practice at 1.0mi ranks #1 (16%) OVER 0.2mi solo Lantana (14%) — roster-weighted
+gravity beats raw proximity, which is the point. Fun fact surfaced
+by the report itself: Double Oak VMC is genuinely PE-owned (Shore Capital / Mission Pet Health) per
+pe-data — checkPE was right, not a false positive.
+**INCUMBENT SHARE FIX (2026-07-23, the Double Oak bug — user: "4 doctors but $600k revenue based
+on visits")**: two entrant-model rules were leaking into clinic evaluations. (1) **The 700m PE
+hard-cap (share≤0.10) does NOT apply to the forced cell in clinic mode** — it encodes NEW-BUILD
+entry risk next to a corporate incumbent; Double Oak VMC (★4.9, 766 reviews, 4 DVMs) sits 270m from
+PE Lantana and the cap pinned its share at 10% → winnable ~5k → demand-bound "$600k revenue" for a
+practice actually billing ~$2.5M. (2) **The subject's attraction scales by its own roster** —
+`_incW=_staffW(dvm)` on the forced cell's A_OWN (odds-scaling the Huff share): a 4-DVM hospital is
+not a hypothetical 2-3 DVM entrant. Both gated on `g.forced && _evalSubject` — dropped-site/new-build
+evaluations keep the cap and the fair-fight entrant exactly as calibrated. Verified: Double Oak share
+0.10→**0.235**, winnable 12,053 vs capacity 12,800 → **"Balanced: market supports ~94% of capacity"**
+(a third verdict state, |headroom|<0.35 DVM, between Understaffed/Utilization-flag; the over-doctored
+wording now reads as a UTILIZATION flag with the established-base caveat, never as current revenue —
+and the two-sided block shows BOTH revenue ceilings, market-supported AND at-capacity, instead of
+silently collapsing to min). **Clinic mode also hides all de novo output** (user ask): no site pins,
+no land-play pins, no Sites/Land tabs or cards, memo replaced with a clinic-mode line; evalTab
+coerced off the hidden panes. **2026-07-25 additions to the same rule**: no suitability HEATMAP
+(`_evalRenderLayers` heat build, `_evalHeatTip`, the Layers heat chip and the legend gradient all
+gate on `!_evalSubject` — the subject is the clinic, not the dirt around it) and no Crexi/LoopNet
+lease/land links on the clinic card (`${_evalSubject?'':_leaseBlock(g)}`); dropped-site evaluations
+keep both.
+**DOSSIER CARD (2026-07-25, user picked A off a 5-concept board; condition: "as long as its not
+removing any information")**: the clinic-mode card is an early-return branch in the vd-card IIFE
+rendering the 2a report language in the sidebar — `.cdx-*` CSS (eyebrow/name/score+track, chips,
+hairline uppercase `.cdx-rl` section labels, `.cdx-kv` rows, `.cdx-bar` proportional ceiling bars,
+`.cdx-vbal/-vgood/-vflag` verdict boxes). Sections: Market position / Practice (roster+capacity,
+roster-names details, services) / Practice economics / buttons (navy Clinic report + ghost drive) /
+`evd--2` catchment / warns / Location factors (the SAME `sm()` drill-down bars) / cannibalization /
+Market-context slider / Maps+coords / community / MPC / Save+Clear. `_evalCatchHTML` was restyled
+to the same language (SHARED with dropped-site cards — kv rows + two-sided ceiling BARS; every
+pre-dossier data row preserved, verified live: 7 sections, 22 kv rows, 2 bars, verdict box). The
+dropped-site card template is UNTOUCHED (the old `_evalSubject` gates inside it are now dead code,
+left harmless). Legend + area-title are clinic-aware ("Clinic under evaluation" ring row instead of
+dropped-site/top-N rows; title "Clinic evaluation · name"). The purple 🩺 badge is gone. (The specialty/ER residual noted here was APPLIED same-day — see the bullet below.)
+
+## Catchment future-demand block (2026-07-23, user ask: "new residential development... as part of future demand with all the same pet algorithm calculations")
+`_evalCatchmentStats` runs a pipeline pass: NCTCOG residential projects (`dfw-pipeline.json`, `cl==='R'`,
+non-stale, `u` present) whose point falls inside the catchment ring (bbox prefilter + `pointInPolygon`)
+aggregate into `cs.fut = {n,u,uc,dog,cat,vis,cap,names[top3]}`. **dfw-pipeline ONLY — never also
+dfw-mpc.json** (NCTCOG contains every MPC at phase grain; mixing double-counts). Pet math = the app's
+established future-rooftop profile: dog HH = units × 0.55, cat = × 0.25, visits via
+OPP_VISITS_PER_DOGHH/_CATHH, winnable at the SAME share as existing demand, revenue at REV_PER_VISIT.
+Rendered as a SEPARATE teal dashed "⚡ Future demand" block in the site-card Catchment pane and its own
+table in the print report — never folded into the existing-demand numbers (full-buildout figures,
+status split disclosed, developer-announced counts caveated). Verified on a Celina ring: 16 developments
+/ 7,617 units → +12,338 visits/yr vs 5,265 existing (future = 2.3× current — the Celina thesis in one
+card). Graceful null outside DFW / file missing (`try/catch`, `fut:null` hides the block).
+
+## Off-market land layer (2026-07-25, user ask: "pins of land/retail for sale/lease" → Option A of A+B)
+`dfw-land.json` (~3.7MB raw, 16,868 parcels) — VACANT, COMMERCIALLY-PLAUSIBLE parcels across ALL 9
+DFW counties (user explicitly rejected a 3-county version) with **owner of record + mailing address**
+from county appraisal rolls. NOT listings — the off-market call list (land-bank thesis: "SEC 423/380
+LTD" holding the US-380 corner is the product working). Built by **`build-land.py`** (python3 + `pip
+install --user fiona`; ~30s warm, ~5min cold): direct CAD ArcGIS pulls for the big four — Collin
+CCAD-mirror `state_cd IN C3-C6` (= `commercial_fl='T'`, verified), Denton `STATE_CD='C2'` (verified
+vacant-commercial: US-377/Stemmons samples), Dallas `SPTBCODE LIKE 'C%' AND PROP_CL LIKE '%COMM%'`
+(**PROP_CL descriptions are authoritative — SPTB subcodes conflict across the CADs mixed into that
+service**), Tarrant TADParcels `IMPR_VALUE=0 AND LAND_VALUE>5000` — plus **TxGIO StratMap 2025
+per-county GDBs** (fiona/OpenFileGDB) for Rockwall/Kaufman/Ellis/Johnson/Parker. GOTCHAS that cost a
+run: (1) **StratMap `GIS_AREA` ships in SQUARE DEGREES despite its unit field claiming 'Acres'**
+(18.458-ac parcel → GIS_AREA 1.79e-05) — use `LEGAL_AREA`, else shoelace from geometry; (2) StratMap
+downloads 403 curl's default UA (CloudFront) — browser UA required; (3) the statewide StratMap
+ArcGIS service is render-only (query capability advertised but disabled) — hence per-county GDB
+downloads (`.land-cache/`, git-ignored); (4) outer-county CADs only assign state class to IMPROVED
+parcels in StratMap → vacancy = `imp=0 ∧ land>$5k`, commercial plausibility = retail-corridor test
+(dfw-retail.json: ≤500m 'cor', or ≥3ac ≤1500m 'hwy'); class-coded rows ship as 'cad'. Filters:
+0.5–150ac, public/church/HOA/utility owners dropped (JUNK_OWNER), drop counts logged. Frontend:
+"Off-market land (vacant commercial)" Layers toggle (`toggle-land`/`toggleLandLayer`/`_loadLand`
+`?v=1`), circleMarkers on the shared overlay canvas (perf rule), green=cad / teal=cor / gray=hwy,
+radius=√acres; popup = acreage/city/situs, owner + mailing, appraised land value (where the CAD
+ships it), **County record ↗ deep link** (Collin/Denton esearch — bot-block curl but open fine in
+real browsers, same links the clinic editor uses; Dallas AcctDetailCom; TAD /property?account=),
+and a not-a-listing disclosure. VF_DATASETS cadence 90d. Refresh: `python3 build-land.py`, bump `?v=`.
+
+## Listed-properties layer — REMOVED same day (2026-07-25, user call after seeing it)
+Option B (tx-listings.json / build-listings.mjs / toggle-listings, from the state site database
+texassitesearch.com) shipped and was removed hours later — statewide inventory was only 1,013
+listings (~90 DFW) and 552 were last edited pre-2024; too thin/stale to earn a layer. Revive from
+commit f3f7c0d if ever wanted — it encodes the working API knowledge (search POST returns 0 rows
+unless the FULL captured field set incl. GUID-shaped SessionID/RequestID + subsetid is mirrored;
+detail endpoint `/api/properties/property/{SiteID}` exists but is empty for imported listings;
+deep link `?p={SiteID}`). Real listings data is paid (CoStar/Crexi) — see the research answer in
+session history; the free stack stays: off-market land layer (A) + TABS shells + Crexi/LoopNet
+deep-link handoffs.
+
+## Development-signals layer — REMOVED (2026-07-25, user ask; same sweep removed Competition-strength pins)
+The curated dfw-signals.json diamond-pin layer (rezonings/anchor commitments, 7 entries) and the
+**Competition-Strength pin toggle** are both GONE — user: "Remove two layers, development signals
+and competition strength." Signals: panel entry, `toggleSignalsLayer`/`_loadSignals`/`sigLayer`/
+`_SIG_COLOR`/`.vf-sig` CSS, VF_DATASETS row, and the dfw-signals.json file all deleted (git history
+has them). Strength pins: UI + `toggleStrengthPins` removed; `STRENGTH_PINS` is frozen `const false`
+and `pinTier()` kept so the tier plumbing through the 6 marker-hot-path call sites stays provably
+inert without operating on the diff engine (devMode precedent) — `makeIcon(color,null)` renders
+identical pins. The NCTCOG pipeline + TABS layers now own the development-intel story the curated
+signals list previewed.
+
+## Clinic Screener (2026-07-13, user ask: "filter searches across areas")
+**Screener** = icon-only funnel button INSIDE the search input, right edge (`#scr-btn.si-scr` within `.si-wrap`, hairline left divider; was a toolbar button, then hidden, then moved into the search bar per user 2026-07-13) → `#scr-overlay` modal (filters column + results column). Reworked flow 2026-07-13 (user: "makes no sense"): ONE add-picker with a "＋ Add a filter…" placeholder — SELECTING adds the row instantly (no Add button), results AUTO-RUN debounced 260ms on every edit (`_scrAutoRun`; no Run button; modal opens straight into the live universe count). Ownership is a TWO-PART row (`type:'own'`): Any/Independent/PE select, and choosing PE reveals an optional "by firm" select fed by `_peGroups()` (`scrSetOwn`/`scrSetOwnFirm`; value stays 'any'|'ind'|'pe'|'pe:<owner>' so `runScreener` is unchanged). Other filters: practice type, DVM min/max, rating, reviews, modeled-revenue min/max $M, analyst EBITDA-multiple min/max, watchlist y/n — editable `_scrActive` rows (✕ to remove). `runScreener()` filters `_scrUniverse()` = PE_COORDS ∪ `_activeVetClinics()` (license-aware `_vfInLicense`, override-excluded skipped, ~110m dedup) joined live to rosters/`_kindOf`(with `o.kind` pre-seeded as `_kind`)/`_vetEnrichAt`/`_revEst`/overrides; scope select = statewide | current view. Results: top-80 rows (click = `scrGo` → `_gotoClinic` fly+popup), full-set CSV (`exportScreenCSV`), and **Show on map** = teal `_scrLayer` dots drawn straight from data (like the PE-group footprint) + `#scr-chip` clear-chip. GOTCHAS: DVM/revenue filters only match rostered clinics (disclosed in the left-column footnote + empty-state); analyst-revenue strings parse loosely (M/k suffixes, bare <100 → $M). Verified statewide: mixed ≥4 DVM = 85 · Mars ≥4 DVM = 17 (BluePearl Stone Oak 33 DVM) · indep ≥$2M ★4.5+ = 401 with 401 dots.
+
+## Vetric AI (the "AI" nav tab)
+A chat drawer (`#vf-ai`, `toggleAIPanel()`, purple `#nav-ai-btn` after Watchlist) with REAL tools into the app. Architecture: `functions/api/ai.js` proxies to **Cloudflare Workers AI** (`env.AI.run('@cf/meta/llama-3.3-70b-instruct-fp8-fast')`, FREE tier ~10k neurons/day, needs the dashboard binding `AI` — see functions/README.md §5; friendly 503 until bound). Session-gated by the middleware like all /api routes. The FRONT-END owns the tool registry (`AI_TOOLS` schemas + `aiExecTool` executor, last `<script>` block in index.html): get_top_markets / get_zip_profile (self-load data via `_aiEnsureOpp()` — same silent pipeline as the preview evals: ensure* + snapshots + buildOppBaseInputs + rescoreAndRender, no panel opened), set_weights / apply_preset (slider ids + `oppPreset`), show_section (watchlist→'reports'), focus_zip (`oppSelect`), toggle_map_layer (checkbox ids toggle-income/-pets/-growth; density found via `input[onchange*="ClinicDensityLayer"]`), set_preference (hide_pins/include_mobile + settings checkbox sync), watchlist (getWatch/toggleWatchMarket(zip,null)), search_clinics (`_clinicSuggest`), save_report (markdown → in-chat card + blob .md download). Agentic loop in `_aiTurn()`: max 5 rounds/message, history capped at 24 messages, tool results truncated to 6KB; dynamic app-state context injected into the system prompt each request. Numbers must come from tools (system prompt enforces). Verified with a stubbed /api/ai: multi-tool rounds execute against real state (settings flip + checkbox sync, live rankings returned). **Chat motion (2026-07-09)**: bubbles/chips/report cards pop in (`vfPop`, corner-aware transform-origin), typing = three bouncing dots in an assistant bubble (`.vf-ai-typing-b`), action chips spin their gear (`.g`+`vfSpin`) while the tool runs and flip to a green ✓ `.done` state after (`aiAddAction` returns the element; `_aiTurn` marks it), greeting chips stagger in, message appends smooth-scroll, all disabled under `prefers-reduced-motion`.
+
+## App-shell design language (2026-07-08 restyle — match the login page)
+The header is the login page's navy brand surface: `header{background:linear-gradient(150deg,#1e3a8a,#1e3068 55%,#172554)}` with the white/`#93c5fd` wordmark, light nav links (`#a7b4d9`→white, active = white + `#93c5fd` underline), glassy logo tile + avatar ring, light-blue `#nav-ai-btn`. Everything below the header stays the LIGHT data canvas (deliberate — a dark app would fight the map; "sleek like the login, don't overdo it"). Tokens: `--radius:10px`, `--radius-lg:14px`, softer/deeper shadows; thin webkit scrollbars app-wide; `.settings-modal` matches the region modal (18px radius, deep shadow, blur-4 overlay); primary buttons carry a soft navy glow. All CSS-only — zero layout/JS changes.
+
+## Section nav
+Nav items: Map (working), Opportunity (working), Acquisitions (working), Properties (stub — points to the Available Properties layer), **Watchlist** (working — the former "Reports" stub, now `renderWatchlist`: saved markets/targets/sites with a compare table + CSV export, `switchSection('reports')` → `enterWatchlist`/`exitWatchlist`, `watchMode` flag mirrors `acqMode`).
+`switchSection(s)` handles routing. The opportunity panel is an `position:absolute` overlay inside `.main` — it covers the map div without resizing it. **`body.vf-opp`** (toggled in `switchSection`, first thing) hides `.kpibar` while Opportunity is active so the panel/surface take the full canvas; the toggle schedules `map.invalidateSize()` (~60ms) because the map area grows/shrinks with it. Every Opportunity exit routes through `switchSection`, so the class can't strand. The region-picker Texas silhouette (`TX_OUTLINE`, ~688 pts) is the real Census 500k boundary DP-simplified (refresh: gz_2010_us_040_00_500k.json → largest TX ring → tol 0.010); `_txProj`/viewBox unchanged so marker math is independent of outline detail.
+
+## Search bar (clinic + vet name search)
+The top search box searches **clinic names AND veterinarian (DVM) names** in addition to the Nominatim place geocoder. `_buildClinicSearchIdx()` builds a cached index over `PE_COORDS` ∪ `_activeVetClinics()`, each row carrying its scraped roster (`_vetStaffAt`) + a city parsed from the address (PE addresses via `_vetEnrichAt`); rebuilt only when the mobile-toggle/overrides change. `_clinicSuggest(q)` ranks clinic-name matches above doctor-name matches, dedups by coords, and labels each (owner/Independent + city, or `Dr. <name>` for vet matches). `fetchSugg` shows clinic/vet hits FIRST (clinic icon = blue indep / red PE, person icon = doctor match), then place results. Selecting one — or Go/Enter (`jumpTo` checks clinics before geocoding) — calls **`_gotoClinic(lat,lon,name)`**: flies there (zoom ≥15) and auto-opens that clinic's popup once its pin loads, via `_tryOpenPendingClinic` (hooked into the `fetchClinics` commit + a short interval) which matches by **exact coords AND name** so it never opens a co-located neighbor.
+
+## Clinic popup — D3 report-matched card (2026-07-24, user pick from the redesign board)
+`buildPopup` body rebuilt in the 2a/report language (option D3 of 5): slim header (name only, weight
+500), one muted contact line (addr · tel · web), **IDENTITY** hairline section with kv rows — Rating
+(★ red + reviews + days/wk), **Ownership as an accent ROW not a filled box** (red "PE — Owner · brand"
+/ blue "Independent" / gray "Verifying…"), Practice (N DVMs · kind · provenance + an inline `· roster`
+`<details>` with the scraped names) — then the SERVICES section (pp-rl label restyle) and a bottom
+**action row**: navy primary "◎ Evaluate clinic" (full-text button — the old icon-only evaluate glyph
+read as a SUN and users missed it), ★ watchlist toggle, ⚙ editor. `_staffPopupHTML` is no longer
+called by the popup (absorbed into the Practice row) but stays defined. The old `starHTML/kindHTML/
+peHTML` builders were removed; `.pp-*` CSS classes carry the design. The legacy `settings-panel` block
++ Street View wrap are untouched. Same-day companions: report cards gained borders + kv hairlines. The eval ring went purple-dashed →
+spinning comet → **breathing NAVY halo (2026-07-25, user picked F off a 6-concept board — "still not
+a fan of the purple spinning"; board at /tmp/vetapp_preview/ring-options.html pattern)**:
+`.vf-evalring` scale/opacity breathe (`vfEvalBreathe`, transform/opacity only per the map-perf rule,
+reduced-motion → static), settling to a thin navy crosshair ring via `_evalRingSettle()`. No purple
+anywhere in the indicator.
+
+## Editing clinics (Dev Mode removed)
+The "Dev Mode" toggle was removed. Editing is first-class: **click any pin → popup gear (⚙, `openClinicEditor(key)`) → a FULL-SCREEN analyst editor modal** (`.cedit-overlay`, takes over the screen). Sections: **Identity** (name, pipeline `status` Operating/Prospect/Target/LOI/In-diligence/Acquired/Closed, practice `size`), **Ownership & competition** (PE firm w/ `<datalist>` of real `PE_COORDS` owners, clinic type, competition × `mult`, **`exclude` = mute from all analysis**), **Market data** (`ratingOv`/`reviewsOv` overrides, `revenue`, EBITDA `multiple`), **Contact** (addr/tel/web), **Analyst notes** (`tags`, `notes`). `saveClinicEditor(key)` writes the FULL object `vf_overrides[key] = {name,pe,mult,kind,status,size,exclude,staffOv,ratingOv,reviewsOv,revenue,multiple,addr,tel,web,tags,notes}`; `_applyClinicOverride(key)` applies all of it live; `resetClinicEditor` deletes the override + refetches. **`exclude`** is wired into ALL THREE competition models (`_evalCompetitors`, `buildHexClinicIndex`, `_areaClinicCount` — skip the cell key) and dims the pin; `ratingOv`/`reviewsOv` flow into the popup (competition is NO LONGER review-weighted — `_revW`≡1 since 2026-07-08). Analyst metadata renders in the pin popup via `_analystPopupHTML(getOverrides()[key])` (reads the override store, so it survives refetch). The old cramped inline `saveSettings`/`toggleSettings` path is kept but no longer reachable from the gear. `fetchClinics` still re-applies name/pe/mult/`_kind` on every commit so those persist across pans/refetch. The **competition multiplier** flows into Evaluate's capture model — `_evalCompetitors` carries `mult` (looked up from `overrides` by cell key) and the comp loop multiplies `(c.mult||1)` alongside the PE-weight and `_revW`. The **clinic-type override** sets `c._kind` (wins over the name heuristic) and respects the type filter. The old `devMode` flag stays `false` (its add-clinic/add-property-via-map-click paths are now dead code, left harmless). `getDeleted()`/`getOverrides()` still read/write `vf_`-prefixed localStorage.
+
+## Building & layout in the clinic editor (2026-07-13 pilot, user ask)
+The clinic editor (⚙) has a **Building & layout** section: on open, `_ceBldgLoad(lat,lon)` LIVE point-queries the three county appraisal parcel services (`_BLDG_SOURCES` — same CORS endpoints as the Evaluate zoning gate, per-county FIELD MAPS: Denton `LIVINGAREA/LAND_SQFT/YR_BLT`, Collin `living_area/land_sqft/yr_blt/curr_imprv_no`, Dallas land-only `AREA_FEET`+`TAXPANAME1` — no building sqft in its GIS layer) + best-effort OSM `building` outline (around:45m, 6s cap). Renders an AERIAL mini-map (USGS orthoimagery tiles — public domain, no key; non-interactive mini `L.map` in `_ceBldgMap`, killed by `_ceBldgMapKill()` on close/re-open) with the parcel (light-blue dashed) + OSM building (cyan fill) drawn on the photo, plus a "View county record & building sketch ↗" deep link (Denton `esearch.dentoncad.com/Property/View/{prop_id}`, Collin `esearch.collincad.org/...`, Dallas `dallascad.org/AcctDetailCom.aspx?ID={ACCT}` — paths best-effort; the County-property-ID row makes the record findable regardless). Interior ROOM layouts are NOT public data anywhere — the county improvement sketch (exterior outline w/ dimensions) is the closest official artifact, hence the deep link + rows: building sqft, land sqft/acres, year built, appraised improvement value, taxpayer of record, and the **$538/sq-ft AVMA revenue cross-check** — ONLY when sqft is in the plausible freestanding band **1,200–12,000**; outside it a rose warning ("likely a shared building / strip center — per-sq-ft math doesn't apply") because a strip-center parcel would claim a $20M solo practice (validated live: CityVet Flower Mound 30,954 sqft shared → warned; Cross Timbers AMC 3,047 sqft freestanding → ~$1.6M). Live per-open, nothing stored; graceful "no county service here" outside the 3 counties. Statewide/batch version (CAD bulk appraisal exports → vet-bldg.js) is the documented next step in research/revenue-estimation-report.md.
+
+## Veterinarians-on-staff (DVM count + names)
+`vet-staff.js` (`window.VET_STAFF = {clinicKey: {n, vets:[names], years?, schools?, src}}`, **~2,408 clinics STATEWIDE**, ~65% of crawled sites — was DFW-only ~535; ~378KB) is built by **`build-vets.mjs`** — a local Node 18+ crawler (no API/cost) that two-steps each clinic website (homepage → "Our Doctors/Team" page) and heuristically extracts the DVMs: count + names (deduped + stopword-filtered in `extractVets`/`cleanName`), best-effort grad years (age/succession proxy; school names were dropped 2026-07-08 as noise). Runs over ALL clinics with a website (PE + independent); `--region=dfw` / `--limit=N` / `--concurrency=N` / `--render`. **Extraction hardening (raised coverage ~54%→72%)**: (1) the crawl PROBES guessed team URLs (`/our-team`, `/veterinarians`, `/our-doctors`, `/staff`, `/about-us`…) when discovered links come up thin and **keeps the page with the most vets** (was: first link wins — often an "about" blurb with one featured vet); (2) the name regex never treats "Dr" as a name word (killed teaser-merge garbage like "Dr. McCall Dr. Scott McCall"→"Mccall Scott"), allows a middle initial, and the stopword list drops section labels (Special/Interests/Technician/DVMs…) so they can't be parsed as surnames. (3) **`--render`** = OPTIONAL headless-browser pass (Playwright; `npm i playwright && npx playwright install chromium`, free/local) that renders JS team pages (Wix/React/Next — ~20% of sites whose roster isn't in static HTML, e.g. Double Oak). GRACEFUL: dynamic `import('playwright')`, falls back to static-only if absent. Only renders sites where static found <2 vets. `playwright` is in `package.json` (node_modules + package-lock git-ignored). Loaded via `<script src="vet-staff.js" onerror="window.VET_STAFF={}">` (graceful if absent). **`_vetStaffAt(lat,lon)`** = exact-cell then nearest (~330m window) lookup over the cell-keyed map, so PE pins (PE_COORDS coords ≠ the scrape's VET_CLINICS coords) still match. Shown via `_staffPopupHTML(c)` in the pin popup ("🩺 N veterinarians on staff") and a read-only block in `openClinicEditor` that also **prefills Practice size** (`staffBucket`: 1→solo, 2-3→small, 4-6→mid, 7+→large) — a saved `size` override still wins. To refresh/extend statewide: `node build-vets.mjs` (no region flag = all TX, ~45-75 min for ~4,400 sites at `--concurrency=10`; static-only, do NOT use `--render` — it hung). A **>40-DVM count is dropped as unreliable** (a count that high on one page is almost always a multi-location group's shared directory, not one clinic's roster). (Future: the TBVME license file — owner age proxy via issue date — is the cleaner source for ages; the web scrape is the no-wait source for count + owner name.)
+- **DVM count is analyst-overridable (`staffOv`) — the scrape undercounts JS-rendered team pages**: e.g. Double Oak VMC's static HTML has none of its 4 vets (the cards load via JS), so the scrape caught only Kelly Watson (homepage-featured) → `n=1`. The clinic editor has an editable **"Veterinarians on staff (DVMs)"** field (`ce-staff`) that writes `vf_overrides[key].staffOv`. **`_vetStaffAt` honors it** (override wins over scraped `n`), via `_vetStaffOv(la,lo)` — a CACHED read-only lookup (`_ovStaffRaw`/`_ovStaffObj`, reparses only when the stored string changes) so the per-clinic competition loops stay cheap and the cache can't be polluted by mutate-then-save callers. The override flows everywhere `_vetStaffAt` is read: popup, `_staffW` weight, List underservice `dvm` sum, Saturation KPI. `saveClinicEditor` invalidates `_areaClinCache` + `oppBaseRows` (+ the hex index) so saturation/list rebuild with the corrected count. No re-scrape can fix JS sites for free — the override IS the fix.
+- **DVM count → competition weight (`_staffW`)**: a bigger practice is a stronger competitor. Each competitor in BOTH competition models (`_evalCompetitors`→`_evalComputeAndRender`, and `buildHexClinicIndex`→`buildHexBaseInputs`) carries `staffN` (from `_vetStaffAt`), and `comp` multiplies by `_staffW(staffN)` alongside the PE-weight and `mult` (`_revW`≡1 no-op since 2026-07-08 — reviews don't affect competition). Sublinear, centered on a typical ~2-3 DVM clinic (≈1.0×), **clamped GENTLE `[0.8, 1.8]`** (solo 0.8×, 5 DVMs 1.41×, big hospital up to 1.8×; unknown roster = neutral 1.0). The 0.8 floor is deliberate — the scrape undercounts (JS/corporate sites → "1"), so a tight floor stops a wrongly-undercounted hospital from being over-weakened. The A_OWN base 2.5 calibration still holds because `_staffW` is centered (median competitor ≈ 1.0×), not an across-the-board inflation.
+
+## Services offered (website scrape — vet-services.js, 2026-07-23, user ask: "statewide scrapes to see what services clinics offer")
+`build-services.mjs` (sibling of build-species: same crawl frame, checkpointed `.services-checkpoint.json`
+git-ignored, ~10-30 min warm statewide, NO --render) reads homepage + the services page (link-discovered,
+else /services|/our-services probes) → `vet-services.js` `window.VET_SERVICES={cellKey:{c:[codes],r:[verbatim]}}`
+(~846KB, **2,413 clinics = 79% of sites**, avg 7.0 services). HYBRID by design (user: "are you going to get
+ALL the services?"): **`c` = 24 normalized category codes** (sx dent brd grm dc exo urg dx well repro rehab
+eol chip house tele vax pharm behav nutr senior crem allergy endo regen — filterable/comparable; PE lens:
+brd/grm/dc = ancillary revenue, well = recurring, sx/dx = ACT capability) + **`r` = the clinic's own
+service-list verbatim** (li/h3 items off the services page, ≤24, junk-filtered: hours/phones/nav/chrome —
+the RAW_JUNK filter is applied in `pack()` so filter improvements clean already-checkpointed data
+retroactively at the next flush). Corpus-mined once: the only real taxonomy gap found was bare
+"diagnostics" (dx regex broadened + 263 retro-added from raw evidence); everything else frequent was
+website chrome → filtered. Frontend: `_svcAt(la,lo)` (species-style cell-window lookup),
+`_svcPopupHTML(c)` in the pin popup (category chips + "Their services list (N)" `<details>`), an
+"Offers: …" line in the clinic-eval identity block, `_SVC_LABEL` map. Loaded defer+onerror-graceful;
+pilot slice `vet-services-dfw.js` wired in build-region-slices + middleware REGION_SLICES. VF_DATASETS
+cadence 180d. Refresh: `node build-services.mjs --all` (checkpoint = only new/changed sites cost).
+
+## Practice economics — revenue + EBITDA (2026-07-22, user ask: "base it on winnable visits and doctors")
+Replaced the headcount-only estimate (`staffN × $650k`) with a **two-sided model**. Revenue is driven by
+WINNABLE VISITS and constrained by DOCTOR CAPACITY; the two are ceilings on the same quantity and the
+**binding one wins** (`Math.min`) — a practice can bill neither the visits it can't win nor the visits it
+can't staff.
+
+```
+demand ceiling   = catchment visits × capture share
+capacity ceiling = DVMs on staff × DVM_VISIT_CAPACITY
+        → min() → revenue → EBITDA → indicative value
+```
+
+- **Constants** (all AVMA-anchored, chosen by the user 2026-07-22): `REV_PER_DVM=616667` — AVMA 2025
+  report, data year 2023, companion-animal-**EXCLUSIVE** median (quartiles $411,111 / $616,667 /
+  $867,901). The old $650k sat ~60th percentile; AVMA's 2024 all-practice mean is $554,982 and FALLING
+  in real terms. `DVM_VISIT_CAPACITY=3200` = sustained clinical throughput (AVMA measures 13-15 slots/day
+  and ~1,927 worked hrs/yr; 2,800-3,600 sustained, 3,900-5,200 theoretical). `REV_PER_VISIT` is
+  **DERIVED** (`REV_PER_DVM/DVM_VISIT_CAPACITY` ≈ $193) and must never be set independently — that's what
+  keeps the two ceilings from drifting apart. Verified live: revenue ÷ winnable visits = $193 exactly.
+- **`DVM_VISIT_CAPACITY` (3200) is NOT `OPP_VISITS_PER_DVM` (2000)** — the latter is a SATURATION
+  calibration constant behind the whitespace/balanced/hub verdicts, deliberately conservative. Merging
+  them would move every saturation read in the app. The old catchment card mixed them: it sized the
+  practice off 2000 while pricing revenue off $650k/DVM, implying **$325/visit — ~1.7× the AVMA-derived
+  level**. Site revenue figures dropped ~41% when this was corrected; that IS the fix, not a regression.
+  Existing-clinic revenue barely moved (−5%, just $650k→$617k).
+- **EBITDA margin (`_ebitdaMargin`) is a VETRIC MODEL ASSUMPTION, not a benchmark — say so in any demo.**
+  Deep research (2026-07-22) confirmed **no neutral size-segmented margin dataset exists** for US vet GP:
+  AVMA does not collect P&L data at all, and every circulating margin-by-size table traces to M&A brokers
+  (paid when sellers believe practices are valuable). Derived instead from the neutral **AAHA/VMG Chart of
+  Accounts** cost structure — fully-loaded labor incl. DVM comp 40-50% of revenue, direct costs 17-25%,
+  leaving 25-43% for facility/admin/marketing/profit. Curve: solo 10% / 2-3 DVM 14% / 4-6 DVM 18% /
+  7+ 21%, sitting inside Business Valuation Resources' neutral-ish 11-12% avg, 14-17% target, >18%
+  superior. Size scaling = documented operating leverage (a $50k rent is 10% of revenue at $500k, 5% at $1M).
+  ⚠️ **The "Well-Managed Practice" 33-42% profit-to-gross figure is NOT an EBITDA margin** — ~100
+  self-selected top practices, pre-owner-comp-normalization. Applying a multiple to it overstates value
+  2-3×. A seller will quote it; know it on sight.
+- **Multiples (`_ebitdaMultiple`) ship as a BAND because the evidence genuinely conflicts**: neutral credit
+  research (Octus, Jan 2026) puts private practices at mid-to-high single digits while M&A advisories quote
+  12-15× for the larger practices they market — both real, but the brokers' book skews big and
+  competitively-marketed. Solo owner-dependent 4-6× / solo+associate 5-7× / multi-DVM GP 6.5-9.5× /
+  large-multi-site 8.5-12×. Compressed ~1.5-2.5 turns off the 2021-22 peak, stabilised ~15-20% below.
+  An analyst-entered `multiple` override (clinic editor) REPLACES the band outright and renders as "× analyst".
+- **`_practiceEcon({dvm, winnableVisits})`** takes either ceiling or both. Returns `{visits, bound, rev,
+  dvmEq, margin, ebitda, multLo/multHi, valLo/valHi, headroom}`. **`headroom` is the acquisition
+  diagnostic** and the reason the model is two-sided: `>0` = UNDERSTAFFED (add a DVM and grow revenue
+  without fighting for a point of share — the cleanest thesis in the business); `<0` = over-doctored
+  (revenue per DVM will disappoint). Surfaces today on the Evaluate catchment card, the print site report,
+  Acquisitions cards, the popup, Screener and CSV. **Not yet wired**: the both-ceilings-known case for
+  existing clinics — `evalOverlap` already computes each nearby clinic's 10-min catchment, so that's the
+  natural home for a real headroom read per competitor.
+- Full sourcing + the gaps that could NOT be closed from free sources (ACT dollar levels, size-segmented
+  margins, the operating-leverage curve — all paywalled behind VHMA / iVET360) are in
+  `research/vet-practice-economics.md`.
+
+## Security hardening (2026-07-15, user ask)
+- **Rate limiting (KV-counter based, fails OPEN on KV errors)**: login = 25 attempts/10min per IP counted on EVERY request (blocks code brute force AND email enumeration; the pre-existing 10-fails/5min per-email lockout still stacks on top), streetview = 200/10min per IP (protects the paid Google key), ai = 30/10min per IP (protects the Workers AI quota). Helper `_rateOK(env,key,limit,ttl)` duplicated per function (Pages Functions kept dependency-free). Keys `rl:login:<ip>` / `rl:sv:<ip>` / `rl:ai:<ip>`. Verified by harness: 26th same-IP attempt → 429 even with a valid code for a different email; clean IP unaffected; all 34 auth cases still pass.
+- **No user data in the repo**: customer emails/access codes live ONLY in KV (allow:/acct:/session:). functions/README.md's real bootstrap email was replaced with you@example.com. The Google key is env-only. The hardcoded Census key is a public demo key (documented below).
 
 ## Census API key
 Hardcoded in the fetch URLs: `key=3429f2401376a586a8f6ffc02bb5678ee32fbf44`. This is a public demo key. If Census calls start failing with 401, this key needs refreshing at api.census.gov.
@@ -132,8 +1064,8 @@ Hardcoded in the fetch URLs: `key=3429f2401376a586a8f6ffc02bb5678ee32fbf44`. Thi
 - ✅ PE/independent color pins (navy/red), dev mode add/edit/delete
 - ✅ Draw area: rectangle + free-draw polygon, filters pins + scopes KPIs
 - ✅ ZIP selection: click to select, shift+click multi-select, black border overlay
-- ✅ Three choropleth layers: income, pet density, population growth (2021→2024)
-- ✅ KPI bar: clinics in view, PE penetration, median income, dog households, top opportunity ZIP
+- ✅ Three mutually-exclusive choropleth layers (income, pet density, population growth 2021→2024); the clinic-density heatmap overlay was REMOVED 2026-07-13
+- ✅ KPI bar: clinics in view, PE penetration, growth, saturation, top opportunity ZIP + OPTIONAL median-income and dog-households cards (2026-07-13): funnel icon at the bar's right edge → color-coded checkbox popover (`_kpiVis`/`_kpiOn`/`applyKpiVis`/`setKpiVis`, persisted in `vf_kpis`; `_KPI_DEFAULT_OFF={income,doghh}`). `_updateOptKpis()` computes the optional pair for every scope (viewport / selected ZIPs / drawn area via clamped-point INTERSECTION — not centroid-in-area — / site-pin radius via `_siteKpis.incMed`), lazy-ensures + self-heals its data (layer toggle-off wipes incomeData/dogData), and skips work when both are hidden. GOTCHAS: the narrow-screen media rule hides KPI cards BY NAME (`[data-kpi=…]` — was `:nth-child(4/5)`, which broke when the filter button became an earlier child); the bar's inline `grid-template-columns` is only set when the visible set differs from default, so the <1000px 3-column stylesheet rule keeps working
 - ✅ Opportunity scoring tab: 4-factor weighted score (income, demand, low competition, growth), live weight sliders, PE competition multiplier, 4 presets, ranked list with factor bars
 - ✅ oppSelect: loads data behind overlay, reveals finished map with ZIP outlined
 - ✅ VetMetric rebrand: logo (analytics bars + pulse), navy gradient tile
@@ -142,6 +1074,17 @@ Hardcoded in the fetch URLs: `key=3429f2401376a586a8f6ffc02bb5678ee32fbf44`. Thi
 - ✅ Shared geometry cache (tx-zips.json parsed once)
 - ✅ Redundant Census fetch eliminated
 - ✅ Growth data: ACS 2024 vs 2021 (same-boundary), parallel fetch, clamped, scored
+- ✅ Real server-side access control (Pages Functions middleware + KV sessions + email one-time codes via Resend, admin-managed allow-list — see `functions/README.md`) + post-login loading screen (`#app-loader`) that bridges to a tiles+PE-ready app
+- ✅ Load optimizations (all data-preserving, from a 4-agent audit): preconnect/dns-prefetch hints; memoized divIcons; lazy popup binding; idle-prefetch of tx-zips geometry + all-TX income; Opportunity parallel Census cache-warm; non-blocking region-independents so scoring renders in ~2s instead of hanging on Overpass
+- ✅ Evaluate zoning/land-use gate (3 tiers): 16 DFW cities' live ArcGIS zoning (CORS, client-side) → county appraisal-district parcels (Collin/Denton/Dallas, statewide SPTB classifier) for exurb/unincorporated gaps → OSM landuse last resort. Residential/civic cells excluded so the tool stops recommending sites in subdivisions (fixed 75078 Prosper "0 dropped" gap). Conservative classifiers, FW legacy-code override, high-volume parcel guards (WHERE-filter + geometry generalization + paging caps + time budget, best-effort); zoning overlay + filter toggle + sidebar readout
+
+## Market & site-selection research (informs scoring + roadmap)
+Full report: `research/vet-site-selection-report.md` (+ `.pdf`). Two deep-research passes, adversarially fact-checked (Parts 1–4: 22 confirmed / 3 refuted; Part 5: 25/25 confirmed). Weigh these when proposing scoring or feature changes:
+- **The core design is industry-validated**: every documented site-selection method (Esri Business Analyst, Buxton, urgent-care/dental DSO playbooks) *inverts competition* — more existing clinics in the radius lowers a candidate's score. This is exactly the absolute-capture model in `_evalComputeAndRender` (`share = A_OWN/(A_OWN+comp)`). Do NOT revert to relative competition — matching industry practice is a feature, not just an internal preference.
+- **Monetization ladder = Buxton's 3 tiers**: VetMetric today is an "Industry" model (purely theoretical, no client data). Upgrade path to frame new data features against: client uploads clinic-performance data → "Benchmark" (scored vs their own portfolio) → "Forecasting" (regression on visits/revenue + cannibalization).
+- **Research-backed roadmap ideas (not yet built)**: drive-time trade areas (industry uses ~10-min urban → 30+ mi rural, vs the current fixed 3 mi / 6 mi radius — ties to the known A_OWN calibration limitation); cannibalization overlap flag (>25% of an existing site's trade area); a **DVM labor-supply layer** (BLS OES + vet-school proximity; vet labor is geographically uneven = a real siting constraint); align demand sizing with the **AVMA Market Share Estimator** 5-step method (service area → households → pets → market potential → share — buyers recognize it).
+- **Competitors to track**: "Terminal" by The Bird Bath (vet market-intelligence + practice DB) and veterinaryanalytics.com — closest existing products; worth a teardown.
+- **Standing caveats**: the AAVMC vet-shortage report was withdrawn pending review (the "shortage" is genuinely contested vs AVMA/Brakke's no-shortage finding); 8–13× vet EBITDA multiples are the PE/corporate/specialty band — small independents sell ~4–7×.
 
 ## What's next (planned but not built)
 - Population growth as scoring input is live but could be refined with forward projections (Esri/Claritas) in a future paid tier
