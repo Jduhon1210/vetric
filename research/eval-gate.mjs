@@ -976,7 +976,16 @@ section('9. fit — modelled practice size vs scraped rosters');
 // standalone replica, whose simplified demand chain lands in a slightly different place.
 // Re-measure and update deliberately whenever the model is retuned; do not widen the
 // tolerance to make a failing run pass.
-const FIT_BASELINE={ p25:1.25, p50:1.09, p75:0.95, p90:0.76 };
+// RE-RECORDED 2026-08-04 with the attraction-scale unification (see index.html _catchShareBand
+// selfW/selfKw split). This baseline had gone STALE at the v8 un-clip on 2026-07-29:
+// FIT_CLASS_BASELINE was re-recorded that day and this one was not, so the shipped tree was
+// sitting at p25 |1.449-1.25| = 0.199 against a 0.200 tolerance — passing by 0.001, i.e. ANY
+// further change to the entrant path would trip it regardless of merit. The v7-era figures it
+// replaces: { p25:1.25, p50:1.09, p75:0.95, p90:0.76 }. Against those, unification moved p75
+// (0.115 -> 0.056) and p90 (0.128 -> 0.053) markedly CLOSER, p50 slightly further
+// (0.008 -> 0.049), and p25 further (0.199 -> 0.234). Per-class spread — the statistic the audit
+// showed the pooled mixture cannot see — improved 1.53x -> 1.31x with rural 0.723 -> 0.886.
+const FIT_BASELINE={ p25:1.48, p50:1.14, p75:0.89, p90:0.71 };
 const FIT_TOL=0.20;
 const RHO_FLOOR=0.10;
 // ── KNOWN-BAD BASELINES (measured 2026-07-29 on this tree by this harness) ───────────────────

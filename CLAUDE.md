@@ -435,6 +435,106 @@ raises K at its OWN address, so modelled-entrant vs actual-roster is guaranteed 
 removing the subject moves rho -0.064 -> -0.037. Still zero. **This engine ranks MARKETS, not
 parcels** — Refine is what answers "which corner". Do not present a site card as per-address.
 
+## ONE attraction scale — the selfW conflation fix (2026-08-04)
+User: *"make sure it makes sense for all the clinics and we are not just adjusting numbers but we are
+making the algorithm more realistic."* A clinic was modelled **2.67x less attractive as the subject of
+a clinic evaluation than as a hypothetical new entrant of the same size in the same market** — so
+clinic evaluations read practices at **p50 0.64x** of the visits their scraped roster implies (the
+"4 doctors but $600k revenue" class of complaint).
+
+**ROOT CAUSE — a conflation, not calibration drift.** `selfW` in `_catchShareBand` was ONE variable
+doing TWO jobs on TWO scales: the subject's **attraction** (numerator A, which belongs on the entrant
+scale `_catchAttract`) and the competition **subtracted from K** (denominator, which must be in the
+`_staffW` units the artifact's `cd[]` buckets were built in). Fused, you could not put the incumbent on
+the entrant's attraction scale without corrupting its self-removal — so the incumbent was left on
+`_staffW`, and re-fitting `CATCH_ATTRACT_DIV` 2.5 -> 0.35 during the v8 un-clip silently opened the gap
+by exactly that factor. The roster gate validates only the ENTRANT path, so nothing caught it.
+
+**THE FIX.** `_catchShareBand(cell,b,n,wBar,selfW,selfKw)` and `_catchWinnable(...,selfW,selfKw)` take
+the two jobs as SEPARATE parameters; `selfK` derives from `selfKw` when supplied. `_applyCapture`'s
+clinic branch sets `cell.cSelfW=_catchAttract(dvm)` (attraction) and `cell.cSelfK=_staffW(dvm)`
+(self-removal). Three downstream readers thread `cSelfK`: `cShareRef`, the card-share loop, and the
+band drill-down. **A_entrant/A_incumbent = 1.000 at every size**, no clamp discontinuity. NO artifact
+rebuild — `dfw-catchments.json` is byte-identical and its `kMid` ladder is read exactly as before.
+
+**Constants that MOVED WITH IT, and why they are not free knobs:**
+- `DVM_VISIT_CAPACITY` 3200 -> **2038**. Once A_E==A_I the roster gate and the incumbent read are the
+  SAME equation, which FORCES the equilibrium constant to equal realised throughput. The metro measures
+  it: 4,059,118 modelled visits / 1,992 observed GP DVMs = 2,037.7.
+- `CATCH_ATTRACT_DIV` 0.35 -> **0.863**. Forced, not chosen: with CAP pinned, the roster gate admits
+  exactly one divisor (invariant D*a/CAP = 5.281e-4).
+- `BUYBOX_MIN_SHARE` 0.20 -> **0.14**. MANDATORY bookkeeping — `cShareRef` is measured through
+  `_catchAttract`, so it rescales with DIV. Leaving it at 0.20 collapses the buy-box pool 431 -> 288
+  for reasons with nothing to do with the buy-box. At 0.14 the pool is preserved (431 -> 430).
+- **DEMAND IS UNTOUCHED, and that is a finding.** DFW models 1.388 visits/HH against the national
+  identity 1.336 (AVMA 175.5M visits / 131.4M HH) — 3.9% ABOVE national, not short. The closure gap was
+  entirely supply-side: DFW carries 1,469 HH per GP DVM vs 1,921 national, i.e. 31% MORE doctors per
+  household. Raising demand ~24% to "close" the metro would have implied 1.71 visits/HH with no evidence.
+
+**PROOF IT IS NOT AN ALGEBRAIC UNDO — do not re-litigate this.** The two pieces are provably orthogonal:
+- The structural split ALONE (constants untouched): roster gate and closure come back **BIT-IDENTICAL**
+  ({1.449,1.082,0.835,0.632} and 2,037.7), while the incumbent read moves **2.40x**. No re-scale of
+  demand, capacity or the divisor can do that — each multiplies the entrant path and so must move
+  constraint 1 or 2. The split touches only the incumbent branch.
+- The (CAP, DIV) rescale ALONE (no split): the incumbent read and the entire by-size curve come back
+  **BIT-IDENTICAL**, as does demand conservation to the unit. **The (CAP, DIV) pair is an exact
+  algebraic identity on the defect — it literally cannot touch it.** Every prior re-fit in this project
+  lived on that manifold, which is why each bought nothing. That is now demonstrated, not asserted.
+- Untargeted corroboration: **demand conservation** (sum of every clinic's winnable / total metro
+  visits; orthodox Huff wants ~1.0) went **0.705 -> 1.109** — a diagnostic never optimised against and
+  which no re-scale moves at all.
+
+**WHAT CLOSURE PASSING DOES AND DOES NOT PROVE.** `closure.metro` reads 1.000x for the first time, but
+it is now near-DEFINITIONAL: CAP was set to the ratio closure measures. What makes it non-vacuous is
+that the numerator was validated INDEPENDENTLY against the national identity above. The honest framing:
+after the split there are two free parameters (CAP, DIV) and two independent constraints (roster fit,
+incumbent read), with closure the definition linking them — the system stops being underdetermined
+because a knob was REMOVED, not added. Do not quote "the metro closes" as fresh external validation.
+
+**Results** (n=569 GP clinics, gate's own filter): incumbent read p50 **0.640 -> 1.023**, below-0.5x
+35.5% -> 10.5%; per-class spread **1.65x -> 1.19x** (rural 0.953->1.153, exurban 0.631->1.004, suburban
+0.651->1.024, urban 0.578->0.968 — the K-clip failure mode explicitly checked for, and it does not
+recur). Roster gate per-class spread also improves 1.53x -> 1.31x (rural 0.723 -> 0.886). Downstream
+nearly inert: **same five picks, same three land plays** (slight reorder only), pool 431 -> 430, pool
+median income identical, 2SFCA underservice EXACTLY unchanged (CAP is a common factor in `U=AMED/A` and
+cancels). `FIT_BASELINE` in eval-gate.mjs was re-recorded to {1.48,1.14,0.89,0.71} as a deliberate act
+— it had gone stale at the v8 un-clip and the shipped tree was passing p25 by 0.001 of tolerance.
+Gate: **47 pass / 2 warn / 0 fail**, the best this tree has produced.
+
+**RESIDUALS — none hidden, two newly measurable:**
+- **The by-size slope SURVIVES at 3.88x** (was 6.09x): solo practices read 1.58x their roster-implied
+  throughput, 9+ DVM hospitals 0.41x. Tested and BOUNDED: raising the attraction exponent flattens it
+  (alpha 1.0 is nearly flat) but at alpha=1 the sized-entrant equilibrium is DEGENERATE — attraction and
+  capacity both scale linearly so there is no interior root, and the roster gate collapses (p50 0.025).
+  That collapse also names what flattening buys: making winnable depend more on the subject's own roster
+  is making the model echo the input it is scored against.
+- **`REV_PER_VISIT` $192.71 -> $302.58** (= REV_PER_DVM / realised throughput). Revenue at a given
+  practice size is CAP-INVARIANT (n x $616,667) and the buy-box ceiling is unchanged at $3.70M x cACT,
+  but $303/visit sits ABOVE the observed GP ACT band (~$200-250). Consequence: cells below the ceiling
+  price 1.57x higher, so `_evalStrongOK` passes **1,053 -> 1,379 of 4,076** (+31%) at an unchanged
+  EVAL_STRONG=0.22. This is the open question, stated in one line: either DFW doctors genuinely see ~20%
+  fewer patients than national, or DFW demand is ~20-25% under-modelled despite matching national
+  per-household (plausible — the pet model's income term only damps, never boosts, and DFW is affluent).
+  The alternative was TESTED and is worse: CAP 2595 (the national 2,566 figure) drives conservation to
+  1.372 (awarding 37% more visits than the metro contains) and pushes closure out of band to 0.785.
+  RESOLVING EVIDENCE: any DFW-specific visits-per-DVM or ACT figure, or client-supplied visit counts —
+  the same "Benchmark" tier data that would reopen W4/W5.
+- **Zero per-site skill, UNCHANGED**: Spearman rho vs rosters -0.070 -> -0.067. The incumbent read
+  landing on 1.0 is a DISTRIBUTION match, not per-address accuracy — only 36.4% of clinics sit within
+  +/-33% of it. This engine still ranks MARKETS, not parcels.
+- **The subject still out-attracts an identically-sized COMPETITOR 1.70x** (down from 2.67x) — that
+  premium is what covers the residual conservation gap. Full three-way coherence (DIV=2.5) is NOT
+  reachable: it fails closure at 1.70x and leaves the incumbent read at 0.508. A documented level
+  constant remains, now smaller and size-independent.
+- **REJECTED FOR THIS PASS — the attraction-exponent variant** (alpha 0.65, DIV 1.104): strictly better
+  on every gate statistic (47/2/0, roster {1.198,1.096,1.021,0.867}, size slope 2.73x, within-33% rises
+  to 46.4%) BUT rho is unchanged at -0.068, so it orders clinics no better and buys its tighter band
+  partly by making winnable track the roster it is scored against; and raising the SUBJECT's exponent
+  while every competitor stays baked at 0.5 re-opens the same asymmetry this fix closes (premium would
+  grow 1.17x at 1 DVM to 2.39x at 10). Doing it honestly requires rebuilding `dfw-catchments.json` with
+  the matching competitor exponent (~25 min derive, no OSRM) and re-running the gate against it. A clean
+  follow-on; NOT something to fold in on the strength of a marginal statistic.
+
 ## Buy-box screen-then-score (2026-07-29) — METRO RUNS ONLY
 User: *"PE firms and regional groups dont build rural so we really shouldnt be looking at rural
 areas unless its a land play that is being developed in an exurb like celina. I was expecting it
