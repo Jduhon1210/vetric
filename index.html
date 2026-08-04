@@ -1842,10 +1842,23 @@ const REV_PER_DVM=616667;
 const DVM_VISIT_CAPACITY=2038;
 
 // DERIVED, never set independently, so the demand and capacity ceilings can never
-// drift out of sync: 616667/3200 = ~$193 a visit. Cross-checks against AVMA's own
-// $288/vet-hour at ~30 min per patient (~$206 once non-appointment hours net out).
-// Consumer "average vet visit cost" figures run higher because this denominator
-// includes tech visits, rechecks and product-only pickups.
+// drift out of sync: 616667/2038 = ~$303 a visit.
+// THIS IS NOT AN AVERAGE PRICE AND MUST NOT BE QUOTED AS ONE. _catchACTF scales it by
+// (catchment income / $110k)^0.3794, so $303 is the price AT A $110k CATCHMENT. Measured
+// across DFW: applied p10 $255 / p50 $284 / p90 $322, winnable-weighted $280; at the US
+// median household income it prices $266. Anything user-facing shows the APPLIED figure.
+// WHY IT SITS ABOVE THE "$200-250 ACT" EVERYONE QUOTES - two unit errors in that comparison:
+//   1. A Vetric visit is a HOUSEHOLD TRIP (dogHH x 2.4 + catHH x 1.2 are AVMA household trip
+//      frequencies). ACT is per INVOICE, and practices bill tech appointments, refills,
+//      rechecks and product-only pickups that no owner recalls as a visit. Revenue per trip
+//      is structurally above revenue per invoice - AVMA's own household survey disagrees with
+//      itself by ~30% for exactly this reason (recall "last visit" ~$215 vs annual spend
+//      divided by its own visit frequency ~$280).
+//   2. The receipts census settles it. Economic Census 2022 NAICS 541940: US receipts
+//      $62.819B / 127.48M HH = $492.77 per household, over the AVMA identity of 1.3767
+//      visits/HH = $357.95 per household trip for ALL vet services. Net out specialty/ER and
+//      large-animal (GP 70-85%) and bridge 2022->2024 at ~5%/yr: $276-335. The model applies
+//      $280 - INSIDE that band, at the LOW end. A recall survey loses to a receipts census.
 const REV_PER_VISIT=REV_PER_DVM/DVM_VISIT_CAPACITY;
 
 /* Adjusted (normalized) EBITDA margin by practice size.
@@ -11056,7 +11069,13 @@ async function _evalCatchmentStats(ring, g){
   const size = dvmFit<1.4 ? 'solo-doctor'
              : (_dLo===_dHi ? _dLo+'-doctor' : _dLo+'\u2013'+_dHi+'-doctor');
   const rev=econ.rev;
-  return {hhIn:Math.round(hhIn), dogIn:Math.round(dogIn), catIn:Math.round(catIn), visits, pe, ind, share, basis:_cc?'capture':'gravity', spendF:_cc?(g.cSpend!=null?g.cSpend:1):null, captured, dvmFit, size, rev, econ, fut, areaMi:_cc?Math.round(_cc.a20||_polyAreaMi(ring)):Math.round(_polyAreaMi(ring))};
+  // act = the LOCAL income multiplier the revenue above was actually priced at. Carried out so the
+  // card can print the applied $/visit instead of the bare REV_PER_VISIT constant, which is the
+  // price at a $110k catchment and reads ~8% high as an "average" (measured: DFW applied p50 $284,
+  // winnable-weighted $280, against a $302.58 constant). A card that prints the constant invites
+  // exactly the comparison it loses — the observed $200-250 figure is per INVOICE, while a Vetric
+  // visit is a household TRIP, and practices bill more invoices than owners recall as visits.
+  return {hhIn:Math.round(hhIn), dogIn:Math.round(dogIn), catIn:Math.round(catIn), visits, pe, ind, share, basis:_cc?'capture':'gravity', spendF:_cc?(g.cSpend!=null?g.cSpend:1):null, captured, dvmFit, size, rev, econ, fut, act:(g&&g.cACT)||1, areaMi:_cc?Math.round(_cc.a20||_polyAreaMi(ring)):Math.round(_polyAreaMi(ring))};
 }
 function _fmtM(v){ return v>=1e6?('$'+(v/1e6).toFixed(1)+'M'):('$'+Math.round(v/1000)+'k'); }
 const _DRIVE_SHOW='◔ 10-min drive area', _DRIVE_HIDE='✕ Hide drive area';
@@ -11227,7 +11246,7 @@ function _evalCatchHTML(cs){
       ${kv('Winnable visits','~'+cs.captured.toLocaleString()+'/yr',true)}
       ${kv('Supports · est. revenue <span style="color:#9aa2b1">(modeled)</span>',cs.size+' practice · '+_fmtM(cs.rev),true)}
       ${kv('Adj. EBITDA @ '+Math.round(cs.econ.margin*100)+'% · '+cs.econ.multLo+'–'+cs.econ.multHi+'×','~'+_fmtM(cs.econ.ebitda)+' ⇒ '+_fmtM(cs.econ.valLo)+'–'+_fmtM(cs.econ.valHi))}
-      <div class="cdx-note">Revenue = winnable visits × $${Math.round(REV_PER_VISIT)}/visit (AVMA-derived). Margin is a Vetric model assumption from the AAHA/VMG cost structure, not a published benchmark — no neutral size-segmented margin data exists.</div>
+      <div class="cdx-note">Revenue = winnable visits × ~$${Math.round(REV_PER_VISIT*(cs.act||1))}/visit here — AVMA-derived, scaled to this catchment's income${(cs.act&&Math.abs(cs.act-1)>0.02)?' ('+(cs.act>1?'+':'−')+Math.round(Math.abs(cs.act-1)*100)+'% vs a $110k catchment)':''}. A visit is a household trip, not a single invoice, so this runs above the per-invoice figures practices quote. Margin is a Vetric model assumption from the AAHA/VMG cost structure, not a published benchmark — no neutral size-segmented margin data exists.</div>
       ${(_evalSubject&&_evalSubject.dvm)?(()=>{const e2=_practiceEcon({dvm:_evalSubject.dvm,winnableVisits:cs.captured});const cap=_evalSubject.dvm*DVM_VISIT_CAPACITY;const hr=e2.headroom;const hire=hr/DVM_VISIT_CAPACITY;   // SIGNED — a hr>0?x:0 guard here pinned every over-doctored practice at 0, so |hire|<0.35 always matched: the sidebar printed "Balanced, the market supports ~19% of capacity" while _clinicReportHTML, which computes hire unguarded, printed "Utilization flag ~3.2 DVM over" for the same clinic in the same session.
         const mx=Math.max(cs.captured,cap);
         return `<div class="cdx-rl">Two-sided practice read<b></b></div>

@@ -509,16 +509,9 @@ Gate: **47 pass / 2 warn / 0 fail**, the best this tree has produced.
   That collapse also names what flattening buys: making winnable depend more on the subject's own roster
   is making the model echo the input it is scored against.
 - **`REV_PER_VISIT` $192.71 -> $302.58** (= REV_PER_DVM / realised throughput). Revenue at a given
-  practice size is CAP-INVARIANT (n x $616,667) and the buy-box ceiling is unchanged at $3.70M x cACT,
-  but $303/visit sits ABOVE the observed GP ACT band (~$200-250). Consequence: cells below the ceiling
-  price 1.57x higher, so `_evalStrongOK` passes **1,053 -> 1,379 of 4,076** (+31%) at an unchanged
-  EVAL_STRONG=0.22. This is the open question, stated in one line: either DFW doctors genuinely see ~20%
-  fewer patients than national, or DFW demand is ~20-25% under-modelled despite matching national
-  per-household (plausible — the pet model's income term only damps, never boosts, and DFW is affluent).
-  The alternative was TESTED and is worse: CAP 2595 (the national 2,566 figure) drives conservation to
-  1.372 (awarding 37% more visits than the metro contains) and pushes closure out of band to 0.785.
-  RESOLVING EVIDENCE: any DFW-specific visits-per-DVM or ACT figure, or client-supplied visit counts —
-  the same "Benchmark" tier data that would reopen W4/W5.
+  practice size is CAP-INVARIANT (n x $616,667) and the buy-box ceiling is unchanged at $3.70M x cACT.
+  **INVESTIGATED 2026-08-04 after the user flagged $303 as too high — see the section below. It is
+  defensible; the two corrections that morning's entry got wrong are recorded there.**
 - **Zero per-site skill, UNCHANGED**: Spearman rho vs rosters -0.070 -> -0.067. The incumbent read
   landing on 1.0 is a DISTRIBUTION match, not per-address accuracy — only 36.4% of clinics sit within
   +/-33% of it. This engine still ranks MARKETS, not parcels.
@@ -534,6 +527,94 @@ Gate: **47 pass / 2 warn / 0 fail**, the best this tree has produced.
   grow 1.17x at 1 DVM to 2.39x at 10). Doing it honestly requires rebuilding `dfw-catchments.json` with
   the matching competitor exponent (~25 min derive, no OSRM) and re-running the gate against it. A clean
   follow-on; NOT something to fold in on the strength of a marginal statistic.
+
+## $303 a visit — investigated and CLEARED (2026-08-04)
+User: *"303$ a visit sounds really high."* Fair challenge, wrong conclusion — and the investigation
+falsified BOTH suspects, including one this register had asserted as fact hours earlier.
+
+**THE COMPARISON WAS WRONG TWICE.**
+1. **$302.58 is never a price the model charges.** `_catchACTF` scales it by
+   `(catchment income / $110k)^0.3794`, so it is the price AT A $110k CATCHMENT. Measured across all
+   9,627 cells: applied p10 $255 / p50 $284 / p90 $322, **winnable-weighted $279.90**; at the US
+   median household income it prices $266. The constant overstates the applied price by 8%.
+2. **The unit is a HOUSEHOLD TRIP, not a practice INVOICE.** `OPP_VISITS_PER_DOGHH=2.4` /
+   `_CATHH=1.2` are AVMA household trip frequencies. The "$200-250 ACT" everyone quotes is per
+   invoice, and practices bill tech appointments, refills, rechecks and product-only pickups that no
+   owner recalls as a visit. AVMA's own household survey disagrees with ITSELF by ~30% on this
+   (recall "cost of last visit" ~$215 vs annual spend / its own visit frequency ~$280).
+
+**THE RECEIPTS CENSUS SETTLES IT.** Economic Census 2022 NAICS 541940 (an actual receipts census,
+free, neutral — not a recall survey): US receipts $62.819B / 127.48M HH = $492.77 per household;
+over the AVMA identity 1.3767 visits/HH = **$357.95 per household trip, all vet services**. Net out
+specialty/ER + large-animal (GP share 70-85%) and bridge 2022->2024 at ~5%/yr -> **$276-335**. The
+model applies **$279.90** — inside the band, at the LOW end. At the requested $225 it would sit
+BELOW the band on even the most hostile GP-share assumption. Cross-check: AVMA household spend
+($598/dog-HH, $529/cat-HH) x national pet-household counts lands within ~1% of the same census total.
+
+**BOTH SUSPECTS REFUTED:**
+- **"Doctor-dense metro, so lower revenue per DVM" — the premise is FALSE and it was MY error.**
+  This register claimed DFW carries 31% more doctors per household than national. That is a property
+  of the model's own DVM census, not of DFW. Three independent sources disagree: BLS OEWS May 2025
+  location quotient **0.80** (20% BELOW national), AVMA West South Central holds 9.6% of US vets
+  against 12.6% of population (**0.76**), Census CBP 2023 **+3%** employees per household (essentially
+  at national). DFW also BILLS MORE than national — receipts per household **1.113x** — and AVMA's
+  regional cut puts West South Central HIGHEST of nine regions on practice gross revenue. Every
+  DFW-specific series points UP, so regionalising `REV_PER_DVM` down has the sign backwards.
+  The mechanism fails too: across 49 metros (BLS) and 289 metros (CBP), corr(vet density, pay per
+  vet) is ~0 (+0.08 / +0.11; partial on income -0.05). What DOES predict it is local income
+  (+0.58), which `_catchACTF` already prices — a second "affluent metro" adjustment would double-count.
+- **"The DVM census is inflated by the assumed-2 rosters" — CONFIRMED at 1,992, three ways.**
+  Route A, DFW receipts / $616,667 per FTE: 1,759-2,135. Route B, CBP employment / AVMA's own
+  staffing ratio (3.8 nonvet FTE per vet = 4.8 total/DVM): 1,586-2,340. Route C, internal roster
+  audit: 2,027-2,359. 1,992 sits inside all three. The internal audit also inverts the intuition —
+  assume-2 is a FLOOR, not a central estimate: the scraped mean is **2.799**, and 145 of the 404
+  "assumed 2" clinics are dedup-collapsed multi-site groups whose own raw rosters average **3.92**.
+  Review-conditional expectation never drops below 2.30 in any decile. A BLS-derived 1,550 was the
+  lone outlier and its own source note explains it — OEWS excludes self-employed vets (national
+  capture 83,900/127,131 = 66%). **CAP=2595 therefore stays rejected on the record**; its rejection
+  was conditional on a 1,992 census and the census was confirmed, not moved.
+
+**A FALSE CAUSAL CLAIM, CORRECTED.** The v8-unification entry above recorded that `_evalStrongOK`
+widened 1,053 -> 1,379 *because the price rose 1.57x*. **That is wrong, measured both ways.** Cutting
+the price 25.6% (REV_PER_DVM -> $458,550) leaves the count at **1,379 — unchanged**, with the pool at
+430 and all five picks and three land plays BIT-IDENTICAL. Holding the price fixed and moving CAP
+2038 -> 3200 collapses it **1,379 -> 187**. **CAP is the lever** (it sits in `BUYBOX_ABSORB=6xCAP` and
+in `cUnmet/CAP`), not the price. Algebra confirms it: site score = `min(cUnmet/CAP,6) x cACT/10 x
+accessMult`, in which REV_PER_DVM cancels against `CATCH_REV_FULL=10 x REV_PER_DVM`. So
+**`REV_PER_VISIT` is a PURE DISPLAY SCALAR in the metro engine** — it ranks nothing, gates nothing,
+picks nothing. Do not wait for "the price to settle" before touching EVAL_STRONG.
+
+**WHY NOT JUST LOWER IT ANYWAY.** Measured: it would print $459k/DVM on every capacity-bound clinic
+card against AVMA's published companion-exclusive median of **$616,667** — near their p25 of
+$411,111. A PE buyer knows those quartiles; a 2-doctor Dallas practice modelled at $920k reads as an
+error. It would also drive total modelled metro revenue to $863M against an Economic-Census GP
+figure of ~$1.28-1.38B. The model already UNDER-bills at 0.917 of the AVMA aggregate.
+
+**WHAT SHIPPED (display only, no constant moved):** `_evalCatchmentStats` now returns `act`, and the
+clinic card prints the **applied** $/visit for that catchment with the income delta, plus a one-line
+note that a visit is a household trip rather than a single invoice. The stale `616667/3200 = ~$193`
+comment at the `REV_PER_VISIT` declaration was refreshed and now carries the full unit argument.
+
+**THE REAL DEFECT THIS SURFACED — cat visits, NOT price. NOT FIXED, deliberately.** At the national
+income reference the model bills **$639 per dog household vs AVMA's $598 (1.069)** but only
+**$320 per cat household vs $529 (0.604)**. `OPP_VISITS_PER_CATHH=1.2` looks ~40% light.
+Tested: `1.2 -> 1.99` with CAP re-measured 2038 -> 2327 gives price $265 raw / $233 national-equivalent
+— the band originally asked for — with the SAME five picks, same three land plays, strong 1,379 ->
+1,372, and **clinic cards identical to the dollar** ($1.160B metro revenue both ways). That last fact
+is the point: it is an exact algebraic identity on the money, so it is a COMPOSITION fix, never a
+pricing one. BLOCKED on a question free data cannot answer — whether AVMA's ~1.83 cat visit frequency
+is CONDITIONAL on visiting at all. If it is, and a quarter to a third of cat households never go, the
+unconditional rate is ~1.3 and 1.2 is about right. It also trades a check that currently PASSES
+(visits/HH 1.388 vs the AVMA identity 1.3767) for one that fails (1.585). Needs its own pass with
+that question resolved — do NOT fold it in to make a price look nicer.
+
+**RESIDUAL, honestly bounded:** the GP share of NAICS 541940 receipts is ASSUMED at 70-85%, not
+measured, and it is load-bearing. "The model is not too high" survives the whole range; "the model is
+if anything LOW" only survives above ~GP 0.75. The 2022->2024 vintage bridge (~5%/yr) is chosen, not
+measured, worth ~5 points on a ~30-point question. And no free source publishes ACT or revenue-per-DVM
+at metro granularity — that gap is unchanged. What IS newly usable: BLS OEWS 29-1131 and Census CBP
+541940 are both free at MSA grain and good enough to serve as a standing sanity check on the DVM
+census, which is the check that would have caught the false density claim above.
 
 ## Buy-box screen-then-score (2026-07-29) — METRO RUNS ONLY
 User: *"PE firms and regional groups dont build rural so we really shouldnt be looking at rural
